@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "clientSlug": "alpha",
+  "name": "Альфа",
+  "enabled": true,
+  "clusterProfile": "real-estate",
+  "sites": [
+    {
+      "siteSlug": "north",
+      "name": "Север",
+      "siteUrl": "https://alpha.example.test",
+      "timezone": "+03:00",
+      "enabled": true,
+      "webmaster": {
+        "enabled": true,
+        "expectedHostUrl": "https://alpha.example.test"
+      },
+      "metrica": {
+        "enabled": true,
+        "counterId": "700001",
+        "goalProfile": "alpha"
+      },
+      "topvisor": {
+        "enabled": false,
+        "projectId": 700004,
+        "regionIndex": 0
+      }
+    },
+    {
+      "siteSlug": "east",
+      "name": "Восток",
+      "siteUrl": "https://east.example.test",
+      "timezone": "+03:00",
+      "enabled": true,
+      "webmaster": {
+        "enabled": true,
+        "expectedHostUrl": "https://east.example.test"
+      },
+      "metrica": {
+        "enabled": true,
+        "counterId": "700002",
+        "goalProfile": "alpha"
+      }
+    },
+    {
+      "siteSlug": "south",
+      "name": "Юг",
+      "siteUrl": "https://south.example.test",
+      "timezone": "+03:00",
+      "enabled": true,
+      "webmaster": {
+        "enabled": true,
+        "expectedHostUrl": "https://south.example.test"
+      },
+      "metrica": {
+        "enabled": true,
+        "counterId": "700003",
+        "goalProfile": "alpha"
+      }
+    }
+  ]
+}

@@ -1,0 +1,273 @@
+@import "@fontsource/manrope/400.css";
+@import "@fontsource/manrope/500.css";
+@import "@fontsource/manrope/600.css";
+@import "@fontsource/manrope/700.css";
+@import "@fontsource/manrope/800.css";
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@font-face {
+  font-family: "PT Root UI";
+  src: url("/fonts/pt-root-ui/PT-Root-UI_VF.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --background: #eef2f5;
+  --foreground: #020617;
+  --card: #ffffff;
+  --card-foreground: #020617;
+  --popover: #ffffff;
+  --popover-foreground: #020617;
+  --primary: #101720;
+  --primary-foreground: #ffffff;
+  --secondary: #f8fafc;
+  --secondary-foreground: #020617;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: rgb(95 127 174 / 10%);
+  --accent-foreground: #10202f;
+  --destructive: #aa3e3e;
+  --destructive-foreground: #ffffff;
+  --destructive-soft: #fbecec;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --ring: #5f7fae;
+  --text-secondary: #475569;
+  --link: #3e5d86;
+  --sidebar: #101720;
+  --sidebar-foreground: #f5f7f8;
+  --sidebar-primary: #d4dbe0;
+  --sidebar-primary-foreground: #101720;
+  --sidebar-accent: #3b434a;
+  --sidebar-accent-foreground: #f5f7f8;
+  --sidebar-muted: #aab3ba;
+  --sidebar-hover: #1b2633;
+  --sidebar-border: #2a2f34;
+  --sidebar-ring: #5f7fae;
+  --sidebar-surface: rgb(255 255 255 / 5.5%);
+  --sidebar-surface-hover: rgb(255 255 255 / 10%);
+  --sidebar-active: rgb(2 8 17 / 48%);
+  --sidebar-active-border: rgb(95 127 174 / 22%);
+  --sidebar-project-accent: rgb(95 127 174 / 68%);
+  --sidebar-group-border: rgb(95 127 174 / 30%);
+  --success: #2a7057;
+  --success-soft: #eaf5f0;
+  --warning: #8d5c10;
+  --warning-soft: #fff4dc;
+  --info: #48639b;
+  --info-soft: #edf1fb;
+  --status-neutral: #687680;
+  --status-neutral-soft: #eef1f3;
+  --chart-1: #5f7fae;
+  --chart-2: #3e5d86;
+  --chart-3: #2a7057;
+  --chart-4: #8d5c10;
+  --chart-5: #8a5fa8;
+  --radius: 10px;
+  --radius-panel: 14px;
+  --radius-card: 18px;
+  --shadow-surface: 0 1px 2px rgb(16 32 47 / 4%);
+  --shadow-overlay: 0 24px 64px rgb(16 32 47 / 16%);
+  --overlay: rgb(0 0 0 / 70%);
+}
+
+.theme-app {
+  color-scheme: light;
+}
+
+.theme-public {
+  color-scheme: dark;
+  --ch-accent: #5f7fae;
+  --ch-accent-hover: #4f709f;
+  --ch-accent-soft: rgb(95 127 174 / 10%);
+  --ch-accent-strong: #3e5d86;
+  --ch-bg-deepest: #0c1117;
+  --ch-bg-deeper: #101720;
+  --ch-bg-dark: #151e29;
+  --ch-bg-dark-elev: #1b2633;
+  --ch-bg-page: #f3f5f7;
+  --ch-bg-section: #fafbfc;
+  --ch-bg-surface: #ffffff;
+  --ch-text-primary: #111827;
+  --ch-text-secondary: #4b5563;
+  --ch-white: #f8fafc;
+  --ch-soft-white: #cbd5e1;
+  --ch-muted-ondark: rgb(248 250 252 / 62%);
+  --ch-faint-ondark: rgb(248 250 252 / 38%);
+  --ch-label-ondark: rgb(248 250 252 / 58%);
+  --ch-icon-ondark: rgb(248 250 252 / 34%);
+  --ch-placeholder-ondark: rgb(248 250 252 / 24%);
+  --ch-body-ondark: rgb(248 250 252 / 52%);
+  --ch-strong-ondark: rgb(248 250 252 / 82%);
+  --ch-copy-ondark: rgb(248 250 252 / 55%);
+  --ch-subtle-ondark: rgb(248 250 252 / 45%);
+  --ch-action-ondark: rgb(248 250 252 / 70%);
+  --ch-icon-weak-ondark: rgb(248 250 252 / 35%);
+  --ch-ghost-ondark: rgb(248 250 252 / 2.5%);
+  --ch-border-subtle: rgb(255 255 255 / 8%);
+  --ch-border-hover: rgb(255 255 255 / 16%);
+  --ch-border-control: rgb(255 255 255 / 14%);
+  --ch-border-strong: rgb(255 255 255 / 24%);
+  --ch-surface-subtle: rgb(255 255 255 / 5.5%);
+  --ch-surface-hover: rgb(255 255 255 / 9%);
+  --ch-surface-faint: rgb(255 255 255 / 3.5%);
+  --ch-surface-faint-hover: rgb(255 255 255 / 6%);
+  --ch-border-light: #d9e1e8;
+  --ch-link-decoration: rgb(62 93 134 / 32%);
+  --ch-hero-gradient: linear-gradient(135deg, rgb(95 127 174 / 9%), transparent 38%, rgb(95 127 174 / 6%));
+  --ch-signal-ring: 0 0 0 6px rgb(95 127 174 / 12%);
+  --ch-data-line: rgb(95 127 174 / 62%);
+  --ch-data-line-soft: rgb(248 250 252 / 22%);
+  --ch-data-line-faint: rgb(248 250 252 / 13%);
+  --ch-grid-image: linear-gradient(rgb(248 250 252 / 4%) 1px, transparent 1px), linear-gradient(90deg, rgb(248 250 252 / 4%) 1px, transparent 1px);
+  --ch-grid-mask: linear-gradient(to bottom, black 0%, rgb(0 0 0 / 68%) 72%, transparent 100%);
+  --ch-atmosphere: radial-gradient(circle at 77% 34%, rgb(95 127 174 / 22%), transparent 26%), radial-gradient(circle at 60% 84%, rgb(95 127 174 / 10%), transparent 32%), linear-gradient(110deg, transparent 0 47%, rgb(16 23 32 / 46%) 64%, rgb(12 17 23 / 88%) 100%);
+  --ch-atmosphere-mobile: radial-gradient(circle at 68% 58%, rgb(95 127 174 / 18%), transparent 34%), linear-gradient(180deg, transparent 0 54%, rgb(12 17 23 / 62%) 100%);
+  --ch-visual-shadow: 0 32px 80px rgb(0 0 0 / 28%);
+  --ch-visual-overlay: linear-gradient(180deg, transparent 58%, rgb(12 17 23 / 46%) 100%);
+  --ch-not-found-atmosphere: radial-gradient(circle at 50% 44%, rgb(95 127 174 / 16%), transparent 36%);
+  --ch-overlay-shadow: 0 32px 100px rgb(0 0 0 / 55%);
+  --ch-focus-soft: rgb(95 127 174 / 16%);
+  --ch-error: #fecaca;
+  --ch-error-soft: rgb(136 19 55 / 25%);
+  --ch-error-border: rgb(253 164 175 / 20%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html { background: var(--background); }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "PT Root UI", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  text-rendering: optimizeLegibility;
+}
+
+/* Stable semantic text utilities for Tailwind 4 CSS-variable colors. */
+.text-app-background { color: var(--background); }
+.text-app-border { color: var(--border); }
+.text-app-card-foreground { color: var(--card-foreground); }
+.text-app-destructive { color: var(--destructive); }
+.text-app-destructive-foreground { color: var(--destructive-foreground); }
+.text-app-foreground { color: var(--foreground); }
+.text-app-info { color: var(--info); }
+.text-app-link { color: var(--link); }
+.text-app-muted-foreground { color: var(--muted-foreground); }
+.text-app-popover-foreground { color: var(--popover-foreground); }
+.text-app-primary { color: var(--primary); }
+.text-app-primary-foreground { color: var(--primary-foreground); }
+.text-app-secondary-foreground { color: var(--secondary-foreground); }
+.text-app-sidebar-foreground { color: var(--sidebar-foreground); }
+.text-app-sidebar-muted { color: var(--sidebar-muted); }
+.text-app-status-neutral { color: var(--status-neutral); }
+.text-app-success { color: var(--success); }
+.text-app-secondary { color: var(--text-secondary); }
+.text-app-warning { color: var(--warning); }
+
+.sidebar-action { color: var(--sidebar-muted); }
+.sidebar-action:hover {
+  background: var(--sidebar-surface-hover);
+  color: var(--sidebar-foreground);
+}
+
+.sidebar-collapse-widget {
+  isolation: isolate;
+  border: 0;
+  background: transparent;
+  opacity: 0.68;
+  transition: opacity 140ms ease;
+}
+
+.sidebar-collapse-widget::before,
+.sidebar-collapse-widget::after {
+  position: absolute;
+  top: 9px;
+  left: 7px;
+  width: 18px;
+  height: 22px;
+  background: var(--sidebar-active-border);
+  content: "";
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  transition: background-color 140ms ease;
+}
+
+.sidebar-collapse-widget::after {
+  z-index: 1;
+  top: 11px;
+  left: 10px;
+  width: 14px;
+  height: 18px;
+  background: color-mix(in srgb, var(--sidebar) 82%, transparent);
+}
+
+.sidebar-collapse-widget[data-collapsed="true"]::before,
+.sidebar-collapse-widget[data-collapsed="true"]::after {
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.sidebar-collapse-widget:hover,
+.sidebar-collapse-widget:focus-visible {
+  opacity: 1;
+}
+
+.sidebar-collapse-widget:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.sidebar-collapse-widget:hover::before,
+.sidebar-collapse-widget:focus-visible::before {
+  background: var(--sidebar-ring);
+}
+
+.sidebar-collapse-widget:hover::after,
+.sidebar-collapse-widget:focus-visible::after {
+  background: var(--sidebar-hover);
+}
+
+.impulse-landing {
+  font-family: "Manrope", "PT Root UI", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=AMS SEO Monitor weekly Topvisor rank check
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ams-platform/ams-seo-monitor/current
+Environment=COMPOSE_PROJECT_NAME=ams-seo-monitor
+EnvironmentFile=-/opt/ams-platform/ams-seo-monitor/shared/release.env
+ExecStart=/usr/bin/docker compose -f /opt/ams-platform/ams-seo-monitor/current/docker-compose.production.yml run --rm --no-deps maintenance topvisor-checks
+TimeoutStartSec=30min

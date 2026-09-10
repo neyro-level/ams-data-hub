@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "queryOpportunity": {
+    "minimumShows": 30,
+    "maximumCtrPercent": 5,
+    "maximumAveragePosition": 10
+  },
+  "trendAlerts": {
+    "showsDropPercent": 30,
+    "clicksDropPercent": 30,
+    "positionWorsenedDelta": 2,
+    "pagesInSearchDropPercent": 10,
+    "organicVisitsDropPercent": 30,
+    "goalConversionDropPercent": 20
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "problems": {
+    "NO_SITEMAPS": {
+      "severity": "POSSIBLE_PROBLEM",
+      "state": "PRESENT",
+      "last_state_update": "2026-08-20T11:00:00,000+0300"
+    },
+    "SSL_CERTIFICATE_ERROR": {
+      "severity": "CRITICAL",
+      "state": "ABSENT",
+      "last_state_update": "2026-08-20T11:00:00,000+0300"
+    }
+  }
+}

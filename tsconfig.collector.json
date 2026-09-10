@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist-collector",
+    "rootDir": ".",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "incremental": false,
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": false
+  },
+  "include": [
+    "collector/**/*.ts",
+    "src/application/**/*.ts",
+    "src/infrastructure/**/*.ts",
+    "src/shared/**/*.ts",
+    "src/platform/config/**/*.ts",
+    "src/platform/database/**/*.ts",
+    "src/worker/**/*.ts"
+  ],
+  "exclude": ["node_modules", "tests", ".next", "dist-collector"]
+}

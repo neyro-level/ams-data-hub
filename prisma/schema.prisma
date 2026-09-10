@@ -1,0 +1,1042 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SystemRole {
+  PLATFORM_ADMIN
+  SEO_ANALYST
+  CLIENT_VIEWER
+}
+
+enum MembershipRole {
+  ORG_OWNER
+  ORG_MEMBER
+  VIEWER
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  DEAD_LETTER
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum RetentionRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PLANNED
+  DISABLED
+}
+
+enum Provider {
+  YANDEX_WEBMASTER
+  YANDEX_METRIKA
+  TOPVISOR
+}
+
+enum SourceStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  NOT_CONFIGURED
+  ACCESS_DENIED
+  QUOTA_LIMITED
+  STALE
+}
+
+enum SyncRunStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum SyncTrigger {
+  DAILY
+  MANUAL
+  PREFLIGHT
+  BACKFILL
+}
+
+enum GoalCategory {
+  LEAD_SUBMIT
+  PHONE_CLICK
+  MESSENGER_CLICK
+  FORM_START
+  FILE_DOWNLOAD
+  OTHER
+}
+
+enum GoalDirection {
+  PRIMARY
+  SECONDARY
+}
+
+enum ReportFreshness {
+  FRESH
+  STALE
+  PARTIAL
+  UNAVAILABLE
+}
+
+enum ReportPeriodKey {
+  WEEK
+  MONTH
+  QUARTER
+  HALF_YEAR
+}
+
+enum RankingSource {
+  OWNER_PROVIDED
+  TOPVISOR
+}
+
+enum SearchEngine {
+  YANDEX
+  GOOGLE
+}
+
+enum SearchDevice {
+  DESKTOP
+  MOBILE
+}
+
+enum IntegrationStatus {
+  PENDING
+  CONNECTING
+  CONNECTED
+  ACTION_REQUIRED
+  FAILED
+}
+
+enum ProviderOperationStatus {
+  PENDING
+  DISPATCHING
+  STARTED
+  COMPLETED
+  ACTION_REQUIRED
+  FAILED
+}
+
+enum NotificationCategory {
+  ONBOARDING
+  INTEGRATION
+  REPORT
+  RANKING
+  COMPETITOR
+  DATA_FRESHNESS
+  QUEUE
+  ACCESS
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum NotificationVisibility {
+  PLATFORM_TEAM
+  PLATFORM_ADMIN_ONLY
+}
+
+enum WebmasterQueryOrderBy {
+  TOTAL_SHOWS
+  TOTAL_CLICKS
+}
+
+enum WebmasterDevice {
+  ALL
+  DESKTOP
+  MOBILE
+  TABLET
+  MOBILE_AND_TABLET
+}
+
+enum TechnicalSnapshotKind {
+  WEBMASTER_DIAGNOSTICS
+  WEBMASTER_SITEMAPS
+  WEBMASTER_INDEXING_HISTORY
+  WEBMASTER_SEARCH_EVENTS_HISTORY
+  WEBMASTER_BROKEN_INTERNAL_LINKS_HISTORY
+  WEBMASTER_EXTERNAL_LINKS_HISTORY
+  WEBMASTER_PAGES_IN_SEARCH_HISTORY
+  WEBMASTER_SQI_HISTORY
+  METRICA_ALL_TRAFFIC_META
+  METRICA_YANDEX_ORGANIC_META
+  METRICA_GOALS_SUMMARY_META
+}
+
+model User {
+  id                String             @id
+  name              String
+  username          String?            @unique
+  email             String             @unique
+  emailVerified     Boolean            @default(false)
+  image             String?
+  systemRole        SystemRole         @default(CLIENT_VIEWER)
+  disabledAt        DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  sessions          Session[]
+  accounts          Account[]
+  members           Member[]
+  notificationReads NotificationRead[]
+}
+
+model Session {
+  id           String   @id
+  userId       String
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  activeTeamId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  issuer                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([issuer, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model Organization {
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  logo            String?
+  metadata        String?
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  members         Member[]
+  projects        Project[]
+  auditEvents     AuditEvent[]
+  idempotencyKeys IdempotencyKey[]
+  outboxEvents    OutboxEvent[]
+  jobRuns         JobRun[]
+  notifications   Notification[]
+}
+
+model Member {
+  id             String         @id @default(cuid())
+  userId         String
+  organizationId String
+  tenantRole     MembershipRole @default(VIEWER)
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model ThresholdProfile {
+  id                        String    @id @default(cuid())
+  slug                      String    @unique
+  minimumShows              Int
+  maximumCtrPercent         Decimal   @db.Decimal(6, 2)
+  maximumAveragePosition    Decimal   @db.Decimal(6, 2)
+  showsDropPercent          Decimal   @db.Decimal(6, 2)
+  clicksDropPercent         Decimal   @db.Decimal(6, 2)
+  positionWorsenedDelta     Decimal   @db.Decimal(6, 2)
+  pagesInSearchDropPercent  Decimal   @db.Decimal(6, 2)
+  organicVisitsDropPercent  Decimal   @db.Decimal(6, 2)
+  goalConversionDropPercent Decimal   @db.Decimal(6, 2)
+  version                   Int       @default(1)
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  projects                  Project[]
+}
+
+model QueryClusterProfile {
+  id        String              @id @default(cuid())
+  slug      String              @unique
+  name      String
+  version   Int                 @default(1)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  groups    QueryClusterGroup[]
+  projects  Project[]
+}
+
+model QueryClusterGroup {
+  id             String              @id @default(cuid())
+  profileId      String
+  slug           String
+  label          String
+  order          Int
+  brandTermsJson Json
+  termsJson      Json
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  profile        QueryClusterProfile @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([profileId, slug])
+  @@index([profileId, order])
+}
+
+model Project {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  slug               String              @unique
+  name               String
+  status             ProjectStatus
+  thresholdProfileId String
+  clusterProfileId   String
+  version            Int                 @default(1)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  thresholdProfile   ThresholdProfile    @relation(fields: [thresholdProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clusterProfile     QueryClusterProfile @relation(fields: [clusterProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sites              Site[]
+  goalDefinitions    GoalDefinition[]
+  notifications      Notification[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([thresholdProfileId])
+  @@index([clusterProfileId])
+}
+
+model Site {
+  id                              String                           @id @default(cuid())
+  organizationId                  String
+  projectId                       String
+  slug                            String
+  name                            String
+  url                             String
+  timezone                        String
+  enabled                         Boolean
+  version                         Int                              @default(1)
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  project                         Project                          @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  providerConnections             ProviderConnection[]
+  trackedQuerySet                 TrackedQuerySet?
+  goalScopes                      GoalDefinitionSite[]
+  syncRuns                        SourceRun[]
+  webmasterDailyMetrics           WebmasterDailyMetric[]
+  webmasterQueryDailyMetrics      WebmasterQueryDailyMetric[]
+  metricaDailyMetrics             MetrikaDailyMetric[]
+  landingPageDailyMetrics         LandingPageDailyMetric[]
+  metricaDeviceDailyMetrics       MetrikaDeviceDailyMetric[]
+  metricaGoalDailyMetrics         MetrikaGoalDailyMetric[]
+  technicalSnapshots              TechnicalSnapshot[]
+  reportSnapshots                 ReportSnapshot[]
+  searchTargets                   SearchTarget[]
+  competitorSnapshots             CompetitorSnapshot[]
+  metricaSearchEngineDailyMetrics MetrikaSearchEngineDailyMetric[]
+  metricaSearchPhraseDailyMetrics MetrikaSearchPhraseDailyMetric[]
+  metricaGeoDailyMetrics          MetrikaGeoDailyMetric[]
+  notifications                   Notification[]
+  providerOperations              ProviderOperation[]
+
+  @@unique([projectId, slug])
+  @@unique([organizationId, id])
+  @@index([projectId])
+}
+
+model ProviderOperation {
+  id             String                  @id @default(cuid())
+  organizationId String
+  siteId         String
+  provider       Provider
+  operation      String
+  operationKey   String                  @unique
+  status         ProviderOperationStatus @default(PENDING)
+  externalId     String?
+  price          Decimal?                @db.Decimal(12, 4)
+  currency       String?
+  safeErrorCode  String?
+  startedAt      DateTime?               @db.Timestamptz(3)
+  finishedAt     DateTime?               @db.Timestamptz(3)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  site           Site                    @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, id])
+  @@index([siteId, provider, createdAt])
+}
+
+model ProviderConnection {
+  id             String            @id @default(cuid())
+  organizationId String
+  siteId         String
+  provider       Provider
+  externalId     String?
+  enabled        Boolean
+  settingsJson   Json?
+  status         IntegrationStatus @default(PENDING)
+  statusCode     String?
+  lastCheckedAt  DateTime?         @db.Timestamptz(3)
+  connectedAt    DateTime?         @db.Timestamptz(3)
+  version        Int               @default(1)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  site           Site              @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, provider])
+  @@index([siteId])
+}
+
+model SearchTarget {
+  id             String       @id @default(cuid())
+  organizationId String
+  siteId         String
+  engine         SearchEngine
+  device         SearchDevice
+  regionKey      String
+  regionName     String
+  regionIndex    Int?
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, engine, device, regionKey])
+  @@unique([organizationId, id])
+  @@index([siteId, enabled])
+}
+
+model GoalDefinition {
+  id                     String               @id @default(cuid())
+  organizationId         String
+  projectId              String
+  externalGoalId         String
+  label                  String
+  category               GoalCategory
+  direction              GoalDirection
+  includeInSeoConversion Boolean
+  version                Int                  @default(1)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  project                Project              @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  siteScopes             GoalDefinitionSite[]
+
+  @@unique([projectId, externalGoalId])
+  @@unique([organizationId, id])
+  @@index([projectId])
+}
+
+model GoalDefinitionSite {
+  organizationId   String
+  goalDefinitionId String
+  siteId           String
+  goalDefinition   GoalDefinition @relation(fields: [goalDefinitionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  site             Site           @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([goalDefinitionId, siteId])
+  @@index([siteId])
+}
+
+model TrackedQuerySet {
+  id             String         @id @default(cuid())
+  organizationId String
+  siteId         String         @unique
+  source         RankingSource
+  baselineLabel  String
+  expectedCount  Int
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  site           Site           @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  queries        TrackedQuery[]
+
+  @@unique([organizationId, id])
+}
+
+model TrackedQuery {
+  id                       String           @id @default(cuid())
+  organizationId           String
+  trackedQuerySetId        String
+  query                    String
+  normalizedQuery          String
+  enabled                  Boolean          @default(true)
+  baselineCurrentPosition  Int?
+  baselinePreviousPosition Int?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  trackedQuerySet          TrackedQuerySet  @relation(fields: [trackedQuerySetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  rankingCaptures          RankingCapture[]
+
+  @@unique([trackedQuerySetId, normalizedQuery])
+  @@unique([organizationId, id])
+  @@index([trackedQuerySetId])
+}
+
+model SyncRun {
+  id             String        @id @default(cuid())
+  organizationId String
+  projectId      String
+  projectSlug    String
+  trigger        SyncTrigger
+  status         SyncRunStatus
+  startedAt      DateTime      @db.Timestamptz(3)
+  finishedAt     DateTime?     @db.Timestamptz(3)
+  sitesProcessed Int           @default(0)
+  sitesSucceeded Int           @default(0)
+  sitesPartial   Int           @default(0)
+  sitesFailed    Int           @default(0)
+  safeError      String?
+  correlationId  String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  sourceRuns     SourceRun[]
+
+  @@unique([organizationId, id])
+  @@index([startedAt])
+  @@index([projectId, startedAt])
+}
+
+model SourceRun {
+  id                              String                           @id @default(cuid())
+  organizationId                  String
+  projectId                       String
+  correlationId                   String
+  syncRunId                       String
+  siteId                          String
+  provider                        Provider
+  status                          SourceStatus
+  startedAt                       DateTime                         @db.Timestamptz(3)
+  finishedAt                      DateTime?                        @db.Timestamptz(3)
+  durationMs                      Int?
+  rowsReceived                    Int?
+  safeErrorCode                   String?
+  notes                           String?
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  syncRun                         SyncRun                          @relation(fields: [syncRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  site                            Site                             @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  webmasterDailyMetrics           WebmasterDailyMetric[]
+  webmasterQueryDailyMetrics      WebmasterQueryDailyMetric[]
+  metricaDailyMetrics             MetrikaDailyMetric[]
+  landingPageDailyMetrics         LandingPageDailyMetric[]
+  metricaDeviceDailyMetrics       MetrikaDeviceDailyMetric[]
+  metricaGoalDailyMetrics         MetrikaGoalDailyMetric[]
+  metricaSearchEngineDailyMetrics MetrikaSearchEngineDailyMetric[]
+  metricaSearchPhraseDailyMetrics MetrikaSearchPhraseDailyMetric[]
+  metricaGeoDailyMetrics          MetrikaGeoDailyMetric[]
+  rankingCaptures                 RankingCapture[]
+  competitorSnapshots             CompetitorSnapshot[]
+  technicalSnapshots              TechnicalSnapshot[]
+
+  @@unique([organizationId, id])
+  @@index([siteId, provider, startedAt])
+  @@index([projectId, provider, startedAt])
+  @@index([syncRunId])
+}
+
+model WebmasterDailyMetric {
+  id              String    @id @default(cuid())
+  organizationId  String
+  siteId          String
+  date            DateTime
+  shows           Int
+  clicks          Int
+  ctr             Decimal?  @db.Decimal(8, 4)
+  averagePosition Decimal?  @db.Decimal(8, 4)
+  sourceRunId     String
+  createdAt       DateTime  @default(now())
+  site            Site      @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun       SourceRun @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, date])
+  @@index([siteId, date])
+  @@index([sourceRunId])
+}
+
+model WebmasterQueryDailyMetric {
+  id                   String                @id @default(cuid())
+  organizationId       String
+  siteId               String
+  periodKey            ReportPeriodKey
+  date                 DateTime
+  queryId              String
+  query                String
+  normalizedQuery      String
+  orderBy              WebmasterQueryOrderBy
+  device               WebmasterDevice
+  shows                Int
+  clicks               Int
+  ctr                  Decimal?              @db.Decimal(8, 4)
+  averagePosition      Decimal?              @db.Decimal(8, 4)
+  averageClickPosition Decimal?              @db.Decimal(8, 4)
+  demand               Decimal?              @db.Decimal(12, 4)
+  relevantUrl          String?
+  regionKey            String?
+  sourceRunId          String
+  createdAt            DateTime              @default(now())
+  site                 Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun            SourceRun             @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, normalizedQuery, device, orderBy])
+  @@index([siteId, periodKey, date])
+  @@index([siteId, periodKey, normalizedQuery, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaDailyMetric {
+  id                          String    @id @default(cuid())
+  organizationId              String
+  siteId                      String
+  date                        DateTime
+  visits                      Int
+  users                       Int?
+  pageviews                   Int?
+  bounceRate                  Decimal?  @db.Decimal(8, 4)
+  pageDepth                   Decimal?  @db.Decimal(8, 4)
+  averageVisitDurationSeconds Int?
+  goalReaches                 Int
+  uniqueTargetVisits          Int
+  uniqueTargetUsers           Int?
+  allVisits                   Int?
+  conversionRate              Decimal?  @db.Decimal(8, 4)
+  sourceRunId                 String
+  createdAt                   DateTime  @default(now())
+  site                        Site      @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun                   SourceRun @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, date])
+  @@index([siteId, date])
+  @@index([sourceRunId])
+}
+
+model LandingPageDailyMetric {
+  id                          String          @id @default(cuid())
+  organizationId              String
+  siteId                      String
+  periodKey                   ReportPeriodKey
+  date                        DateTime
+  path                        String
+  visits                      Int
+  users                       Int
+  pageviews                   Int
+  bounceRate                  Decimal         @db.Decimal(8, 4)
+  pageDepth                   Decimal         @db.Decimal(8, 4)
+  averageVisitDurationSeconds Int
+  goalReaches                 Int
+  targetVisits                Int
+  conversionRate              Decimal?        @db.Decimal(8, 4)
+  sourceRunId                 String
+  createdAt                   DateTime        @default(now())
+  site                        Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun                   SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, path])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaDeviceDailyMetric {
+  id             String          @id @default(cuid())
+  organizationId String
+  siteId         String
+  periodKey      ReportPeriodKey
+  date           DateTime
+  device         String
+  visits         Int
+  users          Int
+  goalReaches    Int
+  conversionRate Decimal?        @db.Decimal(8, 4)
+  sourceRunId    String
+  createdAt      DateTime        @default(now())
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun      SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, device])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaGoalDailyMetric {
+  id             String          @id @default(cuid())
+  organizationId String
+  siteId         String
+  periodKey      ReportPeriodKey
+  date           DateTime
+  externalGoalId String
+  name           String
+  category       GoalCategory
+  direction      GoalDirection
+  reaches        Int
+  visits         Int
+  users          Int
+  conversionRate Decimal?        @db.Decimal(8, 4)
+  sourceRunId    String
+  createdAt      DateTime        @default(now())
+  site           Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun      SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, externalGoalId])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaSearchEngineDailyMetric {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  siteId             String
+  periodKey          ReportPeriodKey
+  date               DateTime
+  engine             SearchEngine
+  visits             Int
+  users              Int
+  goalReaches        Int
+  uniqueTargetVisits Int
+  conversionRate     Decimal?        @db.Decimal(8, 4)
+  sourceRunId        String
+  createdAt          DateTime        @default(now())
+  site               Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun          SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, engine])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaSearchPhraseDailyMetric {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  siteId             String
+  periodKey          ReportPeriodKey
+  date               DateTime
+  engine             SearchEngine
+  phrase             String
+  normalizedPhrase   String
+  visits             Int
+  users              Int
+  goalReaches        Int
+  uniqueTargetVisits Int
+  sourceRunId        String
+  createdAt          DateTime        @default(now())
+  site               Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun          SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, engine, normalizedPhrase])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model MetrikaGeoDailyMetric {
+  id                 String          @id @default(cuid())
+  organizationId     String
+  siteId             String
+  periodKey          ReportPeriodKey
+  date               DateTime
+  regionKey          String
+  regionName         String
+  visits             Int
+  users              Int
+  goalReaches        Int
+  uniqueTargetVisits Int
+  sourceRunId        String
+  createdAt          DateTime        @default(now())
+  site               Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun          SourceRun       @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([siteId, periodKey, date, regionKey])
+  @@index([siteId, periodKey, date])
+  @@index([sourceRunId])
+}
+
+model RankingCapture {
+  id             String        @id @default(cuid())
+  organizationId String
+  trackedQueryId String
+  capturedAt     DateTime      @db.Timestamptz(3)
+  position       Int?
+  source         RankingSource
+  sourceRunId    String?
+  engine         SearchEngine  @default(YANDEX)
+  device         SearchDevice  @default(DESKTOP)
+  regionKey      String        @default("legacy")
+  regionName     String?
+  relevantUrl    String?
+  createdAt      DateTime      @default(now())
+  trackedQuery   TrackedQuery  @relation(fields: [trackedQueryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun      SourceRun?    @relation(fields: [sourceRunId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([trackedQueryId, capturedAt, source, engine, device, regionKey])
+  @@index([trackedQueryId, capturedAt])
+  @@index([sourceRunId])
+}
+
+model CompetitorSnapshot {
+  id              String       @id @default(cuid())
+  organizationId  String
+  siteId          String
+  capturedAt      DateTime     @db.Timestamptz(3)
+  engine          SearchEngine
+  device          SearchDevice
+  regionKey       String
+  regionName      String
+  domain          String
+  visibility      Decimal?     @db.Decimal(10, 4)
+  averagePosition Decimal?     @db.Decimal(8, 4)
+  top3            Int          @default(0)
+  top10           Int          @default(0)
+  top30           Int          @default(0)
+  top50           Int          @default(0)
+  top100          Int          @default(0)
+  queryCount      Int
+  sourceRunId     String?
+  createdAt       DateTime     @default(now())
+  site            Site         @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun       SourceRun?   @relation(fields: [sourceRunId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([siteId, capturedAt, engine, device, regionKey, domain])
+  @@index([siteId, engine, device, capturedAt])
+  @@index([sourceRunId])
+}
+
+model Notification {
+  id             String                 @id @default(cuid())
+  organizationId String?
+  projectId      String?
+  siteId         String?
+  category       NotificationCategory
+  severity       NotificationSeverity
+  visibility     NotificationVisibility @default(PLATFORM_TEAM)
+  title          String
+  message        String
+  route          String?
+  sourceType     String
+  sourceId       String?
+  dedupKey       String                 @unique
+  occurredAt     DateTime               @db.Timestamptz(3)
+  createdAt      DateTime               @default(now())
+  organization   Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  project        Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  site           Site?                  @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reads          NotificationRead[]
+
+  @@index([visibility, occurredAt])
+  @@index([organizationId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([siteId, occurredAt])
+}
+
+model NotificationRead {
+  notificationId String
+  userId         String
+  readAt         DateTime     @db.Timestamptz(3)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId, readAt])
+}
+
+model TechnicalSnapshot {
+  id             String                @id @default(cuid())
+  organizationId String
+  siteId         String
+  capturedAt     DateTime              @db.Timestamptz(3)
+  sourceRunId    String
+  kind           TechnicalSnapshotKind
+  payload        Json
+  createdAt      DateTime              @default(now())
+  site           Site                  @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun      SourceRun             @relation(fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([siteId, capturedAt])
+  @@index([sourceRunId])
+  @@index([kind])
+}
+
+model ReportSnapshot {
+  id               String          @id @default(cuid())
+  organizationId   String
+  siteId           String
+  periodKey        ReportPeriodKey
+  schemaVersion    Int
+  generatedAt      DateTime        @db.Timestamptz(3)
+  freshness        ReportFreshness
+  payload          Json
+  sourceRunSetJson Json?
+  createdAt        DateTime        @default(now())
+  site             Site            @relation(fields: [siteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([siteId, periodKey, generatedAt])
+}
+
+model AuditEvent {
+  id             String         @id @default(cuid())
+  organizationId String?
+  actorType      AuditActorType
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String?
+  beforeMarker   Json?
+  afterMarker    Json?
+  source         String
+  correlationId  String
+  createdAt      DateTime       @default(now())
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([correlationId])
+}
+
+model IdempotencyKey {
+  id                String            @id @default(cuid())
+  organizationScope String
+  organizationId    String?
+  scope             String
+  key               String
+  requestHash       String
+  status            IdempotencyStatus
+  response          Json?
+  errorCode         String?
+  outboxEventId     String?           @unique
+  expiresAt         DateTime          @db.Timestamptz(3)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outboxEvent       OutboxEvent?      @relation(fields: [outboxEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([scope, organizationScope, key])
+  @@index([status, expiresAt])
+  @@index([organizationId, createdAt])
+}
+
+model OutboxEvent {
+  id             String          @id @default(cuid())
+  organizationId String?
+  topic          String
+  payload        Json
+  schemaVersion  Int             @default(1)
+  occurredAt     DateTime        @default(now())
+  status         OutboxStatus    @default(PENDING)
+  attempts       Int             @default(0)
+  availableAt    DateTime        @default(now())
+  lockedAt       DateTime?       @db.Timestamptz(3)
+  lockedBy       String?
+  lastErrorCode  String?
+  correlationId  String
+  processedAt    DateTime?       @db.Timestamptz(3)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  idempotencyKey IdempotencyKey?
+  jobRuns        JobRun[]
+
+  @@index([status, availableAt])
+  @@index([lockedAt])
+  @@index([organizationId, topic, createdAt])
+}
+
+model JobRun {
+  id             String        @id @default(cuid())
+  organizationId String?
+  outboxEventId  String
+  jobType        String
+  status         JobRunStatus
+  attempt        Int
+  workerId       String
+  startedAt      DateTime      @db.Timestamptz(3)
+  finishedAt     DateTime?     @db.Timestamptz(3)
+  safeErrorCode  String?
+  correlationId  String
+  createdAt      DateTime      @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outboxEvent    OutboxEvent   @relation(fields: [outboxEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([outboxEventId, attempt])
+  @@index([status, startedAt])
+  @@index([organizationId, jobType, startedAt])
+}
+
+model RuntimeHeartbeat {
+  id          String   @id @default(cuid())
+  runtime     String
+  workerId    String
+  startedAt   DateTime @db.Timestamptz(3)
+  heartbeatAt DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([runtime, workerId])
+  @@index([runtime, heartbeatAt])
+}
+
+model RetentionRun {
+  id                  String             @id @default(cuid())
+  status              RetentionRunStatus
+  startedAt           DateTime           @db.Timestamptz(3)
+  finishedAt          DateTime?          @db.Timestamptz(3)
+  deletedOutboxEvents Int                @default(0)
+  deletedJobRuns      Int                @default(0)
+  safeErrorCode       String?
+  createdAt           DateTime           @default(now())
+
+  @@index([status, startedAt])
+}

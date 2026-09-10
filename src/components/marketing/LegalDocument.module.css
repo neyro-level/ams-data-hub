@@ -1,0 +1,25 @@
+.prose {
+  color: var(--ch-text-secondary);
+  font-size: 16px;
+  line-height: 1.72;
+}
+
+.prose section + section { margin-top: 56px; padding-top: 48px; border-top: 1px solid var(--ch-border-light); }
+.prose h2 { margin: 0 0 22px; color: var(--ch-text-primary); font-size: clamp(26px, 3vw, 38px); font-weight: 700; letter-spacing: -0.025em; line-height: 1.18; }
+.prose h3 { margin: 28px 0 12px; color: var(--ch-text-primary); font-size: 19px; font-weight: 700; line-height: 1.35; }
+.prose p { margin: 0 0 16px; }
+.prose ul, .prose ol { margin: 0 0 20px; padding-left: 24px; }
+.prose li + li { margin-top: 8px; }
+.prose a { color: var(--ch-accent-strong); text-decoration: underline; text-decoration-color: var(--ch-link-decoration); text-underline-offset: 3px; }
+.prose strong { color: var(--ch-text-primary); font-weight: 700; }
+.source article { margin: 0 0 48px; padding: 0 0 48px; border-bottom: 1px solid var(--ch-border-light); }
+.source article:last-child { margin-bottom: 0; }
+.source article > span { display: inline-block; margin: 0 12px 14px 0; color: var(--ch-accent-strong); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.source table { width: 100%; margin: 24px 0; border-collapse: collapse; font-size: 14px; }
+.source th, .source td { padding: 12px; border: 1px solid var(--ch-border-light); text-align: left; vertical-align: top; }
+
+@media (max-width: 640px) {
+  .prose section + section { margin-top: 40px; padding-top: 36px; }
+  .source article { margin-bottom: 36px; padding-bottom: 36px; }
+  .source table { display: block; overflow-x: auto; }
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "clientSlug": "alpha",
+  "siteSlug": "north",
+  "source": "owner-provided",
+  "baselineLabel": "synthetic-baseline",
+  "expectedCount": 5,
+  "queries": [
+    {
+      "query": "новостройки северный район",
+      "position": { "current": 4, "baseline": 9, "delta": 5 }
+    },
+    {
+      "query": "купить квартиру северный район",
+      "position": { "current": 8, "baseline": 6, "delta": -2 }
+    },
+    {
+      "query": "ипотека на квартиру",
+      "position": { "current": 12, "baseline": 15, "delta": 3 }
+    },
+    {
+      "query": "жилой комплекс альфа",
+      "position": { "current": 2, "baseline": 3, "delta": 1 }
+    },
+    {
+      "query": "этапы строительства дома",
+      "position": { "current": null, "baseline": null, "delta": 0 }
+    }
+  ]
+}

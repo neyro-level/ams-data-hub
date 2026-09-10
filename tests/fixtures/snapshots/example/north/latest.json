@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "clientSlug": "alpha",
+  "siteSlug": "north",
+  "siteUrl": "https://alpha.example.test",
+  "generatedAt": "2026-08-27T09:30:00+03:00",
+  "freshness": "fresh",
+  "sources": {
+    "webmaster": {
+      "status": "success",
+      "fetchedAt": "2026-08-27T09:10:00+03:00",
+      "periodStart": "2026-07-30",
+      "periodEnd": "2026-08-26",
+      "timezone": "+03:00",
+      "note": "Wave 1 synthetic fixture. Live OAuth not used.",
+      "safeErrorCode": null
+    },
+    "metrica": {
+      "status": "success",
+      "fetchedAt": "2026-08-27T09:15:00+03:00",
+      "periodStart": "2026-07-30",
+      "periodEnd": "2026-08-26",
+      "timezone": "+03:00",
+      "note": "Wave 1 synthetic fixture. Live counter onboarding is still ahead.",
+      "safeErrorCode": null
+    }
+  },
+  "webmaster": {
+    "summary": {
+      "shows": 11091,
+      "clicks": 1532,
+      "ctr": 13.81,
+      "avgPosition": 7.4,
+      "pagesInSearch": 2123,
+      "excludedPages": 2115,
+      "sitemapUrls": 1099,
+      "sqi": 230
+    },
+    "visibilityTrend": [
+      {
+        "label": "30 июл",
+        "date": "2026-07-30",
+        "value": 1320,
+        "secondaryValue": 174,
+        "tertiaryValue": 8.2
+      },
+      {
+        "label": "06 авг",
+        "date": "2026-08-06",
+        "value": 1410,
+        "secondaryValue": 182,
+        "tertiaryValue": 8.0
+      },
+      {
+        "label": "13 авг",
+        "date": "2026-08-13",
+        "value": 1495,
+        "secondaryValue": 205,
+        "tertiaryValue": 7.8
+      },
+      {
+        "label": "20 авг",
+        "date": "2026-08-20",
+        "value": 1575,
+        "secondaryValue": 218,
+        "tertiaryValue": 7.6
+      },
+      {
+        "label": "27 авг",
+        "date": "2026-08-27",
+        "value": 1660,
+        "secondaryValue": 244,
+        "tertiaryValue": 7.4
+      }
+    ],
+    "queries": [
+      {
+        "queryId": "q-1",
+        "query": "квартиры север новостройки",
+        "cluster": "new-buildings",
+        "device": "ALL",
+        "shows": 420,
+        "clicks": 46,
+        "ctr": 10.95,
+        "avgShowPosition": 5.7,
+        "avgClickPosition": 5.1,
+        "previousShows": 381,
+        "previousClicks": 38,
+        "deltaClicksPercent": 21.1,
+        "deltaCtrPoints": 0.97,
+        "opportunityType": "позиции 4–10"
+      },
+      {
+        "queryId": "q-2",
+        "query": "застройщик альфа север",
+        "cluster": "brand",
+        "device": "ALL",
+        "shows": 260,
+        "clicks": 119,
+        "ctr": 45.77,
+        "avgShowPosition": 1.8,
+        "avgClickPosition": 1.4,
+        "previousShows": 244,
+        "previousClicks": 110,
+        "deltaClicksPercent": 8.2,
+        "deltaCtrPoints": 0.69,
+        "opportunityType": "бренд"
+      }
+    ],
+    "diagnostics": [
+      {
+        "severity": "warning",
+        "title": "Synthetic fixture mode",
+        "description": "Wave 1 intentionally uses fixture data instead of live API collection."
+      },
+      {
+        "severity": "info",
+        "title": "Sitemap healthy",
+        "description": "Synthetic sitemap state mirrors the approved MVP shape."
+      }
+    ],
+    "sitemap": {
+      "url": "https://alpha.example.test/sitemap.xml",
+      "urls": 1099,
+      "errors": 0
+    },
+    "links": {
+      "external": 184,
+      "brokenInternal": 2
+    }
+  },
+  "metrica": {
+    "summary": {
+      "visits": 1284,
+      "users": 1026,
+      "pageviews": 3914,
+      "bounceRate": 18.4,
+      "depth": 3.1,
+      "averageVisitDurationSeconds": 196,
+      "goalReaches": 74,
+      "conversionRate": 5.8
+    },
+    "organicTrend": [
+      {
+        "label": "30 июл",
+        "date": "2026-07-30",
+        "value": 142,
+        "secondaryValue": 10,
+        "tertiaryValue": 5.1
+      },
+      {
+        "label": "06 авг",
+        "date": "2026-08-06",
+        "value": 155,
+        "secondaryValue": 12,
+        "tertiaryValue": 5.4
+      },
+      {
+        "label": "13 авг",
+        "date": "2026-08-13",
+        "value": 169,
+        "secondaryValue": 14,
+        "tertiaryValue": 5.6
+      },
+      {
+        "label": "20 авг",
+        "date": "2026-08-20",
+        "value": 176,
+        "secondaryValue": 16,
+        "tertiaryValue": 5.7
+      },
+      {
+        "label": "27 авг",
+        "date": "2026-08-27",
+        "value": 188,
+        "secondaryValue": 22,
+        "tertiaryValue": 5.8
+      }
+    ],
+    "landingPages": [
+      {
+        "path": "/novostroyki/",
+        "visits": 388,
+        "users": 321,
+        "pageviews": 1021,
+        "bounceRate": 17.8,
+        "depth": 2.9,
+        "durationSeconds": 182,
+        "goals": 18,
+        "conversionRate": 4.6,
+        "trendLabel": "+11% к прошлому периоду"
+      },
+      {
+        "path": "/ipoteka/",
+        "visits": 244,
+        "users": 205,
+        "pageviews": 690,
+        "bounceRate": 23.1,
+        "depth": 2.3,
+        "durationSeconds": 149,
+        "goals": 9,
+        "conversionRate": 3.7,
+        "trendLabel": "стабильно"
+      }
+    ],
+    "devices": [
+      {
+        "device": "Desktop",
+        "visits": 514,
+        "conversionRate": 6.4
+      },
+      {
+        "device": "Mobile",
+        "visits": 656,
+        "conversionRate": 5.1
+      },
+      {
+        "device": "Tablet",
+        "visits": 82,
+        "conversionRate": 4.9
+      },
+      {
+        "device": "Other",
+        "visits": 32,
+        "conversionRate": null
+      }
+    ],
+    "goals": [
+      {
+        "label": "Отправка заявки",
+        "category": "lead_submit",
+        "reaches": 41,
+        "conversionRate": 3.2
+      },
+      {
+        "label": "Клик по телефону",
+        "category": "phone_click",
+        "reaches": 23,
+        "conversionRate": 1.8
+      }
+    ]
+  },
+  "combined": {
+    "funnel": {
+      "shows": 11091,
+      "clicks": 1532,
+      "visits": 1284,
+      "goalReaches": 74,
+      "caveats": [
+        "Клики Вебмастера и визиты Метрики не равны один одному.",
+        "Wave 1 показывает synthetic fixture instead of live onboarding data."
+      ]
+    },
+    "opportunities": [
+      {
+        "id": "opp-1",
+        "title": "Усилить CTR на запросах 4–10 позиции",
+        "summary": "Есть пул запросов с достаточными показами и позициями, но кликабельность ниже потенциала.",
+        "source": "webmaster",
+        "tone": "info"
+      },
+      {
+        "id": "opp-2",
+        "title": "Перепроверить мобильную ипотечную посадочную",
+        "summary": "Мобильный трафик по ипотечному кластеру есть, но конверсия и CTR заметно слабее общего уровня.",
+        "source": "combined",
+        "tone": "warning"
+      }
+    ],
+    "alerts": [
+      {
+        "id": "alert-1",
+        "title": "Wave 1 fixture mode",
+        "summary": "Этот отчёт нужен для проверки shell, routes и DTO. Live OAuth ещё не подключён.",
+        "tone": "info"
+      }
+    ],
+    "methodology": [
+      "Периоды в synthetic fixture равной длины.",
+      "CTR считается только по shows > 0.",
+      "Combined funnel не утверждает прямую причинность query → lead."
+    ]
+  }
+}

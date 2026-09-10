@@ -1,0 +1,19 @@
+{
+  "rows": 2,
+  "counters": [
+    {
+      "id": 700001,
+      "site": "alpha.example.test",
+      "permission": "edit",
+      "name": "Альфа Север",
+      "time_zone_name": "Europe/Moscow",
+      "time_zone_offset": 180
+    },
+    {
+      "id": 1,
+      "site": "other-site.ru",
+      "permission": "view",
+      "name": "Other"
+    }
+  ]
+}

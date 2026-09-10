@@ -1,0 +1,7 @@
+*.sh text eol=lf
+*.mjs text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+ops/nginx/* text eol=lf

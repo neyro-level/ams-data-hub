@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "clientSlug": "alpha",
+  "goals": [
+    {
+      "goalId": "800001",
+      "label": "Клик по номеру телефона",
+      "category": "phone_click",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800002",
+      "label": "Отправка формы",
+      "category": "lead_submit",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800003",
+      "label": "Переход в мессенджер",
+      "category": "messenger_click",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800004",
+      "label": "Автоцель: отправил контактные данные",
+      "category": "lead_submit",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800009",
+      "label": "Обратный звонок",
+      "category": "lead_submit",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800010",
+      "label": "Заявка из чата",
+      "category": "lead_submit",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "north"
+      ]
+    },
+    {
+      "goalId": "800005",
+      "label": "Отправка формы",
+      "category": "lead_submit",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "east"
+      ]
+    },
+    {
+      "goalId": "800006",
+      "label": "Автоцель: отправил контактные данные",
+      "category": "lead_submit",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "east"
+      ]
+    },
+    {
+      "goalId": "800007",
+      "label": "Переход в мессенджер",
+      "category": "messenger_click",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "east"
+      ]
+    },
+    {
+      "goalId": "800008",
+      "label": "Клик по номеру телефона",
+      "category": "phone_click",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "east"
+      ]
+    },
+    {
+      "goalId": "800011",
+      "label": "Заявка с сайта",
+      "category": "lead_submit",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "south"
+      ]
+    },
+    {
+      "goalId": "800012",
+      "label": "Автоцель: отправил контактные данные",
+      "category": "lead_submit",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "south"
+      ]
+    },
+    {
+      "goalId": "800013",
+      "label": "Переход в мессенджер",
+      "category": "messenger_click",
+      "direction": "secondary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "south"
+      ]
+    },
+    {
+      "goalId": "800014",
+      "label": "Клик по номеру телефона",
+      "category": "phone_click",
+      "direction": "primary",
+      "includeInSeoConversion": true,
+      "siteSlugs": [
+        "south"
+      ]
+    }
+  ]
+}

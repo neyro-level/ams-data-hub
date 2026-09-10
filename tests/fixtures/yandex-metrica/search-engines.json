@@ -1,0 +1,58 @@
+{
+  "query": {
+    "date1": "2026-07-28",
+    "date2": "2026-08-27",
+    "timezone": "+03:00"
+  },
+  "data": [
+    {
+      "dimensions": [
+        {
+          "name": "Yandex"
+        }
+      ],
+      "metrics": [
+        5290,
+        3128,
+        17667,
+        12.06,
+        3.34,
+        262.02,
+        126,
+        125,
+        23,
+        12,
+        19,
+        14
+      ]
+    },
+    {
+      "dimensions": [
+        {
+          "name": "Google"
+        }
+      ],
+      "metrics": [
+        323,
+        180,
+        721,
+        18.4,
+        2.1,
+        154.2,
+        8,
+        3,
+        1,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "sampled": false,
+  "contains_sensitive_data": false,
+  "sample_share": 1,
+  "sample_size": 5613,
+  "sample_space": 5613,
+  "total_rows": 2,
+  "total_rows_rounded": false
+}

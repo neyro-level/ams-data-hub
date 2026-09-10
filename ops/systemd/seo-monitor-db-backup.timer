@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AMS SEO Monitor PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 04:10:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+Unit=seo-monitor-db-backup.service
+
+[Install]
+WantedBy=timers.target

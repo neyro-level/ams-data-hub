@@ -1,0 +1,20 @@
+{
+  "query": {
+    "date1": "2026-07-28",
+    "date2": "2026-08-27",
+    "timezone": "+03:00"
+  },
+  "data": [
+    {
+      "dimensions": [{"name": "/"}],
+      "metrics": [22]
+    },
+    {
+      "dimensions": [{"name": "/kvartiry-lg"}],
+      "metrics": [8]
+    }
+  ],
+  "totals": [30],
+  "sampled": false,
+  "contains_sensitive_data": false
+}

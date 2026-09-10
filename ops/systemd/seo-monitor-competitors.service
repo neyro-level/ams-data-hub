@@ -1,0 +1,8 @@
+[Unit]
+Description=AMS SEO Monitor monthly competitor snapshots
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ams-platform/ams-seo-monitor/current
+ExecStart=/usr/bin/docker compose -f /opt/ams-platform/ams-seo-monitor/current/docker-compose.production.yml run --rm --no-deps maintenance competitors-sync

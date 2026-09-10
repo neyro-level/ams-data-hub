@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "clientSlug": "beta",
+  "name": "Бета",
+  "enabled": true,
+  "clusterProfile": "real-estate",
+  "sites": [
+    {
+      "siteSlug": "west",
+      "name": "Запад",
+      "siteUrl": "https://todo.invalid/west",
+      "timezone": "+03:00",
+      "enabled": false,
+      "webmaster": {
+        "enabled": false,
+        "expectedHostUrl": null
+      },
+      "metrica": {
+        "enabled": false,
+        "counterId": null,
+        "goalProfile": "beta"
+      }
+    }
+  ]
+}

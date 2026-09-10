@@ -1,0 +1,11 @@
+[Unit]
+Description=Start AMS SEO Monitor Topvisor checks every Monday
+
+[Timer]
+OnCalendar=Mon *-*-* 01:15:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=seo-monitor-topvisor-checks.service
+
+[Install]
+WantedBy=timers.target

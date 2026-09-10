@@ -1,0 +1,107 @@
+workflows:
+  merge-standard:
+    inputs:
+      expected_commit_sha:
+        type: string
+        required: true
+        description: "Reviewed standard PR head SHA"
+    checkout:
+      fetch_depth: 0
+    settings:
+      max_cube_duration: 20m
+    tasks:
+      - name: exact-head-standard
+        env:
+          EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+        cubes:
+          - name: verify
+            image: docker.io/library/node:24.20.0-bookworm
+            script:
+              - corepack enable
+              - corepack prepare pnpm@11.5.1 --activate
+              - pnpm install --frozen-lockfile
+              - node scripts/ci/verify-exact-head.mjs
+              - pnpm verify:quick
+
+  merge-risky:
+    inputs:
+      expected_commit_sha:
+        type: string
+        required: true
+        description: "Reviewed risky PR head SHA"
+    checkout:
+      fetch_depth: 0
+    settings:
+      max_cube_duration: 70m
+    tasks:
+      - name: exact-head-risky
+        env:
+          APP_ENV: test
+          EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          TEST_DATABASE_HOST: 127.0.0.1
+          TEST_DATABASE_PORT: "5432"
+          TEST_DATABASE_USER: seo_monitor_test
+          TEST_DATABASE_PASSWORD: seo_monitor_test
+          TEST_DATABASE_NAME: seo_monitor_ci_test
+          TEST_DATABASE_SSLMODE: disable
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: "5432"
+          DATABASE_USER: seo_monitor_test
+          DATABASE_PASSWORD: seo_monitor_test
+          DATABASE_NAME: seo_monitor_ci_test
+          DATABASE_SSLMODE: disable
+          DATABASE_URL: postgresql://seo_monitor_test:seo_monitor_test@127.0.0.1:5432/seo_monitor_ci_test?sslmode=disable
+          BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
+          BETTER_AUTH_URL: http://127.0.0.1:3100
+        cubes:
+          - name: verify
+            image: docker.io/library/node:24.20.0-bookworm
+            script:
+              - corepack enable
+              - corepack prepare pnpm@11.5.1 --activate
+              - node scripts/verify-release-runtime.mjs
+              - pnpm install --frozen-lockfile
+              - bash scripts/ci/prepare-heavy-environment.sh
+              - node scripts/ci/verify-exact-head.mjs
+              - pnpm verify:risky
+
+  release-check:
+    inputs:
+      expected_commit_sha:
+        type: string
+        required: true
+        description: "Reviewed canonical main SHA for release"
+    checkout:
+      fetch_depth: 0
+    settings:
+      max_cube_duration: 120m
+    tasks:
+      - name: exact-head-release
+        env:
+          APP_ENV: test
+          EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          TEST_DATABASE_HOST: 127.0.0.1
+          TEST_DATABASE_PORT: "5432"
+          TEST_DATABASE_USER: seo_monitor_test
+          TEST_DATABASE_PASSWORD: seo_monitor_test
+          TEST_DATABASE_NAME: seo_monitor_ci_test
+          TEST_DATABASE_SSLMODE: disable
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: "5432"
+          DATABASE_USER: seo_monitor_test
+          DATABASE_PASSWORD: seo_monitor_test
+          DATABASE_NAME: seo_monitor_ci_test
+          DATABASE_SSLMODE: disable
+          DATABASE_URL: postgresql://seo_monitor_test:seo_monitor_test@127.0.0.1:5432/seo_monitor_ci_test?sslmode=disable
+          BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
+          BETTER_AUTH_URL: http://127.0.0.1:3100
+        cubes:
+          - name: verify
+            image: docker.io/library/node:24.20.0-bookworm
+            script:
+              - corepack enable
+              - corepack prepare pnpm@11.5.1 --activate
+              - pnpm install --frozen-lockfile
+              - bash scripts/ci/prepare-daily-environment.sh
+              - node scripts/ci/verify-exact-head.mjs
+              - pnpm verify:release

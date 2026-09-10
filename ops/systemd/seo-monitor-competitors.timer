@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AMS SEO Monitor competitor snapshots on the first Monday
+
+[Timer]
+OnCalendar=Mon *-*-01..07 06:15:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+Unit=seo-monitor-competitors.service
+
+[Install]
+WantedBy=timers.target

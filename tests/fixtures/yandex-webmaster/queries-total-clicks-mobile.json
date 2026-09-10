@@ -1,0 +1,17 @@
+{
+  "queries": [
+    {
+      "query_id": "q-3",
+      "query_text": "купить квартиру север ипотека",
+      "indicators": {
+        "TOTAL_SHOWS": 118,
+        "TOTAL_CLICKS": 4,
+        "AVG_SHOW_POSITION": 6.6,
+        "AVG_CLICK_POSITION": 5.7
+      }
+    }
+  ],
+  "date_from": "2026-08-20",
+  "date_to": "2026-08-27",
+  "count": 611
+}

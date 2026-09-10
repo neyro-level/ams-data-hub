@@ -1,0 +1,62 @@
+{
+  "query": {
+    "date1": "2026-07-28",
+    "date2": "2026-08-27",
+    "timezone": "+03:00"
+  },
+  "data": [
+    {
+      "dimensions": [
+        {
+          "id": "mobile",
+          "name": "Smartphones"
+        }
+      ],
+      "metrics": [
+        3595,
+        2291,
+        126,
+        125,
+        23,
+        12,
+        19,
+        14
+      ]
+    },
+    {
+      "dimensions": [
+        {
+          "id": "desktop",
+          "name": "PC"
+        }
+      ],
+      "metrics": [
+        1558,
+        781,
+        193,
+        80,
+        20,
+        7,
+        5,
+        1
+      ]
+    }
+  ],
+  "totals": [
+    5153,
+    3072,
+    319,
+    205,
+    43,
+    19,
+    24,
+    15
+  ],
+  "sampled": false,
+  "contains_sensitive_data": false,
+  "sample_share": 1,
+  "sample_size": 5153,
+  "sample_space": 5153,
+  "total_rows": 2,
+  "total_rows_rounded": false
+}

@@ -1,0 +1,28 @@
+{
+  "query": {
+    "date1": "2026-07-28",
+    "date2": "2026-08-27",
+    "timezone": "+03:00"
+  },
+  "totals": [
+    6421,
+    4011,
+    20122,
+    13.4,
+    3.14,
+    248.2,
+    144,
+    118,
+    57,
+    39,
+    28,
+    12
+  ],
+  "sampled": false,
+  "contains_sensitive_data": false,
+  "sample_share": 1,
+  "sample_size": 6421,
+  "sample_space": 6421,
+  "total_rows": 1,
+  "total_rows_rounded": false
+}

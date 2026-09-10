@@ -1,0 +1,25 @@
+{
+  "goals": [
+    {
+      "id": 800001,
+      "name": "Клик по номеру телефона",
+      "type": "phone",
+      "status": "Active",
+      "is_favorite": 0
+    },
+    {
+      "id": 800002,
+      "name": "Отправка формы",
+      "type": "form",
+      "status": "Active",
+      "is_favorite": 0
+    },
+    {
+      "id": 800003,
+      "name": "Переход в мессенджер",
+      "type": "messenger",
+      "status": "Active",
+      "is_favorite": 0
+    }
+  ]
+}
