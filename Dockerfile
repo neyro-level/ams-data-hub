@@ -11,7 +11,7 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN pnpm build && pnpm build:collector
+RUN pnpm build
 
 FROM node:24.20.0-bookworm-slim AS runtime
 ENV PNPM_HOME=/pnpm
@@ -24,10 +24,8 @@ RUN corepack enable && corepack prepare pnpm@11.5.1 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
-COPY --from=build /app/dist-collector ./dist-collector
 COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/config ./config
 COPY --from=build /app/src ./src
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml

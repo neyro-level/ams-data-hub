@@ -4,7 +4,6 @@
 out
 .local
 .release-artifacts
-dist-collector
 graphify-out
 node_modules
 test-results
