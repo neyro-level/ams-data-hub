@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
 import { AdminDataTable } from "../../../components/tables/AdminDataTable.tsx";
-import { impulseTableFeatures } from "../../../components/tables/tanstack.ts";
+import { starterTableFeatures } from "../../../components/tables/tanstack.ts";
 import { StatusBadge, type StatusTone } from "../../../components/states/StatusBadge.tsx";
 import { buildPlatformAdminPageHref, type PlatformAdminPageQuery, type PlatformAdminSortField } from "../../../modules/platform-admin/index.ts";
 
@@ -26,7 +26,7 @@ function SortLink({ field, label, resource, query }: { field: PlatformAdminSortF
 
 export function PlatformAdminTable({ resource, query, rows, total, pageSize, sortOptions }: { resource: string; query: PlatformAdminPageQuery; rows: PlatformAdminDisplayRow[]; total: number; pageSize: number; sortOptions: Array<{ field: PlatformAdminSortField; label: string }> }) {
   const primarySort = sortOptions.find((item) => item.field === "name") ?? sortOptions.find((item) => item.field !== "status" && item.field !== "updatedAt");
-  const columns = useMemo<ColumnDef<typeof impulseTableFeatures, PlatformAdminDisplayRow, unknown>[]>(() => [
+  const columns = useMemo<ColumnDef<typeof starterTableFeatures, PlatformAdminDisplayRow, unknown>[]>(() => [
     { accessorKey: "primary", header: () => <SortLink field={primarySort?.field ?? "name"} label={primarySort?.label ?? "Запись"} query={query} resource={resource} />, cell: ({ row }) => <div><p className="font-semibold text-app-foreground">{row.original.primary}</p><p className="mt-1 text-xs leading-5 text-app-muted-foreground">{row.original.secondary}</p></div> },
     { accessorKey: "status", header: () => <SortLink field="status" label="Статус" query={query} resource={resource} />, cell: ({ row }) => <StatusBadge label={row.original.status} tone={statusTone(row.original.status)} /> },
     { accessorKey: "updatedAt", header: () => <SortLink field="updatedAt" label="Обновлено" query={query} resource={resource} />, cell: ({ row }) => <time className="block whitespace-nowrap text-right text-sm tabular-nums text-app-secondary" dateTime={row.original.updatedAt}>{new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.original.updatedAt))}</time> },

@@ -40,17 +40,17 @@ workflows:
           EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           TEST_DATABASE_HOST: 127.0.0.1
           TEST_DATABASE_PORT: "5432"
-          TEST_DATABASE_USER: seo_monitor_test
-          TEST_DATABASE_PASSWORD: seo_monitor_test
-          TEST_DATABASE_NAME: seo_monitor_ci_test
+          TEST_DATABASE_USER: ams_start_test
+          TEST_DATABASE_PASSWORD: ams_start_test
+          TEST_DATABASE_NAME: ams_start_ci_test
           TEST_DATABASE_SSLMODE: disable
           DATABASE_HOST: 127.0.0.1
           DATABASE_PORT: "5432"
-          DATABASE_USER: seo_monitor_test
-          DATABASE_PASSWORD: seo_monitor_test
-          DATABASE_NAME: seo_monitor_ci_test
+          DATABASE_USER: ams_start_test
+          DATABASE_PASSWORD: ams_start_test
+          DATABASE_NAME: ams_start_ci_test
           DATABASE_SSLMODE: disable
-          DATABASE_URL: postgresql://seo_monitor_test:seo_monitor_test@127.0.0.1:5432/seo_monitor_ci_test?sslmode=disable
+          DATABASE_URL: postgresql://ams_start_test:ams_start_test@127.0.0.1:5432/ams_start_ci_test?sslmode=disable
           BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
           BETTER_AUTH_URL: http://127.0.0.1:3100
         cubes:
@@ -82,17 +82,17 @@ workflows:
           EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           TEST_DATABASE_HOST: 127.0.0.1
           TEST_DATABASE_PORT: "5432"
-          TEST_DATABASE_USER: seo_monitor_test
-          TEST_DATABASE_PASSWORD: seo_monitor_test
-          TEST_DATABASE_NAME: seo_monitor_ci_test
+          TEST_DATABASE_USER: ams_start_test
+          TEST_DATABASE_PASSWORD: ams_start_test
+          TEST_DATABASE_NAME: ams_start_ci_test
           TEST_DATABASE_SSLMODE: disable
           DATABASE_HOST: 127.0.0.1
           DATABASE_PORT: "5432"
-          DATABASE_USER: seo_monitor_test
-          DATABASE_PASSWORD: seo_monitor_test
-          DATABASE_NAME: seo_monitor_ci_test
+          DATABASE_USER: ams_start_test
+          DATABASE_PASSWORD: ams_start_test
+          DATABASE_NAME: ams_start_ci_test
           DATABASE_SSLMODE: disable
-          DATABASE_URL: postgresql://seo_monitor_test:seo_monitor_test@127.0.0.1:5432/seo_monitor_ci_test?sslmode=disable
+          DATABASE_URL: postgresql://ams_start_test:ams_start_test@127.0.0.1:5432/ams_start_ci_test?sslmode=disable
           BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
           BETTER_AUTH_URL: http://127.0.0.1:3100
         cubes:

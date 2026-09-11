@@ -30,9 +30,9 @@ if (!/^[0-9a-f]{40}$/.test(commitSha)) {
 
 const artifactsDir = path.join(rootDir, ".release-artifacts");
 const stagingDir = path.join(artifactsDir, "staging", commitSha);
-const artifactName = `ams-seo-monitor-${commitSha}.tar.gz`;
+const artifactName = `ams-start-${commitSha}.tar.gz`;
 const artifactPath = path.join(artifactsDir, artifactName);
-const imageTag = `ams-seo-monitor:${commitSha}`;
+const imageTag = `ams-start:${commitSha}`;
 const imageTarPath = path.join(stagingDir, "docker-image.tar");
 const imageIidPath = path.join(stagingDir, "image.iid");
 
@@ -51,26 +51,6 @@ for (const file of [
   "pnpm-workspace.yaml",
 ]) {
   await cp(path.join(rootDir, file), path.join(stagingDir, file));
-}
-for (const relativePath of [
-  "ops/nginx/ams-seo-monitor.conf",
-  "ops/systemd/seo-monitor-web.service",
-  "ops/systemd/seo-monitor-worker.service",
-  "ops/systemd/seo-monitor-worker.timer",
-  "ops/systemd/seo-monitor-topvisor-checks.service",
-  "ops/systemd/seo-monitor-topvisor-checks.timer",
-  "ops/systemd/seo-monitor-competitors.service",
-  "ops/systemd/seo-monitor-competitors.timer",
-  "ops/systemd/seo-monitor-outbox.service",
-  "ops/systemd/seo-monitor-outbox.timer",
-  "ops/systemd/seo-monitor-db-backup.service",
-  "ops/systemd/seo-monitor-db-backup.timer",
-  "ops/postgres/backup.sh",
-  "ops/postgres/restore-smoke.sh",
-]) {
-  const targetPath = path.join(stagingDir, relativePath);
-  const content = await readFile(targetPath, "utf8");
-  await writeFile(targetPath, content.replace(/\r\n/g, "\n"), "utf8");
 }
 
 const buildResult = spawnSync(
@@ -106,9 +86,9 @@ const lockBytes = await readFile(path.join(rootDir, "pnpm-lock.yaml"));
 const dependencyLockSha256 = createHash("sha256").update(lockBytes).digest("hex");
 const imageDigest = (await readFile(imageIidPath, "utf8")).trim();
 const manifest = {
-  application: "ams-seo-monitor",
-  repository: "integrator-p/ams-seo-monitor",
-  source: "SourceCraft main",
+  application: "ams-start",
+  repository: "template-local",
+  source: "canonical main",
   commitSha,
   createdAt: new Date().toISOString(),
   runtime: "docker-node-v24.20.0-linux-amd64",

@@ -5,7 +5,7 @@ const releaseShaSchema = z.string().regex(/^[0-9a-f]{40}$/).nullable();
 
 export const liveHealthSchema = z.object({
   status: z.literal("ok"),
-  service: z.literal("ams-seo-monitor"),
+  service: z.literal("ams-start"),
   releaseSha: releaseShaSchema,
   correlationId: correlationIdSchema,
   time: z.string().datetime({ offset: true }),
@@ -13,7 +13,7 @@ export const liveHealthSchema = z.object({
 
 export const readyHealthSchema = z.object({
   status: z.literal("ready"),
-  service: z.literal("ams-seo-monitor"),
+  service: z.literal("ams-start"),
   releaseSha: releaseShaSchema,
   correlationId: correlationIdSchema,
   dependencies: z.object({
@@ -28,11 +28,6 @@ export const readyHealthSchema = z.object({
     worker: z.object({
       status: z.enum(["healthy", "stale", "unknown"]),
       lastHeartbeatAt: z.string().datetime({ offset: true }).nullable(),
-    }),
-    integrationFreshness: z.object({
-      status: z.enum(["fresh", "stale", "unknown"]),
-      latestSyncFinishedAt: z.string().datetime({ offset: true }).nullable(),
-      latestSyncStatus: z.enum(["success", "partial", "failed"]).nullable(),
     }),
   }),
 });

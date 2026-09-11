@@ -5,9 +5,9 @@ import type { DatabaseTransaction } from "../../../platform/database/transaction
 import {
   createMembershipInputSchema,
   createOrganizationInputSchema,
+  createUserInputSchema,
   IdentityAdminError,
   nextIdentityVersion,
-  provisionClientInputSchema,
   removeMembershipInputSchema,
   resetUserPasswordInputSchema,
   setUserEnabledInputSchema,
@@ -41,37 +41,27 @@ export interface IdentityAdminCommandDependencies {
 export function createIdentityAdminCommands(
   dependencies: IdentityAdminCommandDependencies,
 ) {
-  const provisionClient = defineCommand<
-    PrincipalContext,
-    typeof provisionClientInputSchema,
-    { organizationId: string; projectId: string; userId: string; membershipId: string; siteIds: string[] }
-  >({
-    name: "identity-access.client.provision",
-    input: provisionClientInputSchema,
+  const createUser = defineCommand<PrincipalContext, typeof createUserInputSchema, { userId: string; membershipId: string | null }>({
+    name: "identity-access.user.create",
+    input: createUserInputSchema,
     authorize: (principal) => { requireIdentityAdminActor(principal); },
     execute: async ({ principal, input, transaction }) => {
       const actor = requireIdentityAdminActor(principal);
       const repository = dependencies.createRepository(transaction);
       const { password, ...safeInput } = input;
       const passwordHash = await hashPassword(password);
-      const result = await repository.provisionClient({
-        ...safeInput,
-        passwordHash,
-        actorId: actor.actorId,
-        correlationId: actor.correlationId,
-      });
+      const result = await repository.createUser({ ...safeInput, passwordHash });
       await repository.appendAudit({
         actorId: actor.actorId,
-        action: "client.provision",
+        action: "user.create",
         entityType: "User",
         entityId: result.userId,
-        organizationId: result.organizationId,
+        organizationId: safeInput.organizationId || null,
         beforeMarker: null,
         afterMarker: {
           username: input.username,
-          projectId: result.projectId,
-          tenantRole: input.tenantRole,
-          siteCount: result.siteIds.length,
+          systemRole: input.systemRole,
+          membershipCreated: Boolean(result.membershipId),
         },
         correlationId: actor.correlationId,
       });
@@ -105,6 +95,7 @@ export function createIdentityAdminCommands(
       return input;
     },
   });
+
   const createOrganization = defineCommand<
     PrincipalContext,
     typeof createOrganizationInputSchema,
@@ -201,10 +192,7 @@ export function createIdentityAdminCommands(
     execute: async ({ principal, input, transaction }) => {
       const scope = requireIdentityAdminScope(principal, input.organizationId);
       const repository = dependencies.createRepository(transaction);
-      const membership = await repository.createMembership({
-        ...input,
-        tenantRole: input.tenantRole,
-      });
+      const membership = await repository.createMembership(input);
       await repository.appendAudit({
         actorId: scope.actorId,
         action: "membership.create",
@@ -329,11 +317,11 @@ export function createIdentityAdminCommands(
   return {
     createMembership,
     createOrganization,
+    createUser,
     removeMembership,
-    updateMembership,
-    updateOrganization,
-    provisionClient,
     resetUserPassword,
     setUserEnabled,
+    updateMembership,
+    updateOrganization,
   };
 }

@@ -16,7 +16,7 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   webServer: {
-    command: "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js migrate deploy && node --env-file-if-exists=.env.local scripts/pgboss-migrate.mjs && node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs scripts/seed-e2e-admin.ts --confirm-local-e2e && node --env-file-if-exists=.env.local .next/standalone/server.js",
+    command: "node --env-file-if-exists=.env.local .next/standalone/server.js",
     url: `${baseURL}/api/health/live`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
@@ -31,18 +31,12 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "setup",
-      testMatch: /auth\.setup\.ts/,
-    },
-    {
       name: "mobile-375",
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 375, height: 812 },
         extraHTTPHeaders: { "x-forwarded-for": "192.0.2.11" },
       },
-      dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
     },
     {
       name: "tablet-768",
@@ -51,8 +45,6 @@ export default defineConfig({
         viewport: { width: 768, height: 1024 },
         extraHTTPHeaders: { "x-forwarded-for": "192.0.2.12" },
       },
-      dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
     },
     {
       name: "desktop-1280",
@@ -61,8 +53,6 @@ export default defineConfig({
         viewport: { width: 1280, height: 800 },
         extraHTTPHeaders: { "x-forwarded-for": "192.0.2.13" },
       },
-      dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
     },
     {
       name: "desktop-1440",
@@ -71,8 +61,6 @@ export default defineConfig({
         viewport: { width: 1440, height: 900 },
         extraHTTPHeaders: { "x-forwarded-for": "192.0.2.14" },
       },
-      dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
     },
   ],
 });

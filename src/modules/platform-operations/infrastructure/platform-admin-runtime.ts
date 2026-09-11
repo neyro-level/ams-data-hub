@@ -4,9 +4,9 @@ import { ReliabilityService } from "../application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "./prisma-reliability-repository.ts";
 import {
   PlatformOperationsAdminError,
-  requestProjectSyncInputSchema,
+  requestMaintenanceInputSchema,
   type OperationListResult,
-  type RequestProjectSyncInput,
+  type RequestMaintenanceInput,
 } from "../domain/platform-admin.ts";
 import type { PlatformAdminListQuery } from "../../platform-admin/contracts.ts";
 
@@ -15,23 +15,13 @@ const reliabilityService = new ReliabilityService(new PrismaReliabilityRepositor
 const operationStatusLabels: Record<string, string> = {
   PENDING: "Ожидает запуска",
   PROCESSING: "Выполняется",
-  RUNNING: "Выполняется",
   PROCESSED: "Завершено",
-  SUCCESS: "Завершено",
   FAILED: "Ошибка",
   DEAD_LETTER: "Остановлено после ошибок",
 };
 
-const triggerLabels: Record<string, string> = {
-  manual: "Запущено вручную",
-  daily: "Плановое обновление",
-  weekly: "Еженедельное обновление",
-  onboarding: "Первичная настройка",
-};
-
 const topicLabels: Record<string, string> = {
-  "project.sync.requested": "Обновление данных проекта",
-  "providers.sync.requested": "Обновление данных источников",
+  "platform.maintenance.requested": "Служебное обслуживание платформы",
   "outbox.retention.requested": "Очистка завершённых заданий",
 };
 
@@ -51,53 +41,29 @@ export async function listOperations(
 ): Promise<OperationListResult> {
   requirePlatformAdmin(principal);
   const prisma = getPrismaClient();
-  const [syncRuns, outboxEvents] = await prisma.$transaction([
-    prisma.syncRun.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-      select: {
-        id: true,
-        trigger: true,
-        projectSlug: true,
-        status: true,
-        sitesProcessed: true,
-        safeError: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.outboxEvent.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-      select: {
-        id: true,
-        topic: true,
-        status: true,
-        attempts: true,
-        lastErrorCode: true,
-        updatedAt: true,
-      },
-    }),
-  ]);
+  const outboxEvents = await prisma.outboxEvent.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      topic: true,
+      status: true,
+      attempts: true,
+      lastErrorCode: true,
+      updatedAt: true,
+    },
+  });
 
   const search = query.search.toLocaleLowerCase("ru");
-  const rows = [
-    ...syncRuns.map((item) => ({
-      id: item.id,
-      kind: "sync-run" as const,
-      primary: `Проект ${item.projectSlug}`,
-      secondary: `${triggerLabels[item.trigger] ?? "Автоматическое обновление"} · обработано сайтов: ${item.sitesProcessed}${item.safeError ? " · требуется внимание" : ""}`,
-      status: operationStatusLabels[item.status] ?? "Состояние уточняется",
-      updatedAt: item.updatedAt.toISOString(),
-    })),
-    ...outboxEvents.map((item) => ({
+  const rows = outboxEvents
+    .map((item) => ({
       id: item.id,
       kind: "outbox-event" as const,
       primary: topicLabels[item.topic] ?? "Служебное задание",
       secondary: `Попыток запуска: ${item.attempts}${item.lastErrorCode ? " · требуется внимание" : ""}`,
       status: operationStatusLabels[item.status] ?? "Состояние уточняется",
       updatedAt: item.updatedAt.toISOString(),
-    })),
-  ]
+    }))
     .filter((item) =>
       !search
         || `${item.primary} ${item.secondary} ${item.status}`
@@ -119,31 +85,24 @@ export async function listOperations(
   };
 }
 
-export async function requestProjectSync(
+export async function requestMaintenance(
   principal: PrincipalContext,
-  rawInput: RequestProjectSyncInput,
+  rawInput: RequestMaintenanceInput,
 ) {
   const actor = requirePlatformAdmin(principal);
-  const input = requestProjectSyncInputSchema.parse(rawInput);
-  const project = await getPrismaClient().project.findUnique({
-    where: { slug: input.projectSlug },
-    select: { id: true, slug: true, organizationId: true },
-  });
-  if (!project) {
-    throw new PlatformOperationsAdminError("PROJECT_SYNC_NOT_FOUND");
-  }
+  const input = requestMaintenanceInputSchema.parse(rawInput);
   const result = await reliabilityService.enqueue({
-    organizationId: project.organizationId,
-    organizationScope: project.organizationId,
-    idempotencyScope: "platform-admin.project-sync",
+    organizationId: null,
+    organizationScope: "platform",
+    idempotencyScope: "platform-admin.maintenance",
     idempotencyKey: input.idempotencyKey,
-    topic: "project.sync.requested",
-    payload: { projectSlug: project.slug, trigger: "manual" },
+    topic: "platform.maintenance.requested",
+    payload: { requestedBy: actor.actorId },
     actorType: "USER",
     actorId: actor.actorId,
-    action: "project.sync.request",
-    entityType: "Project",
-    entityId: project.id,
+    action: "platform.maintenance.request",
+    entityType: "Platform",
+    entityId: "platform",
     source: "platform-admin",
     correlationId: actor.correlationId,
   });

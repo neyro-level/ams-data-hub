@@ -15,54 +15,27 @@ const organizationNameSchema = z
   .min(2, "Укажите название организации")
   .max(160);
 
-const trackedQuerySchema = z.string().trim().min(2).max(240);
-
-const onboardingSiteSchema = z.object({
-  name: z.string().trim().min(2, "Укажите название сайта").max(160),
-  slug: slugSchema,
-  url: z.url("Укажите корректный HTTPS-адрес").refine((value) => value.startsWith("https://"), "Адрес должен начинаться с https://"),
-  timezone: z.string().trim().min(1, "Укажите часовой пояс").max(80),
-  regionName: z.string().trim().min(2, "Выберите регион продвижения").max(160),
-  regionCountryCode: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
-  yandexRegionKey: z.number().int().positive(),
-  googleRegionKey: z.number().int().positive(),
-  queries: z.array(trackedQuerySchema).min(20, "Добавьте минимум 20 запросов").max(100, "Можно добавить не более 100 запросов"),
-}).superRefine((value, context) => {
-  const normalized = value.queries.map((query) => query.toLocaleLowerCase("ru-RU").replace(/\s+/g, " ").trim());
-  if (new Set(normalized).size !== normalized.length) {
-    context.addIssue({ code: "custom", path: ["queries"], message: "Удалите повторяющиеся запросы" });
-  }
-  try {
-    Intl.DateTimeFormat("ru-RU", { timeZone: value.timezone }).format(new Date());
-  } catch {
-    context.addIssue({ code: "custom", path: ["timezone"], message: "Укажите корректный часовой пояс, например Europe/Moscow" });
-  }
-});
-
 export const tenantRoleSchema = z.enum(["ORG_OWNER", "ORG_MEMBER", "VIEWER"]);
+export const systemRoleSchema = z.enum(["PLATFORM_ADMIN", "STAFF", "MEMBER"]);
 
 export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .regex(/^[a-z0-9_]{3,30}$/, "Логин: 3–30 строчных латинских букв, цифр или подчёркиваний");
+  .regex(/^[a-z0-9_]{3,30}$/, "Логин: 3-30 строчных латинских букв, цифр или подчёркиваний");
 
 export const fixedPasswordSchema = z
   .string()
   .regex(/^[\x21-\x7e]{8}$/, "Пароль должен содержать ровно 8 печатных символов без пробелов");
 
-export const provisionClientInputSchema = z.object({
-  organizationName: organizationNameSchema,
-  organizationSlug: slugSchema,
-  projectName: z.string().trim().min(1, "Укажите название проекта").max(160),
-  projectSlug: slugSchema,
-  thresholdProfileId: identifierSchema,
-  clusterProfileId: identifierSchema,
-  userName: z.string().trim().min(2, "Укажите имя пользователя").max(160),
+export const createUserInputSchema = z.object({
+  name: z.string().trim().min(2, "Укажите имя пользователя").max(160),
   username: usernameSchema,
+  email: z.email("Укажите корректный email").optional().or(z.literal("")).default(""),
   password: fixedPasswordSchema,
+  systemRole: systemRoleSchema.default("MEMBER"),
+  organizationId: identifierSchema.optional().or(z.literal("")).default(""),
   tenantRole: tenantRoleSchema.default("VIEWER"),
-  sites: z.array(onboardingSiteSchema).min(1, "Добавьте хотя бы один сайт").max(50, "Можно добавить не более 50 сайтов"),
 });
 
 export const resetUserPasswordInputSchema = z.object({
@@ -120,22 +93,21 @@ export type UpdateOrganizationInput = z.infer<typeof updateOrganizationInputSche
 export type CreateMembershipInput = z.infer<typeof createMembershipInputSchema>;
 export type UpdateMembershipInput = z.infer<typeof updateMembershipInputSchema>;
 export type RemoveMembershipInput = z.infer<typeof removeMembershipInputSchema>;
-export type ProvisionClientInput = z.infer<typeof provisionClientInputSchema>;
+export type CreateUserInput = z.infer<typeof createUserInputSchema>;
 export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordInputSchema>;
 export type SetUserEnabledInput = z.infer<typeof setUserEnabledInputSchema>;
 
-export interface ProvisionClientResult {
-  organizationId: string;
-  projectId: string;
+export interface CreateUserResult {
   userId: string;
-  membershipId: string;
-  siteIds: string[];
+  membershipId: string | null;
 }
 
 export interface IdentityAdminUserListItem {
   id: string;
   name: string;
   username: string;
+  email: string;
+  systemRole: "PLATFORM_ADMIN" | "STAFF" | "MEMBER";
   disabled: boolean;
   memberships: Array<{ id: string; organizationName: string; tenantRole: TenantRole }>;
 }
@@ -191,10 +163,7 @@ export type IdentityAdminErrorCode =
   | "MEMBERSHIP_ALREADY_EXISTS"
   | "MEMBERSHIP_REFERENCE_INVALID"
   | "USER_LOGIN_CONFLICT"
-  | "USER_NOT_FOUND"
-  | "PROJECT_SLUG_CONFLICT"
-  | "PROJECT_REFERENCE_INVALID"
-  | "SITE_SLUG_CONFLICT";
+  | "USER_NOT_FOUND";
 
 export class IdentityAdminError extends Error {
   constructor(public readonly code: IdentityAdminErrorCode) {

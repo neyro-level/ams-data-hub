@@ -4,11 +4,7 @@ export const PERMISSIONS = [
   "project:read:any",
   "project:read:organization",
   "project:manage:any",
-  "report:read:any",
-  "report:read:organization",
-  "sync:read:any",
-  "sync:run:any",
-  "settings:manage:any",
+  "operations:read:any",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -29,8 +25,8 @@ export interface PlatformAdminPrincipal {
   correlationId: string;
 }
 
-export interface PlatformAnalystPrincipal {
-  kind: "platform-analyst";
+export interface PlatformStaffPrincipal {
+  kind: "platform-staff";
   userId: string;
   correlationId: string;
 }
@@ -45,40 +41,37 @@ export interface ApiClientPrincipal {
 export interface JobPrincipal {
   kind: "job";
   jobName: string;
-  organizationId: string;
+  organizationId: string | null;
   correlationId: string;
 }
 
 export type PrincipalContext =
   | TenantUserPrincipal
   | PlatformAdminPrincipal
-  | PlatformAnalystPrincipal
+  | PlatformStaffPrincipal
   | ApiClientPrincipal
   | JobPrincipal;
 
 const PLATFORM_ADMIN_PERMISSIONS: readonly Permission[] = PERMISSIONS;
-const PLATFORM_ANALYST_PERMISSIONS: readonly Permission[] = [
+const PLATFORM_STAFF_PERMISSIONS: readonly Permission[] = [
   "project:read:any",
-  "report:read:any",
-  "sync:read:any",
-  "sync:run:any",
+  "operations:read:any",
 ];
 const TENANT_PERMISSIONS: Record<TenantRole, readonly Permission[]> = {
   ORG_OWNER: [
     "project:read:organization",
     "project:manage:any",
-    "report:read:organization",
   ],
-  ORG_MEMBER: ["project:read:organization", "report:read:organization"],
-  VIEWER: ["project:read:organization", "report:read:organization"],
+  ORG_MEMBER: ["project:read:organization"],
+  VIEWER: ["project:read:organization"],
 };
 
 export function getPrincipalPermissions(principal: PrincipalContext): readonly Permission[] {
   switch (principal.kind) {
     case "platform-admin":
       return PLATFORM_ADMIN_PERMISSIONS;
-    case "platform-analyst":
-      return PLATFORM_ANALYST_PERMISSIONS;
+    case "platform-staff":
+      return PLATFORM_STAFF_PERMISSIONS;
     case "tenant-user":
       return TENANT_PERMISSIONS[principal.role];
     case "api-client":
@@ -93,10 +86,6 @@ export function hasPermission(principal: PrincipalContext, permission: Permissio
 
 export function isTenantPrincipal(
   principal: PrincipalContext,
-): principal is TenantUserPrincipal | ApiClientPrincipal | JobPrincipal {
-  return (
-    principal.kind === "tenant-user" ||
-    principal.kind === "api-client" ||
-    principal.kind === "job"
-  );
+): principal is TenantUserPrincipal | ApiClientPrincipal {
+  return principal.kind === "tenant-user" || principal.kind === "api-client";
 }

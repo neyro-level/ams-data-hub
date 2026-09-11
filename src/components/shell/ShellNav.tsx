@@ -33,8 +33,8 @@ function NavigationIcon({ href, child }: { href: string; child: boolean }) {
   if (child) return <Globe2 {...props} />;
   if (href.startsWith("/admin/")) return <SlidersHorizontal {...props} />;
   if (href.startsWith("/notifications/")) return <Bell {...props} />;
-  if (href.startsWith("/analyst/") || href.startsWith("/dashboard/")) return <LayoutDashboard {...props} />;
-  if (href.startsWith("/c/")) return <BriefcaseBusiness {...props} />;
+  if (href.startsWith("/dashboard/")) return <LayoutDashboard {...props} />;
+  if (href.startsWith("/admin/projects/")) return <BriefcaseBusiness {...props} />;
   return <PanelsTopLeft {...props} />;
 }
 

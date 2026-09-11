@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
-const baseUrl = "https://impulse.ams24.ru";
-const lastModified = new Date("2026-09-01T00:00:00.000Z");
+const baseUrl = "https://ams-start.example";
+const lastModified = new Date("2026-09-11T00:00:00.000Z");
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

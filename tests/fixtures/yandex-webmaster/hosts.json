@@ -1,9 +1,0 @@
-{
-  "hosts": [
-    {
-      "host_id": "https:alpha.example.test:443",
-      "ascii_host_url": "https://alpha.example.test/",
-      "verified": true
-    }
-  ]
-}

@@ -1,18 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { ServiceWorkerRegistration } from "../components/pwa/ServiceWorkerRegistration.tsx";
 import { Toaster } from "../components/ui/sonner.tsx";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://impulse.ams24.ru"),
+  metadataBase: new URL("https://ams-start.example"),
   title: {
-    default: "Быстрое продвижение сайтов в SEO",
-    template: "%s | AMS IMPULSE",
+    default: "АМС Старт",
+    template: "%s | АМС Старт",
   },
-  description:
-    "Быстрое и безопасное продвижение сайтов в топ-1 выдачи Яндекс с помощью уникальных технологий.",
-  applicationName: "AMS IMPULSE",
-  keywords: ["продвижение сайтов", "SEO", "продвижение в Яндексе", "поведенческие факторы"],
+  description: "Нейтральный стартовый шаблон для CRM, аналитических кабинетов и внутренних веб-приложений.",
+  applicationName: "АМС Старт",
+  manifest: "/manifest.webmanifest",
+  keywords: ["CRM", "аналитический кабинет", "внутреннее веб-приложение", "SaaS starter"],
   alternates: {
     canonical: "/",
   },
@@ -24,16 +25,19 @@ export const metadata: Metadata = {
     type: "website",
     locale: "ru_RU",
     url: "/",
-    siteName: "AMS IMPULSE",
-    title: "Быстрое продвижение сайтов в SEO",
-    description:
-      "Быстрое и безопасное продвижение сайтов в топ-1 выдачи Яндекс с помощью уникальных технологий.",
+    siteName: "АМС Старт",
+    title: "АМС Старт",
+    description: "Нейтральный foundation для кабинетов, CRM, аналитики и внутренних систем.",
   },
   twitter: {
     card: "summary",
-    title: "Быстрое продвижение сайтов в SEO",
-    description:
-      "Быстрое и безопасное продвижение сайтов в топ-1 выдачи Яндекс с помощью уникальных технологий.",
+    title: "АМС Старт",
+    description: "Нейтральный foundation для кабинетов, CRM, аналитики и внутренних систем.",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "АМС Старт",
+    statusBarStyle: "black-translucent",
   },
   robots: {
     index: true,
@@ -56,7 +60,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" className="h-full antialiased">
-      <body className="min-h-full"><NuqsAdapter>{children}</NuqsAdapter><Toaster /></body>
+      <body className="min-h-full"><NuqsAdapter>{children}</NuqsAdapter><ServiceWorkerRegistration /><Toaster /></body>
     </html>
   );
 }

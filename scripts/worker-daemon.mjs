@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import pino from "pino";
 
-const workerId = process.env.OUTBOX_WORKER_ID?.trim() || "seo-monitor-outbox";
+const workerId = process.env.OUTBOX_WORKER_ID?.trim() || "ams-start-outbox";
 const pollDelayMs = Number(process.env.OUTBOX_POLL_DELAY_MS || 5000);
 const logger = pino({
   level: process.env.LOG_LEVEL?.trim() || "info",
@@ -33,7 +33,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 function runDrain() {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["dist-collector/src/worker/main.js", "outbox-drain", workerId], {
+    const child = spawn(process.execPath, ["node_modules/tsx/dist/cli.mjs", "src/worker/main.ts", "outbox-drain", workerId], {
       cwd: process.cwd(),
       stdio: "inherit",
       env: process.env,

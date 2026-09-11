@@ -79,11 +79,11 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="theme-public impulse-landing rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
+          className="theme-public start-landing rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
           showCloseButton={!pending}
         >
           <DialogHeader>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--ch-accent)]">AMS IMPULSE</p>
+            <p className="text-[10px] font-bold uppercase text-[var(--ch-accent)]">АМС Старт</p>
             <DialogTitle className="mt-2 text-[32px] font-extrabold leading-tight tracking-[-0.04em] text-[var(--ch-white)] sm:text-[34px]">
               Вход в кабинет
             </DialogTitle>

@@ -52,46 +52,21 @@ switch (mode) {
     break;
   case "outbox-drain":
     await run(process.execPath, [
-      "dist-collector/src/worker/main.js",
+      "node_modules/tsx/dist/cli.mjs",
+      "src/worker/main.ts",
       "outbox-drain",
-      args[0] ?? process.env.OUTBOX_WORKER_ID ?? "seo-monitor-outbox",
+      args[0] ?? process.env.OUTBOX_WORKER_ID ?? "ams-start-outbox",
     ]);
     break;
   case "outbox-retention":
-    await run(process.execPath, ["dist-collector/src/worker/main.js", "outbox-retention"]);
+    await run(process.execPath, ["node_modules/tsx/dist/cli.mjs", "src/worker/main.ts", "outbox-retention"]);
     break;
-  case "projects-sync":
-    await run(process.execPath, [
-      "dist-collector/src/worker/main.js",
-      "projects-sync",
-      args[0] ?? "daily",
-    ]);
-    break;
-  case "project-sync": {
-    if (!args[0]) {
-      throw new Error("Usage: container-entrypoint project-sync <project-slug> [trigger]");
-    }
-    await run(process.execPath, [
-      "dist-collector/src/worker/main.js",
-      "project-sync",
-      args[0],
-      args[1] ?? "manual",
-    ]);
-    break;
-  }
   case "migrate":
     await run(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"]);
     await run(process.execPath, ["scripts/pgboss-migrate.mjs"]);
     break;
   case "bootstrap":
     await run(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/seed-bootstrap.ts"]);
-    break;
-  case "config-sync":
-    await run(process.execPath, [
-      "node_modules/tsx/dist/cli.mjs",
-      "scripts/config-sync.ts",
-      ...args,
-    ]);
     break;
   case "verify-web-env":
     await run(process.execPath, ["node_modules/tsx/dist/cli.mjs", "scripts/verify-web-environment.ts"]);

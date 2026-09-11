@@ -6,10 +6,10 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: ["/", "/politika/", "/soglasie/", "/cookies/", "/terms/"],
-        disallow: ["/dashboard/", "/analyst/", "/c/", "/demo/", "/api/"],
+        disallow: ["/dashboard/", "/admin/", "/notifications/", "/api/"],
       },
     ],
-    sitemap: "https://impulse.ams24.ru/sitemap.xml",
-    host: "https://impulse.ams24.ru",
+    sitemap: "https://ams-start.example/sitemap.xml",
+    host: "https://ams-start.example",
   };
 }

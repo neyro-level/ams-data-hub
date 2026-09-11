@@ -1,12 +1,12 @@
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import styles from "../components/marketing/ImpulseLanding.module.css";
+import styles from "../components/marketing/StartLanding.module.css";
 
 const quickLinks = [
   {
     href: "/",
     label: "Главная",
-    description: "Вернуться к предложению AMS IMPULSE.",
+    description: "Вернуться на главную АМС Старт.",
   },
   {
     href: "/politika/",
@@ -22,7 +22,7 @@ const quickLinks = [
 
 export default function NotFound() {
   return (
-    <main className="theme-public impulse-landing relative isolate flex min-h-dvh items-center overflow-hidden bg-[var(--ch-bg-deepest)] px-5 py-14 text-[var(--ch-white)] sm:px-6">
+    <main className="theme-public start-landing relative isolate flex min-h-dvh items-center overflow-hidden bg-[var(--ch-bg-deepest)] px-5 py-14 text-[var(--ch-white)] sm:px-6">
       <div className={`${styles.grid} absolute inset-0 -z-20 opacity-70`} aria-hidden />
       <div className="absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none text-[clamp(170px,28vw,390px)] font-extrabold leading-none tracking-[-0.08em] text-[var(--ch-ghost-ondark)]" aria-hidden>
         404
@@ -30,9 +30,9 @@ export default function NotFound() {
       <div className="absolute inset-0 -z-10 bg-[image:var(--ch-not-found-atmosphere)]" aria-hidden />
 
       <div className="mx-auto w-full max-w-[980px] text-center">
-        <Link href="/" className="mx-auto inline-flex items-center gap-3" aria-label="AMS IMPULSE — на главную">
-          <span className="grid size-12 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-xs font-extrabold">AMS</span>
-          <span className="text-sm font-extrabold tracking-[0.16em]">IMPULSE</span>
+        <Link href="/" className="mx-auto inline-flex items-center gap-3" aria-label="АМС Старт - на главную">
+          <span className="grid size-12 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-xs font-extrabold">АМС</span>
+          <span className="text-sm font-extrabold">СТАРТ</span>
         </Link>
 
         <p className="mt-10 flex items-center justify-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ch-accent)]">

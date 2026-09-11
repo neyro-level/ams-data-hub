@@ -4,6 +4,11 @@ import path from "node:path";
 const rootDir = path.resolve(import.meta.dirname, "..");
 const sourceDir = path.join(rootDir, "src");
 const failures = [];
+const removedModulePaths = [
+  ["data", "ingestion"].join("-"),
+  ["rank", "ing", "analytics"].join("-"),
+  ["report", "ing"].join(""),
+].map((moduleName) => `src/modules/${moduleName}`);
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -37,18 +42,12 @@ for (const relativePath of [
 }
 
 for (const relativePath of [
-  "src/app/admin/_actions/goals.ts",
-  "src/app/admin/_actions/providers.ts",
-  "src/app/admin/_actions/query-clusters.ts",
-  "src/app/admin/_actions/sites.ts",
-  "src/app/admin/_actions/thresholds.ts",
-  "src/app/admin/_actions/tracked-queries.ts",
-  "src/app/admin/_components/GoalDefinitionAdminForms.tsx",
-  "src/app/admin/_components/ProviderConnectionAdminForms.tsx",
-  "src/app/admin/_components/QueryClusterProfileAdminForms.tsx",
-  "src/app/admin/_components/SiteAdminForms.tsx",
-  "src/app/admin/_components/ThresholdProfileAdminForms.tsx",
-  "src/app/admin/_components/TrackedQuerySetAdminForms.tsx",
+  "src/app/admin/_actions/identity.ts",
+  "src/app/admin/_actions/projects.ts",
+  "src/app/admin/_actions/operations.ts",
+  "src/app/admin/_components/IdentityAdminForms.tsx",
+  "src/app/admin/_components/ProjectAdminForms.tsx",
+  "src/app/admin/_components/OperationsAdminForms.tsx",
 ]) {
   try {
     await readFile(path.join(rootDir, relativePath));
@@ -60,10 +59,7 @@ for (const relativePath of [
 for (const relativePath of [
   "src/app/admin/actions.ts",
   "src/app/admin/_components/RegistryAdminForms.tsx",
-  "src/modules/export/.gitkeep",
-  "src/modules/metrica-analytics/.gitkeep",
-  "src/modules/seo-opportunities/.gitkeep",
-  "src/modules/webmaster-analytics/.gitkeep",
+  ...removedModulePaths,
 ]) {
   try {
     await readFile(path.join(rootDir, relativePath));

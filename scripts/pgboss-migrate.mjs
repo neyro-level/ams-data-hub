@@ -77,7 +77,7 @@ const boss = new PgBoss({
   ...databaseOptions,
   schema,
   max: 1,
-  application_name: "seo-monitor-pgboss-migrate",
+  application_name: "ams-start-pgboss-migrate",
   migrate: true,
   createSchema: true,
   supervise: false,

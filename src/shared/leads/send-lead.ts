@@ -26,10 +26,13 @@ type LeadApiResponse = {
 
 export async function sendLead(payload: SendLeadPayload): Promise<LeadApiResponse> {
   const { apiUrl, projectId, siteKey } = readPublicLeadsEnvironment({
-    NEXT_PUBLIC_LEADS_API_URL: process.env.NEXT_PUBLIC_LEADS_API_URL,
-    NEXT_PUBLIC_LEADS_PROJECT_ID: process.env.NEXT_PUBLIC_LEADS_PROJECT_ID,
-    NEXT_PUBLIC_LEADS_SITE_KEY: process.env.NEXT_PUBLIC_LEADS_SITE_KEY,
-  });
+    NEXT_PUBLIC_CONTACT_API_URL: process.env.NEXT_PUBLIC_CONTACT_API_URL,
+    NEXT_PUBLIC_CONTACT_PROJECT_ID: process.env.NEXT_PUBLIC_CONTACT_PROJECT_ID,
+    NEXT_PUBLIC_CONTACT_SITE_KEY: process.env.NEXT_PUBLIC_CONTACT_SITE_KEY,
+  }) ?? {};
+  if (!apiUrl || !projectId || !siteKey) {
+    throw new Error("Форма связи пока не настроена.");
+  }
   const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
@@ -38,7 +41,7 @@ export async function sendLead(payload: SendLeadPayload): Promise<LeadApiRespons
     },
     body: JSON.stringify({
       project: projectId,
-      form: "ams_impulse_contact_modal",
+      form: "ams_start_contact_modal",
       name: payload.name,
       phone: payload.phone,
       contact: payload.phone,

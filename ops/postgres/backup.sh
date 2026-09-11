@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DB_NAME="${DB_NAME:-seo_monitor_prod}"
-BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ams-seo-monitor-postgres}"
+DB_NAME="${DB_NAME:-ams_start_prod}"
+BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/ams-start-postgres}"
 KEEP_DAILY="${KEEP_DAILY:-7}"
 KEEP_WEEKLY="${KEEP_WEEKLY:-8}"
 KEEP_MONTHLY="${KEEP_MONTHLY:-6}"

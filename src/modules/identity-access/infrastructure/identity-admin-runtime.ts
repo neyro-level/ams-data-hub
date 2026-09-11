@@ -19,10 +19,10 @@ const queries = createIdentityAdminQueries({
 export const {
   createMembership,
   createOrganization,
+  createUser,
   removeMembership,
   updateMembership,
   updateOrganization,
-  provisionClient,
   resetUserPassword,
   setUserEnabled,
 } = commands;

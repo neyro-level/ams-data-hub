@@ -36,7 +36,7 @@ for (const file of reusableComponents) {
   }
 }
 
-for (const relativeDirectory of ["src/app/admin", "src/app/analyst", "src/app/dashboard", "src/app/c", "src/app/demo"]) {
+for (const relativeDirectory of ["src/app/admin", "src/app/dashboard", "src/app/notifications"]) {
   for (const file of (await filesUnder(relativeDirectory)).filter((item) => /\.tsx$/.test(item))) {
     const source = await readFile(path.join(root, file), "utf8");
     if (/(?:text|bg|border|ring|fill|stroke)-(?:white|black|slate|gray|zinc|neutral|stone|red|rose|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)(?:\b|\/|\[)/.test(source)) violations.push(`${file}: private UI palette color must use a semantic token`);
@@ -53,7 +53,7 @@ try {
 }
 
 const globals = await readFile(path.join(root, "src/app/globals.css"), "utf8");
-for (const marker of [".impulse-grid", ".impulse-atmosphere", ".impulse-visual", ".legal-prose", ".legal-source-content"]) {
+for (const marker of [".start-grid", ".start-atmosphere", ".start-visual", ".legal-prose", ".legal-source-content"]) {
   if (globals.includes(marker)) violations.push(`src/app/globals.css: business selector ${marker}`);
 }
 

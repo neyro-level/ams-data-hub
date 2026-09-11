@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getMonitoringService } from "../../../../infrastructure/service-container.ts";
 import { hasAuthConfiguration } from "../../../../modules/identity-access/server.ts";
 import { getOperationalReadiness } from "../../../../modules/platform-operations/server.ts";
 import { readReleaseSha } from "../../../../platform/config/server-environment.ts";
@@ -19,15 +18,12 @@ export async function GET() {
     if (!hasAuthConfiguration()) {
       throw new Error("Auth configuration is unavailable");
     }
-    const [, readiness] = await Promise.all([
-      getMonitoringService().ping(),
-      getOperationalReadiness(),
-    ]);
+    const readiness = await getOperationalReadiness();
 
     return NextResponse.json(
       readyHealthSchema.parse({
         status: "ready",
-        service: "ams-seo-monitor",
+        service: "ams-start",
         releaseSha: readReleaseSha(),
         correlationId,
         dependencies: {
@@ -35,7 +31,6 @@ export async function GET() {
           auth: "configured",
           outbox: readiness.queue,
           worker: readiness.worker,
-          integrationFreshness: readiness.integrationFreshness,
         },
       }),
       {

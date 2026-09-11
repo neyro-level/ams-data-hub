@@ -21,9 +21,7 @@ export interface PlatformAdminPageQuery {
 export interface PlatformAdminDashboardSummary {
   organizations: number;
   projects: number;
-  sites: number;
-  enabledProviders: number;
-  runningSyncs: number;
+  users: number;
   pendingJobs: number;
 }
 

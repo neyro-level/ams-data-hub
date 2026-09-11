@@ -4,11 +4,11 @@ import { createLocalAccountIssuer } from "better-auth/db";
 import { getPrismaClient } from "../src/platform/database/prisma/client.ts";
 
 const E2E_PASSWORD = "E2e!2026";
-const CLIENT_USERNAMES = [
-  "e2e.client.mobile",
-  "e2e.client.tablet",
-  "e2e.client.desktop1280",
-  "e2e.client.desktop1440",
+const MEMBER_USERNAMES = [
+  "e2e.member.mobile",
+  "e2e.member.tablet",
+  "e2e.member.desktop1280",
+  "e2e.member.desktop1440",
 ] as const;
 const localHosts = new Set(["127.0.0.1", "localhost", "::1"]);
 
@@ -28,7 +28,7 @@ async function main() {
       username: string;
       email: string;
       name: string;
-      systemRole: "PLATFORM_ADMIN" | "CLIENT_VIEWER";
+      systemRole: "PLATFORM_ADMIN" | "MEMBER";
     }) => {
       const existing = await prisma.user.findUnique({
         where: { email: input.email },
@@ -75,15 +75,15 @@ async function main() {
     });
 
     const organization = await prisma.organization.findUniqueOrThrow({
-      where: { slug: "alpha" },
+      where: { slug: "ams-start" },
       select: { id: true },
     });
-    for (const username of CLIENT_USERNAMES) {
+    for (const username of MEMBER_USERNAMES) {
       const userId = await provisionUser({
         username,
         email: `${username}@example.invalid`,
         name: `E2E ${username}`,
-        systemRole: "CLIENT_VIEWER",
+        systemRole: "MEMBER",
       });
       await prisma.member.upsert({
         where: {
@@ -97,7 +97,7 @@ async function main() {
         },
       });
     }
-    console.log(JSON.stringify({ seeded: true, identityCount: 1 + CLIENT_USERNAMES.length }));
+    console.log(JSON.stringify({ seeded: true, identityCount: 1 + MEMBER_USERNAMES.length }));
   } finally {
     await prisma.$disconnect();
   }

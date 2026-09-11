@@ -10,12 +10,12 @@ export interface NotificationRepository {
   canRead(audience: NotificationAudience, notificationId: string): Promise<boolean>;
   setRead(userId: string, notificationId: string, read: boolean): Promise<void>;
   markAllRead(audience: NotificationAudience, before: string): Promise<number>;
-  filterOptions(audience: NotificationAudience): Promise<{ organizations: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string }>; sites: Array<{ id: string; name: string }> }>;
+  filterOptions(audience: NotificationAudience): Promise<{ organizations: Array<{ id: string; name: string }>; projects: Array<{ id: string; name: string }> }>;
 }
 
 function audienceFor(principal: PrincipalContext): NotificationAudience {
   if (principal.kind === "platform-admin") return { userId: principal.userId, includeAdminOnly: true };
-  if (principal.kind === "platform-analyst") return { userId: principal.userId, includeAdminOnly: false };
+  if (principal.kind === "platform-staff") return { userId: principal.userId, includeAdminOnly: false };
   throw new NotificationAccessError("NOTIFICATION_ACCESS_DENIED");
 }
 

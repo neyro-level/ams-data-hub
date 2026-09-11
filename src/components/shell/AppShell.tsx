@@ -37,7 +37,7 @@ export function AppShell({ sections, accountLabel, notificationSummary, children
   }
 
   return (
-    <div className="theme-app admin-root min-h-screen bg-[var(--background)] text-app-foreground" data-shell-theme="impulse">
+    <div className="theme-app admin-root min-h-screen bg-[var(--background)] text-app-foreground" data-shell-theme="ams-start">
       <aside className={`fixed inset-y-0 left-0 z-40 hidden transition-[width] duration-200 motion-reduce:transition-none lg:block ${collapsed ? "w-[76px]" : "w-[232px]"}`}>
         <div className="relative flex h-full flex-col border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] text-app-sidebar-foreground">
           <Tooltip>
@@ -48,7 +48,7 @@ export function AppShell({ sections, accountLabel, notificationSummary, children
           <div className={`flex h-16 items-center px-2.5 ${collapsed ? "justify-center" : ""}`}>
             <div className={`flex min-w-0 items-center rounded-[var(--radius-panel)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-1.5 ${collapsed ? "justify-center" : "flex-1 gap-2.5"}`}>
               <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius)] bg-[var(--sidebar-ring)] text-[10px] font-bold tracking-[0.12em] text-app-sidebar-foreground">АМС</span>
-              {collapsed ? null : <span className="truncate text-[13px] font-semibold tracking-[0.12em] text-app-sidebar-foreground">ИМПУЛЬС</span>}
+              {collapsed ? null : <span className="truncate text-[13px] font-semibold tracking-[0.12em] text-app-sidebar-foreground">СТАРТ</span>}
             </div>
           </div>
 
@@ -72,7 +72,7 @@ export function AppShell({ sections, accountLabel, notificationSummary, children
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 backdrop-blur sm:px-6 lg:hidden">
           <MobileDrawer sections={sections} currentPath={pathname} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-app-foreground">{activeLabel ?? "АМС ИМПУЛЬС"}</p>
+            <p className="truncate text-sm font-semibold text-app-foreground">{activeLabel ?? "АМС Старт"}</p>
           </div>
           {notificationSummary ? <NotificationCenter initialSummary={notificationSummary} /> : null}
           <Button type="button" variant="ghost" size="icon" className="lg:hidden" onClick={signOut} disabled={signingOut} aria-label="Выйти из кабинета"><LogOut aria-hidden /></Button>

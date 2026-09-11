@@ -117,29 +117,29 @@ export function LeadRequestDialog() {
   return (
     <>
       <MarketingButton type="button" size="lg" className="group gap-3" onClick={openDialog}>
-        Бесплатный тест-драйв
+        Обсудить внедрение
         <ArrowUpRight className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={1.8} aria-hidden />
       </MarketingButton>
 
       <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : closeDialog())}>
         <DialogContent
-          className="theme-public impulse-landing w-[min(576px,calc(100%_-_32px))] rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
+          className="theme-public start-landing w-[min(576px,calc(100%_-_32px))] rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
           showCloseButton={submitState !== "loading"}
         >
           {submitState === "success" ? (
             <div className="py-8 pr-10">
               <span className="grid size-12 place-items-center bg-[var(--ch-accent)] text-[var(--ch-white)]"><Check className="size-6" strokeWidth={1.8} aria-hidden /></span>
-              <p className="mt-6 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ch-accent)]">AMS IMPULSE</p>
-              <DialogTitle className="mt-3 text-3xl font-extrabold tracking-[-0.035em] text-[var(--ch-white)]">Заявка отправлена</DialogTitle>
+              <p className="mt-6 text-[10px] font-bold uppercase text-[var(--ch-accent)]">АМС Старт</p>
+              <DialogTitle className="mt-3 text-3xl font-extrabold text-[var(--ch-white)]">Заявка отправлена</DialogTitle>
               <p className="mt-3 text-sm leading-6 text-[var(--ch-muted-ondark)]">Свяжемся с вами, уточним задачу и обсудим следующий шаг.</p>
               <Button type="button" variant="secondary" size="lg" className="mt-7 rounded-none bg-[var(--ch-white)] text-[var(--ch-bg-deeper)] hover:bg-[var(--ch-soft-white)]" onClick={closeDialog}>Закрыть</Button>
             </div>
           ) : (
             <>
               <DialogHeader>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--ch-accent)]">AMS IMPULSE</p>
-                <DialogTitle className="mt-2 text-[32px] font-extrabold leading-tight tracking-[-0.04em] text-[var(--ch-white)] sm:text-[34px]">Запустить бесплатный тест-драйв</DialogTitle>
-                <p className="mt-2 max-w-md text-sm leading-6 text-[var(--ch-muted-ondark)]">Оставьте имя и телефон. Уточним задачу и запустим пробный период.</p>
+                <p className="text-[10px] font-bold uppercase text-[var(--ch-accent)]">АМС Старт</p>
+                <DialogTitle className="mt-2 text-[32px] font-extrabold leading-tight text-[var(--ch-white)] sm:text-[34px]">Обсудить внедрение</DialogTitle>
+                <p className="mt-2 max-w-md text-sm leading-6 text-[var(--ch-muted-ondark)]">Оставьте имя и телефон. В шаблоне отправка отключена, пока не подключён ваш обработчик заявок.</p>
               </DialogHeader>
 
               <form className="mt-8 border-t border-[var(--ch-border-subtle)] pt-8" onSubmit={handleSubmit} noValidate>
@@ -185,7 +185,7 @@ export function LeadRequestDialog() {
 
                 <MarketingButton type="submit" size="lg" disabled={submitState === "loading"} className="mt-7 min-h-14 w-full focus-visible:ring-[var(--ch-white)] focus-visible:ring-offset-[var(--ch-bg-deeper)]">
                   {submitState === "loading" ? <Loader2 className="animate-spin" strokeWidth={1.7} aria-hidden /> : null}
-                  {submitState === "loading" ? "Отправляем…" : "Запустить тест-драйв"}
+                  {submitState === "loading" ? "Отправляем…" : "Отправить"}
                 </MarketingButton>
               </form>
             </>

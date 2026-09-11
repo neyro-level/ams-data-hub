@@ -7,18 +7,18 @@ export {
   createJobPrincipal,
   getPrincipalStateByUserId,
   requirePlatformAdmin,
-  requirePlatformAnalyst,
+  requirePlatformStaff,
   requireTenantUser,
 } from "../../platform/authorization/principal-factories.ts";
 export { PrismaIdentityAdminRepository } from "./infrastructure/prisma-identity-admin-repository.ts";
 export {
   createMembership,
   createOrganization,
+  createUser,
   getIdentityAdminFormOptions,
   listMemberships,
   listOrganizations,
   listUsers,
-  provisionClient,
   resetUserPassword,
   setUserEnabled,
   removeMembership,

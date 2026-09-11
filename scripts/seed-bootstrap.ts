@@ -19,43 +19,34 @@ const target = inspectDatabaseTarget(databaseEnvironment);
 console.error(`database_target=${formatDatabaseTargetSummary(target)}`);
 const database = createPrismaContext(databaseEnvironment);
 
-const DEFAULT_THRESHOLD_PROFILE = {
-  slug: "default",
-  minimumShows: 30,
-  maximumCtrPercent: "5",
-  maximumAveragePosition: "10",
-  showsDropPercent: "30",
-  clicksDropPercent: "30",
-  positionWorsenedDelta: "2",
-  pagesInSearchDropPercent: "10",
-  organicVisitsDropPercent: "30",
-  goalConversionDropPercent: "20",
-} as const;
-
 export async function bootstrapDatabase() {
   const created: string[] = [];
-
-  const threshold = await database.prisma.thresholdProfile.findUnique({
-    where: { slug: DEFAULT_THRESHOLD_PROFILE.slug },
+  const organization = await database.prisma.organization.upsert({
+    where: { slug: "ams-start" },
+    update: {},
+    create: { slug: "ams-start", name: "АМС Старт" },
     select: { id: true },
   });
-  if (!threshold) {
-    await database.prisma.thresholdProfile.create({ data: DEFAULT_THRESHOLD_PROFILE });
-    created.push("threshold-profile:default");
-  }
+  created.push("organization:ams-start");
 
-  const cluster = await database.prisma.queryClusterProfile.findUnique({
-    where: { slug: "default" },
-    select: { id: true },
+  await database.prisma.project.upsert({
+    where: {
+      organizationId_slug: {
+        organizationId: organization.id,
+        slug: "starter",
+      },
+    },
+    update: {},
+    create: {
+      organizationId: organization.id,
+      slug: "starter",
+      name: "Стартовый проект",
+      description: "Нейтральная сущность для проверки кабинета после развёртывания.",
+    },
   });
-  if (!cluster) {
-    await database.prisma.queryClusterProfile.create({
-      data: { slug: "default", name: "Базовый" },
-    });
-    created.push("query-cluster-profile:default");
-  }
+  created.push("project:starter");
 
-  return { created, unchanged: 2 - created.length };
+  return { created, unchanged: 0 };
 }
 
 bootstrapDatabase()

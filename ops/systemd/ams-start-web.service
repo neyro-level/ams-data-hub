@@ -1,0 +1,17 @@
+[Unit]
+Description=AMS Start compose stack
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ams-platform/ams-start/current
+Environment=COMPOSE_PROJECT_NAME=ams-start
+EnvironmentFile=-/opt/ams-platform/ams-start/shared/release.env
+ExecStart=/usr/bin/docker compose -f /opt/ams-platform/ams-start/current/docker-compose.production.yml up -d web worker
+ExecReload=/usr/bin/docker compose -f /opt/ams-platform/ams-start/current/docker-compose.production.yml up -d web worker
+ExecStop=/usr/bin/docker compose -f /opt/ams-platform/ams-start/current/docker-compose.production.yml stop web worker
+TimeoutStartSec=10min
+TimeoutStopSec=5min

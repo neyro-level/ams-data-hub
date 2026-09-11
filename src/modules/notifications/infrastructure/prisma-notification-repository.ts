@@ -6,16 +6,16 @@ import type { NotificationAudience, NotificationRepository } from "../applicatio
 import type { NotificationListItem, NotificationListQuery } from "../domain/notification.ts";
 
 type Store = PrismaClient | DatabaseTransaction;
-const select = { id: true, category: true, severity: true, title: true, message: true, route: true, occurredAt: true, organization: { select: { name: true } }, project: { select: { name: true } }, site: { select: { name: true } }, reads: { select: { userId: true } } } satisfies Prisma.NotificationSelect;
+const select = { id: true, category: true, severity: true, title: true, message: true, route: true, occurredAt: true, organization: { select: { id: true, name: true } }, project: { select: { id: true, name: true } }, reads: { select: { userId: true } } } satisfies Prisma.NotificationSelect;
 type Row = Prisma.NotificationGetPayload<{ select: typeof select }>;
 
 function visibilityWhere(audience: NotificationAudience): Prisma.NotificationWhereInput {
   return audience.includeAdminOnly ? {} : { visibility: "PLATFORM_TEAM" };
 }
 function queryWhere(audience: NotificationAudience, query: NotificationListQuery): Prisma.NotificationWhereInput {
-  return { ...visibilityWhere(audience), ...(query.organizationId ? { organizationId: query.organizationId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.siteId ? { siteId: query.siteId } : {}), ...(query.category ? { category: query.category } : {}), ...(query.state === "unread" ? { reads: { none: { userId: audience.userId } } } : {}), ...(query.state === "attention" ? { severity: { in: ["WARNING", "ERROR"] } } : {}) };
+  return { ...visibilityWhere(audience), ...(query.organizationId ? { organizationId: query.organizationId } : {}), ...(query.projectId ? { projectId: query.projectId } : {}), ...(query.category ? { category: query.category } : {}), ...(query.state === "unread" ? { reads: { none: { userId: audience.userId } } } : {}), ...(query.state === "attention" ? { severity: { in: ["WARNING", "ERROR"] } } : {}) };
 }
-function dto(row: Row, userId: string): NotificationListItem { return { id: row.id, category: row.category, severity: row.severity, title: row.title, message: row.message, route: row.route, occurredAt: row.occurredAt.toISOString(), organizationName: row.organization?.name ?? null, projectName: row.project?.name ?? null, siteName: row.site?.name ?? null, read: row.reads.some((item) => item.userId === userId) }; }
+function dto(row: Row, userId: string): NotificationListItem { return { id: row.id, category: row.category, severity: row.severity, title: row.title, message: row.message, route: row.route, occurredAt: row.occurredAt.toISOString(), organizationName: row.organization?.name ?? null, projectName: row.project?.name ?? null, read: row.reads.some((item) => item.userId === userId) }; }
 
 export class PrismaNotificationRepository implements NotificationRepository {
   constructor(private readonly store: Store = getPrismaClient()) {}
@@ -40,8 +40,8 @@ export class PrismaNotificationRepository implements NotificationRepository {
     await this.store.notificationRead.createMany({ data: ids.map(({ id }) => ({ notificationId: id, userId: audience.userId, readAt: new Date() })), skipDuplicates: true }); return ids.length;
   }
   async filterOptions(audience: NotificationAudience) {
-    const rows = await this.store.notification.findMany({ where: visibilityWhere(audience), select: { organization: { select: { id: true, name: true } }, project: { select: { id: true, name: true } }, site: { select: { id: true, name: true } } } });
-    const unique = <T extends { id: string }>(items: T[]) => [...new Map(items.map((item) => [item.id, item])).values()].sort((left, right) => ("name" in left && "name" in right ? String(left.name).localeCompare(String(right.name), "ru") : 0));
-    return { organizations: unique(rows.flatMap((row) => row.organization ? [row.organization] : [])), projects: unique(rows.flatMap((row) => row.project ? [row.project] : [])), sites: unique(rows.flatMap((row) => row.site ? [row.site] : [])) };
+    const rows = await this.store.notification.findMany({ where: visibilityWhere(audience), select: { organization: { select: { id: true, name: true } }, project: { select: { id: true, name: true } } } });
+    const unique = <T extends { id: string; name: string }>(items: T[]) => [...new Map(items.map((item) => [item.id, item])).values()].sort((left, right) => left.name.localeCompare(right.name, "ru"));
+    return { organizations: unique(rows.flatMap((row) => row.organization ? [row.organization] : [])), projects: unique(rows.flatMap((row) => row.project ? [row.project] : [])) };
   }
 }

@@ -1,9 +1,6 @@
 import { z } from "zod";
 import type { JobWithMetadata, PgBoss } from "pg-boss";
 import { getWorkerReliabilityService } from "../../infrastructure/worker-service-container.ts";
-import { createJobPrincipal } from "../../platform/authorization/principal-factories.ts";
-import { syncProjectToDatabase } from "../data-ingestion/worker.ts";
-import { setupSiteIntegrations, syncSiteCompetitors } from "../data-ingestion/worker.ts";
 import {
   OUTBOX_DELIVERY_QUEUE,
   OUTBOX_HANDLER_MAX_ATTEMPTS,
@@ -19,12 +16,6 @@ import {
   OUTBOX_WORKER_RUNTIME,
   recordRuntimeHeartbeat,
 } from "./infrastructure/runtime-heartbeat.ts";
-
-const projectSyncPayloadSchema = z.object({
-  projectSlug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  trigger: z.enum(["daily", "manual", "preflight", "backfill"]).default("manual"),
-});
-const siteTaskPayloadSchema = z.object({ siteId: z.string().trim().min(1) });
 
 type ReliabilityWorker = Pick<
   ReturnType<typeof getWorkerReliabilityService>,
@@ -72,46 +63,8 @@ async function fetchQueuedJob(boss: OutboxQueueClient) {
   return jobs[0] ?? null;
 }
 
-async function handleProjectSync(event: ClaimedReliabilityEvent) {
-  const payload = projectSyncPayloadSchema.safeParse(event.payload);
-  if (!payload.success) {
-    throw outboxError("INVALID_OUTBOX_PAYLOAD", false);
-  }
-  if (!event.organizationId) {
-    throw outboxError("PROJECT_SYNC_MISSING_ORGANIZATION", false);
-  }
-
-  const principal = createJobPrincipal({
-    jobName: event.topic,
-    organizationId: event.organizationId,
-    correlationId: event.correlationId,
-  });
-  if (principal.kind !== "job") {
-    throw outboxError("PROJECT_SYNC_INVALID_SCOPE", false);
-  }
-  const result = await syncProjectToDatabase({
-    projectSlug: payload.data.projectSlug,
-    trigger: payload.data.trigger,
-    env: process.env,
-    correlationId: principal.correlationId,
-    expectedOrganizationId: principal.organizationId,
-  });
-  if (result.status === "failed") {
-    throw outboxError("PROJECT_SYNC_FAILED", true);
-  }
-}
-
 async function handleEvent(event: ClaimedReliabilityEvent) {
-  if (event.topic === "project.sync.requested") {
-    await handleProjectSync(event);
-    return;
-  }
-  if (event.topic === "site.integrations.setup.requested" || event.topic === "site.competitors.sync.requested") {
-    const payload = siteTaskPayloadSchema.safeParse(event.payload);
-    if (!payload.success || !event.organizationId) throw outboxError("INVALID_SITE_TASK_PAYLOAD", false);
-    const task = { organizationId: event.organizationId, siteId: payload.data.siteId, correlationId: event.correlationId };
-    if (event.topic === "site.integrations.setup.requested") await setupSiteIntegrations(task);
-    else await syncSiteCompetitors(task);
+  if (event.topic === "platform.maintenance.requested") {
     return;
   }
 

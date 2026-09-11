@@ -2,11 +2,6 @@ export const PLATFORM_ADMIN_RESOURCE_KEYS = [
   "organizations",
   "memberships",
   "projects",
-  "sites",
-  "providers",
-  "goals",
-  "tracked-queries",
-  "profiles",
   "operations",
 ] as const;
 
@@ -23,55 +18,25 @@ export const PLATFORM_ADMIN_RESOURCES: readonly PlatformAdminResourceDefinition[
   {
     key: "organizations",
     label: "Организации",
-    description: "Клиенты, их проекты и доступ сотрудников.",
+    description: "Компании, команды и рабочие пространства будущего продукта.",
     href: "/admin/organizations/",
   },
   {
     key: "memberships",
     label: "Участники и доступ",
-    description: "Пользователи и доступ к организациям.",
+    description: "Пользователи, роли и доступ к организациям.",
     href: "/admin/memberships/",
   },
   {
     key: "projects",
     label: "Проекты",
-    description: "Проекты, их состояние и правила аналитики.",
+    description: "Нейтральные рабочие сущности для CRM, аналитики и кабинетов.",
     href: "/admin/projects/",
-  },
-  {
-    key: "sites",
-    label: "Сайты",
-    description: "Адреса сайтов, часовые пояса и сбор данных.",
-    href: "/admin/sites/",
-  },
-  {
-    key: "providers",
-    label: "Подключения источников",
-    description: "Подключение Яндекс.Вебмастера, Метрики и Topvisor.",
-    href: "/admin/providers/",
-  },
-  {
-    key: "goals",
-    label: "Цели",
-    description: "Целевые действия и их учёт в результатах SEO.",
-    href: "/admin/goals/",
-  },
-  {
-    key: "tracked-queries",
-    label: "Отслеживаемые запросы",
-    description: "Поисковые запросы и исходные позиции для сравнения.",
-    href: "/admin/tracked-queries/",
-  },
-  {
-    key: "profiles",
-    label: "Правила аналитики",
-    description: "Правила оценки показателей и группы поисковых запросов.",
-    href: "/admin/profiles/",
   },
   {
     key: "operations",
     label: "Операции",
-    description: "Обновление данных и состояние запущенных задач.",
+    description: "Очередь, фоновые задания и техническая готовность платформы.",
     href: "/admin/operations/",
   },
 ];

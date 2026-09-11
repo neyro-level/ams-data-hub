@@ -36,8 +36,8 @@ export function MobileDrawer({ sections, currentPath }: MobileDrawerProps) {
         >
           <SheetHeader className="mb-4 flex flex-row items-center gap-2.5 rounded-[var(--radius-panel)] border border-[var(--sidebar-border)] bg-[var(--sidebar-surface)] p-2 pr-12">
             <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius)] bg-[var(--sidebar-ring)] text-[10px] font-bold tracking-[0.12em] text-app-sidebar-foreground">АМС</span>
-            <SheetTitle className="text-[13px] font-semibold tracking-[0.12em] text-app-sidebar-foreground">ИМПУЛЬС</SheetTitle>
-            <SheetDescription className="sr-only">Навигация по отчётам и разделам кабинета</SheetDescription>
+            <SheetTitle className="text-[13px] font-semibold tracking-[0.12em] text-app-sidebar-foreground">СТАРТ</SheetTitle>
+            <SheetDescription className="sr-only">Навигация по рабочей области и разделам кабинета</SheetDescription>
           </SheetHeader>
           <ShellNav sections={sections} currentPath={currentPath} onNavigate={() => setOpen(false)} />
         </SheetContent>

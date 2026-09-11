@@ -9,7 +9,7 @@ import {
   getCurrentCabinetRedirect,
   getCurrentPrincipalState,
 } from "../../modules/identity-access/server.ts";
-import { buildAnalystOverview } from "../../modules/project-registry/presentation.ts";
+import { listProjectTreesForUser } from "../../modules/project-registry/server.ts";
 import { hasPermission } from "../../platform/authorization/principal.ts";
 
 export default async function DashboardPage() {
@@ -18,42 +18,41 @@ export default async function DashboardPage() {
   const state = await getCurrentPrincipalState();
   if (!state) redirect("/?login=1");
 
-  const overview = await buildAnalystOverview(state.principal);
+  const projects = await listProjectTreesForUser(state.principal);
+  const organizationNames = new Set(projects.map((project) => project.organization.name));
 
   return (
-    <>
-      <div className="space-y-6">
-        <PageHeader
-          title="АМС ИМПУЛЬС"
-          description="Проекты, сайты и понятные отчёты о результатах продвижения."
-          actions={
-            hasPermission(state.principal, "project:read:any") ? (
-              <Link
-                href="/analyst/"
-                className="rounded-[var(--radius)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-app-primary-foreground"
-              >
-                Все проекты
-              </Link>
-            ) : null
-          }
-        />
+    <div className="space-y-6">
+      <PageHeader
+        title="АМС Старт"
+        description="Нейтральная рабочая область для будущих кабинетов, CRM, аналитики и внутренних процессов."
+        actions={
+          hasPermission(state.principal, "platform:manage") ? (
+            <Link
+              href="/admin/organizations/"
+              className="rounded-[var(--radius)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-app-primary-foreground"
+            >
+              Администрирование
+            </Link>
+          ) : null
+        }
+      />
 
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Проекты" value={String(overview.totalProjects)} tone="primary" />
-          <KpiCard label="Сайты" value={String(overview.totalSites)} />
-          <KpiCard label="Подключённые" value={String(overview.connectedSites)} />
-          <KpiCard label="Плановые" value={String(overview.plannedSites)} tone="soft" />
-        </section>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Проекты" value={String(projects.length)} tone="primary" />
+        <KpiCard label="Организации" value={String(organizationNames.size)} />
+        <KpiCard label="Роль" value={state.principal.kind === "tenant-user" ? "Участник" : "Платформа"} />
+        <KpiCard label="Статус" value="Готово" tone="success" />
+      </section>
 
-        <SectionCard title="Система готова к работе" note="Основные службы работают">
-          <ul className="grid gap-3 text-sm text-app-secondary md:grid-cols-2">
-            <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Вход и права доступа настроены для каждой организации.</li>
-            <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Данные из Вебмастера, Метрики и Topvisor доступны только для просмотра.</li>
-            <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Отчёты обновляются автоматически и сохраняются в системе.</li>
-            <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">В кабинете отображаются только безопасные данные без паролей и ключей доступа.</li>
-          </ul>
-        </SectionCard>
-      </div>
-    </>
+      <SectionCard title="Система готова к работе" note="Базовый слой">
+        <ul className="grid gap-3 text-sm text-app-secondary md:grid-cols-2">
+          <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Вход и права доступа настроены для каждой организации.</li>
+          <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Проекты можно использовать как стартовую сущность для будущего продукта.</li>
+          <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">Outbox и worker готовы для фоновых задач без внешних API по умолчанию.</li>
+          <li className="rounded-[var(--radius-panel)] bg-[var(--muted)] p-4">В кабинете отображаются только безопасные данные без паролей и ключей доступа.</li>
+        </ul>
+      </SectionCard>
+    </div>
   );
 }

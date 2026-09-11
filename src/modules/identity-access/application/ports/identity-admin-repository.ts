@@ -2,13 +2,13 @@ import type { TenantRole } from "../../../../platform/authorization/principal.ts
 import type {
   CreateMembershipInput,
   CreateOrganizationInput,
+  CreateUserInput,
+  CreateUserResult,
   IdentityAdminFormOptions,
   IdentityAdminListQuery,
   IdentityAdminUserListItem,
   MembershipListResult,
   OrganizationListResult,
-  ProvisionClientInput,
-  ProvisionClientResult,
   UpdateMembershipInput,
   UpdateOrganizationInput,
 } from "../../domain/admin-identity.ts";
@@ -39,10 +39,8 @@ export interface IdentityAdminAuditInput {
   correlationId: string;
 }
 
-export type ProvisionClientPersistenceInput = Omit<ProvisionClientInput, "password"> & {
+export type CreateUserPersistenceInput = Omit<CreateUserInput, "password"> & {
   passwordHash: string;
-  actorId: string;
-  correlationId: string;
 };
 
 export interface IdentityAdminRepository {
@@ -50,7 +48,7 @@ export interface IdentityAdminRepository {
   listMemberships(query: IdentityAdminListQuery): Promise<MembershipListResult>;
   listFormOptions(): Promise<IdentityAdminFormOptions>;
   listUsers(): Promise<IdentityAdminUserListItem[]>;
-  provisionClient(input: ProvisionClientPersistenceInput): Promise<ProvisionClientResult>;
+  createUser(input: CreateUserPersistenceInput): Promise<CreateUserResult>;
   resetUserPassword(userId: string, passwordHash: string): Promise<boolean>;
   setUserEnabled(userId: string, enabled: boolean): Promise<boolean>;
   createOrganization(input: CreateOrganizationInput): Promise<{ id: string; version: number }>;

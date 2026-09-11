@@ -6,15 +6,15 @@ export function SiteFooter() {
   const phoneHref = `tel:${legalOperator.phone.replace(/[^\d+]/g, "")}`;
 
   return (
-    <footer id="site-footer" className="impulse-landing border-t border-[var(--ch-border-subtle)] bg-[var(--ch-bg-deeper)] text-[var(--ch-white)]" role="contentinfo">
+    <footer id="site-footer" className="start-landing border-t border-[var(--ch-border-subtle)] bg-[var(--ch-bg-deeper)] text-[var(--ch-white)]" role="contentinfo">
       <div className="mx-auto grid w-full max-w-[1360px] gap-10 px-5 py-14 sm:px-6 md:grid-cols-[1.15fr_0.85fr_0.8fr] lg:gap-16 lg:py-18">
         <div>
-          <Link href="/" className="inline-flex items-center gap-3" aria-label="AMS IMPULSE — на главную">
-            <span className="grid size-10 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-[11px] font-extrabold">AMS</span>
-            <span className="text-sm font-extrabold tracking-[0.16em]">IMPULSE</span>
+          <Link href="/" className="inline-flex items-center gap-3" aria-label="АМС Старт - на главную">
+            <span className="grid size-10 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-[11px] font-extrabold">АМС</span>
+            <span className="text-sm font-extrabold">СТАРТ</span>
           </Link>
           <p className="mt-5 max-w-sm text-sm leading-6 text-[var(--ch-body-ondark)]">
-            Продвижение сайтов в Яндексе через поведенческие факторы с контролем динамики и понятной отчётностью.
+            Нейтральная стартовая база для кабинетов, CRM, аналитики и внутренних веб-приложений.
           </p>
         </div>
 
@@ -47,7 +47,7 @@ export function SiteFooter() {
       </div>
 
       <div className="mx-auto flex w-full max-w-[1360px] flex-col gap-3 border-t border-[var(--ch-border-subtle)] px-5 py-6 text-xs text-[var(--ch-faint-ondark)] sm:px-6 md:flex-row md:items-center md:justify-between">
-        <p>© {new Date().getFullYear()} {legalOperator.name} · ИНН {legalOperator.inn}</p>
+        <p>© {new Date().getFullYear()} {legalOperator.name} · {legalOperator.inn}</p>
         <a href="https://ams24.ru" target="_blank" rel="noopener noreferrer" className="inline-flex w-fit items-center gap-1.5 transition hover:text-[var(--ch-action-ondark)]">
           Разработано в АМС <ArrowUpRight className="size-3.5" strokeWidth={1.6} aria-hidden />
         </a>

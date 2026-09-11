@@ -16,13 +16,13 @@ type LegalDocumentProps = {
 
 export function LegalDocument({ eyebrow, title, description, version, effectiveDate, children }: LegalDocumentProps) {
   return (
-    <main className="theme-public impulse-landing min-h-screen bg-[var(--ch-bg-page)] text-[var(--ch-text-primary)]">
+    <main className="theme-public start-landing min-h-screen bg-[var(--ch-bg-page)] text-[var(--ch-text-primary)]">
       <header className="bg-[var(--ch-bg-deepest)] text-[var(--ch-white)]">
         <div className="mx-auto w-full max-w-[1120px] px-5 pb-16 pt-6 sm:px-6 sm:pb-20 sm:pt-8">
           <div className="flex items-center justify-between gap-6">
-            <Link href="/" className="inline-flex items-center gap-3" aria-label="AMS IMPULSE — на главную">
-              <span className="grid size-10 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-[11px] font-extrabold">AMS</span>
-              <span className="text-sm font-extrabold tracking-[0.16em]">IMPULSE</span>
+            <Link href="/" className="inline-flex items-center gap-3" aria-label="АМС Старт - на главную">
+              <span className="grid size-10 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-[11px] font-extrabold">АМС</span>
+              <span className="text-sm font-extrabold">СТАРТ</span>
             </Link>
             <Link href="/" className="inline-flex min-h-11 items-center gap-2 border border-[var(--ch-border-control)] px-4 text-sm font-semibold text-[var(--ch-action-ondark)] transition hover:border-[var(--ch-border-strong)] hover:text-[var(--ch-white)]">
               <ArrowLeft className="size-4" strokeWidth={1.6} aria-hidden />

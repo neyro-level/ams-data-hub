@@ -9,7 +9,7 @@ module.exports = {
     {
       name: "no-production-imports-from-tests",
       severity: "error",
-      from: { path: "^(src|collector)/" },
+      from: { path: "^src/" },
       to: { path: "^tests/" },
     },
     {
@@ -17,7 +17,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/domain/" },
       to: {
-        path: "^(src/(app|application|components|infrastructure|modules|platform|worker)/|collector/)",
+        path: "^src/(app|application|components|infrastructure|modules|platform|worker)/",
       },
     },
     {
@@ -34,7 +34,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/application/" },
       to: {
-        path: "^(src/(app|components|infrastructure|modules|platform|worker)/|collector/)",
+        path: "^src/(app|components|infrastructure|modules|platform|worker)/",
       },
     },
     {
@@ -42,7 +42,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/shared/" },
       to: {
-        path: "^(src/(app|application|components|domain|infrastructure|modules|platform|worker)/|collector/)",
+        path: "^src/(app|application|components|domain|infrastructure|modules|platform|worker)/",
       },
     },
     {
@@ -50,7 +50,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/platform/" },
       to: {
-        path: "^(src/(app|application|components|domain|infrastructure|modules|shared|worker)/|collector/)",
+        path: "^src/(app|application|components|domain|infrastructure|modules|shared|worker)/",
       },
     },
     {
@@ -105,24 +105,6 @@ module.exports = {
       to: { path: "^src/modules/project-registry/(domain|application|infrastructure|presentation)/" },
     },
     {
-      name: "reporting-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/reporting/" },
-      to: { path: "^src/modules/reporting/(domain|application|infrastructure|presentation)/" },
-    },
-    {
-      name: "ranking-analytics-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/ranking-analytics/" },
-      to: { path: "^src/modules/ranking-analytics/(domain|application|infrastructure|presentation)/" },
-    },
-    {
-      name: "data-ingestion-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/data-ingestion/" },
-      to: { path: "^src/modules/data-ingestion/(domain|application|infrastructure|presentation)/" },
-    },
-    {
       name: "platform-operations-internals-are-private",
       severity: "error",
       from: { pathNot: "^src/modules/platform-operations/" },
@@ -154,7 +136,7 @@ module.exports = {
       conditionNames: ["types", "import", "require", "default"],
     },
     exclude: {
-      path: "(^|/)(node_modules|\.next|dist-collector|generated)(/|$)",
+      path: "(^|/)(node_modules|\.next|generated)(/|$)",
     },
   },
 };

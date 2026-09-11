@@ -45,7 +45,6 @@ const ignoredDirectories = new Set([
   ".next",
   ".release-artifacts",
   "coverage",
-  "dist-collector",
   "node_modules",
   "playwright-report",
   "pnpm-store",

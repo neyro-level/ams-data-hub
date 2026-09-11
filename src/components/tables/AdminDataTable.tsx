@@ -5,10 +5,10 @@ import type { ReactNode } from "react";
 import { FilteredEmptyState, EmptyState } from "../states/StatePanel.tsx";
 import { Pagination } from "../ui/pagination.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table.tsx";
-import { impulseTableFeatures } from "./tanstack.ts";
+import { starterTableFeatures } from "./tanstack.ts";
 
-export function AdminDataTable<TData extends { id: string }>({ ariaLabel, columns, data, mobileRenderer, toolbar, filtersActive, emptyTitle, emptyDescription, filteredEmptyDescription, page, pageCount, previousHref, nextHref, minWidth = "860px" }: { ariaLabel: string; columns: ColumnDef<typeof impulseTableFeatures, TData, unknown>[]; data: TData[]; mobileRenderer: (row: TData) => ReactNode; toolbar?: ReactNode; filtersActive?: boolean; emptyTitle: string; emptyDescription: string; filteredEmptyDescription: string; page: number; pageCount: number; previousHref: string; nextHref: string; minWidth?: string }) {
-  const table = useTable({ features: impulseTableFeatures, data, columns });
+export function AdminDataTable<TData extends { id: string }>({ ariaLabel, columns, data, mobileRenderer, toolbar, filtersActive, emptyTitle, emptyDescription, filteredEmptyDescription, page, pageCount, previousHref, nextHref, minWidth = "860px" }: { ariaLabel: string; columns: ColumnDef<typeof starterTableFeatures, TData, unknown>[]; data: TData[]; mobileRenderer: (row: TData) => ReactNode; toolbar?: ReactNode; filtersActive?: boolean; emptyTitle: string; emptyDescription: string; filteredEmptyDescription: string; page: number; pageCount: number; previousHref: string; nextHref: string; minWidth?: string }) {
+  const table = useTable({ features: starterTableFeatures, data, columns });
 
   if (data.length === 0) {
     return filtersActive

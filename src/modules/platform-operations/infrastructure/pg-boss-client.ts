@@ -26,7 +26,7 @@ function createBoss() {
     ssl: pool.ssl,
     schema: "pgboss",
     max: OUTBOX_PGBOSS_CONNECTION_MAX,
-    application_name: "seo-monitor-pgboss",
+    application_name: "ams-start-pgboss",
     migrate: false,
     createSchema: false,
     useListenNotify: false,

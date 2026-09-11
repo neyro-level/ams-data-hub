@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import {
-  requestProjectSyncInputSchema,
-  type RequestProjectSyncInput,
+  requestMaintenanceInputSchema,
+  type RequestMaintenanceInput,
 } from "../../../modules/platform-operations/contracts.ts";
-import { requestProjectSyncAction } from "../_actions/operations.ts";
+import { requestMaintenanceAction } from "../_actions/operations.ts";
 import {
   applyFieldErrors,
   feedbackFrom,
@@ -22,15 +22,14 @@ import {
 export function OperationsAdminForms() {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
-  const form = useForm<RequestProjectSyncInput>({
-    resolver: zodResolver(requestProjectSyncInputSchema) as Resolver<RequestProjectSyncInput>,
+  const form = useForm<RequestMaintenanceInput>({
+    resolver: zodResolver(requestMaintenanceInputSchema) as Resolver<RequestMaintenanceInput>,
     defaultValues: {
-      projectSlug: "",
-      idempotencyKey: "manual-",
+      idempotencyKey: `manual-${new Date().toISOString().slice(0, 10)}`,
     },
   });
   const submit = form.handleSubmit(async (values) => {
-    const result = await requestProjectSyncAction(values);
+    const result = await requestMaintenanceAction(values);
     if (!result.ok) {
       applyFieldErrors(result.fieldErrors, form.setError);
       setFeedback(feedbackFrom(result));
@@ -38,22 +37,19 @@ export function OperationsAdminForms() {
     }
     setFeedback({
       kind: "success",
-      message: result.data.duplicate ? "Повторный запрос вернул существующее задание" : "Синхронизация поставлена в очередь",
+      message: result.data.duplicate ? "Повторный запрос вернул существующее задание" : "Служебная задача поставлена в очередь",
     });
     router.refresh();
   });
 
   return (
-    <SectionCard title="Обновить данные проекта" description="Запустите безопасное обновление данных. Повторное нажатие не создаст одинаковые задания.">
-      <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
-        <FormField error={form.formState.errors.projectSlug?.message} label="Адрес проекта" required>
-          <TextInput {...form.register("projectSlug")} />
-        </FormField>
-        <FormField error={form.formState.errors.idempotencyKey?.message} label="Номер запуска" helper="Нужен, чтобы случайно не запустить одно обновление дважды." required>
+    <SectionCard title="Поставить служебную задачу" description="Нейтральный пример outbox-задачи для будущих фоновых процессов.">
+      <form className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submit}>
+        <FormField error={form.formState.errors.idempotencyKey?.message} label="Номер запуска" helper="Нужен, чтобы случайно не поставить одно задание дважды." required>
           <TextInput {...form.register("idempotencyKey")} />
         </FormField>
-        <div className="sm:col-span-2">
-          <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Запустить обновление" onRefresh={() => router.refresh()} pendingLabel="Запускаем…" />
+        <div className="self-end">
+          <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Поставить в очередь" onRefresh={() => router.refresh()} pendingLabel="Ставим..." />
         </div>
       </form>
     </SectionCard>

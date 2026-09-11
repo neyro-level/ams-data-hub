@@ -18,9 +18,9 @@ import {
   type UpdateOrganizationInput,
 } from "../domain/admin-identity.ts";
 import type {
+  CreateUserPersistenceInput,
   IdentityAdminAuditInput,
   IdentityAdminRepository,
-  ProvisionClientPersistenceInput,
 } from "../application/ports/identity-admin-repository.ts";
 
 const organizationSelect = {
@@ -110,7 +110,10 @@ function translateWriteError(error: unknown): never {
     if (error.code === "P2002") {
       const target = Array.isArray(error.meta?.target)
         ? error.meta.target.join(",")
-        : "";
+        : String(error.meta?.target ?? "");
+      if (target.includes("username") || target.includes("email")) {
+        throw new IdentityAdminError("USER_LOGIN_CONFLICT");
+      }
       if (target.includes("slug")) {
         throw new IdentityAdminError("ORGANIZATION_SLUG_CONFLICT");
       }
@@ -129,6 +132,7 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
   private get prisma(): PrismaStore {
     return this.injectedPrisma ?? getPrismaClient();
   }
+
   async listOrganizations(
     query: IdentityAdminListQuery,
   ): Promise<OrganizationListResult> {
@@ -177,14 +181,16 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
           : query.sort === "createdAt"
             ? { createdAt: query.direction }
             : { updatedAt: query.direction };
-    const total = await this.prisma.member.count({ where: scopedWhere });
-    const records = (await this.prisma.member.findMany({
-      where: scopedWhere,
-      orderBy,
-      skip: (query.page - 1) * query.pageSize,
-      take: query.pageSize,
-      select: membershipSelect,
-    })) as SelectedMembership[];
+    const [total, records] = await Promise.all([
+      this.prisma.member.count({ where: scopedWhere }),
+      this.prisma.member.findMany({
+        where: scopedWhere,
+        orderBy,
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: membershipSelect,
+      }),
+    ]);
     return {
       items: records.map(toMembershipListItem),
       total,
@@ -223,6 +229,8 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
         id: true,
         name: true,
         username: true,
+        email: true,
+        systemRole: true,
         disabledAt: true,
         members: {
           orderBy: { organization: { name: "asc" } },
@@ -234,6 +242,8 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
       id: user.id,
       name: user.name,
       username: user.username,
+      email: user.email,
+      systemRole: user.systemRole,
       disabled: user.disabledAt !== null,
       memberships: user.members.map((member) => ({
         id: member.id,
@@ -243,170 +253,46 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     }] : []);
   }
 
-  async provisionClient(input: ProvisionClientPersistenceInput) {
+  async createUser(input: CreateUserPersistenceInput) {
     try {
-      const organization = await this.prisma.organization.create({
-        data: { name: input.organizationName, slug: input.organizationSlug },
-        select: { id: true },
-      });
-      const project = await this.prisma.project.create({
-        data: {
-          organizationId: organization.id,
-          name: input.projectName,
-          slug: input.projectSlug,
-          status: "ACTIVE",
-          thresholdProfileId: input.thresholdProfileId,
-          clusterProfileId: input.clusterProfileId,
-        },
-        select: { id: true },
-      });
       const userId = randomUUID();
-      const user = await this.prisma.user.create({
-        data: {
-          id: userId,
-          name: input.userName,
-          username: input.username,
-          email: `${input.username}@users.impulse.invalid`,
-          emailVerified: false,
-          systemRole: "CLIENT_VIEWER",
-        },
-        select: { id: true },
-      });
-      await this.prisma.account.create({
-        data: {
-          id: randomUUID(),
-          userId: user.id,
-          issuer: createLocalAccountIssuer("credential"),
-          accountId: user.id,
-          providerId: "credential",
-          password: input.passwordHash,
-        },
-      });
-      const membership = await this.prisma.member.create({
-        data: { organizationId: organization.id, userId: user.id, tenantRole: input.tenantRole },
-        select: { id: true },
-      });
-      const siteIds: string[] = [];
-      for (const siteInput of input.sites) {
-        const site = await this.prisma.site.create({
+      const email = input.email || `${input.username}@users.ams-start.invalid`;
+      return await this.prisma.$transaction(async (transaction) => {
+        const user = await transaction.user.create({
           data: {
-            organizationId: organization.id,
-            projectId: project.id,
-            name: siteInput.name,
-            slug: siteInput.slug,
-            url: siteInput.url,
-            timezone: siteInput.timezone,
-            enabled: true,
+            id: userId,
+            name: input.name,
+            username: input.username,
+            email,
+            emailVerified: false,
+            systemRole: input.systemRole,
           },
           select: { id: true },
         });
-        siteIds.push(site.id);
-
-        await this.prisma.providerConnection.createMany({
-          data: ["YANDEX_METRIKA", "YANDEX_WEBMASTER", "TOPVISOR"].map((provider) => ({
-            organizationId: organization.id,
-            siteId: site.id,
-            provider: provider as "YANDEX_METRIKA" | "YANDEX_WEBMASTER" | "TOPVISOR",
-            enabled: true,
-            status: "PENDING" as const,
-            settingsJson: provider === "TOPVISOR" ? {
-              region: {
-                name: siteInput.regionName,
-                countryCode: siteInput.regionCountryCode,
-                yandexKey: siteInput.yandexRegionKey,
-                googleKey: siteInput.googleRegionKey,
+        await transaction.account.create({
+          data: {
+            id: randomUUID(),
+            userId: user.id,
+            issuer: createLocalAccountIssuer("credential"),
+            accountId: user.id,
+            providerId: "credential",
+            password: input.passwordHash,
+          },
+        });
+        const membership = input.organizationId
+          ? await transaction.member.create({
+              data: {
+                organizationId: input.organizationId,
+                userId: user.id,
+                tenantRole: input.tenantRole,
               },
-            } : Prisma.JsonNull,
-          })),
-        });
-        await this.prisma.searchTarget.createMany({
-          data: [
-            ["YANDEX", "DESKTOP", siteInput.yandexRegionKey],
-            ["YANDEX", "MOBILE", siteInput.yandexRegionKey],
-            ["GOOGLE", "DESKTOP", siteInput.googleRegionKey],
-            ["GOOGLE", "MOBILE", siteInput.googleRegionKey],
-          ].map(([engine, device, regionKey]) => ({
-            organizationId: organization.id,
-            siteId: site.id,
-            engine: engine as "YANDEX" | "GOOGLE",
-            device: device as "DESKTOP" | "MOBILE",
-            regionKey: String(regionKey),
-            regionName: siteInput.regionName,
-          })),
-        });
-        const querySet = await this.prisma.trackedQuerySet.create({
-          data: {
-            organizationId: organization.id,
-            siteId: site.id,
-            source: "TOPVISOR",
-            baselineLabel: "Основное ядро",
-            expectedCount: siteInput.queries.length,
-          },
-          select: { id: true },
-        });
-        await this.prisma.trackedQuery.createMany({
-          data: siteInput.queries.map((query) => ({
-            organizationId: organization.id,
-            trackedQuerySetId: querySet.id,
-            query,
-            normalizedQuery: query.toLocaleLowerCase("ru-RU").replace(/\s+/g, " ").trim(),
-          })),
-        });
-
-        const outboxEvent = await this.prisma.outboxEvent.create({
-          data: {
-            organizationId: organization.id,
-            topic: "site.integrations.setup.requested",
-            payload: { siteId: site.id, projectId: project.id, projectSlug: input.projectSlug },
-            correlationId: input.correlationId,
-          },
-          select: { id: true },
-        });
-        await this.prisma.idempotencyKey.create({
-          data: {
-            organizationId: organization.id,
-            organizationScope: organization.id,
-            scope: "site.integration.setup",
-            key: site.id,
-            requestHash: site.id,
-            status: "COMPLETED",
-            response: { outboxEventId: outboxEvent.id },
-            outboxEventId: outboxEvent.id,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          },
-        });
-        await this.prisma.notification.create({
-          data: {
-            organizationId: organization.id,
-            projectId: project.id,
-            siteId: site.id,
-            category: "ONBOARDING",
-            severity: "INFO",
-            visibility: "PLATFORM_TEAM",
-            title: `Сайт «${siteInput.name}» создан`,
-            message: "Начата автоматическая проверка Метрики, Вебмастера и Topvisor.",
-            route: `/admin/sites/?site=${site.id}`,
-            sourceType: "Site",
-            sourceId: site.id,
-            dedupKey: `site-created:${site.id}`,
-            occurredAt: new Date(),
-          },
-        });
-      }
-      return { organizationId: organization.id, projectId: project.id, userId: user.id, membershipId: membership.id, siteIds };
+              select: { id: true },
+            })
+          : null;
+        return { userId: user.id, membershipId: membership?.id ?? null };
+      });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === "P2002") {
-          const target = String(error.meta?.target ?? "");
-          const modelName = String(error.meta?.modelName ?? "");
-          if (target.includes("username") || target.includes("email")) throw new IdentityAdminError("USER_LOGIN_CONFLICT");
-          if (modelName === "Project") throw new IdentityAdminError("PROJECT_SLUG_CONFLICT");
-          if (modelName === "Site") throw new IdentityAdminError("SITE_SLUG_CONFLICT");
-          throw new IdentityAdminError("ORGANIZATION_SLUG_CONFLICT");
-        }
-        if (error.code === "P2003") throw new IdentityAdminError("PROJECT_REFERENCE_INVALID");
-      }
-      throw error;
+      translateWriteError(error);
     }
   }
 

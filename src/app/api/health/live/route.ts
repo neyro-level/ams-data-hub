@@ -10,7 +10,7 @@ export function GET() {
   const correlationId = createCorrelationId();
   const payload = liveHealthSchema.parse({
     status: "ok",
-    service: "ams-seo-monitor",
+    service: "ams-start",
     releaseSha: readReleaseSha(),
     correlationId,
     time: new Date().toISOString(),

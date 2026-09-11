@@ -1,13 +1,12 @@
 import { z } from "zod";
 
-export const notificationCategorySchema = z.enum(["ONBOARDING", "INTEGRATION", "REPORT", "RANKING", "COMPETITOR", "DATA_FRESHNESS", "QUEUE", "ACCESS"]);
+export const notificationCategorySchema = z.enum(["SYSTEM", "PROJECT", "ACCESS", "QUEUE"]);
 export const notificationListQuerySchema = z.object({
   page: z.number().int().min(1).default(1),
   pageSize: z.number().int().min(1).max(50).default(20),
   state: z.enum(["all", "unread", "attention"]).default("all"),
   organizationId: z.string().trim().optional(),
   projectId: z.string().trim().optional(),
-  siteId: z.string().trim().optional(),
   category: notificationCategorySchema.optional(),
 });
 export const notificationIdInputSchema = z.object({ notificationId: z.string().trim().min(1), read: z.boolean() });
@@ -25,7 +24,6 @@ export type NotificationListItem = {
   occurredAt: string;
   organizationName: string | null;
   projectName: string | null;
-  siteName: string | null;
   read: boolean;
 };
 export type NotificationListResult = { items: NotificationListItem[]; total: number; page: number; pageSize: number; unreadCount: number };

@@ -4,7 +4,7 @@ import { PrivacyContent } from "../../components/marketing/legal/LegalContents.t
 
 export const metadata: Metadata = {
   title: "Политика конфиденциальности",
-  description: "Политика обработки персональных данных AMS IMPULSE.",
+  description: "Политика обработки персональных данных АМС Старт.",
   alternates: { canonical: "/politika/" },
 };
 

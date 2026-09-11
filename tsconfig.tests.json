@@ -14,5 +14,5 @@
     "vitest.config.mts",
     "vitest.integration.config.mts"
   ],
-  "exclude": ["node_modules", ".next", "dist-collector"]
+  "exclude": ["node_modules", ".next"]
 }

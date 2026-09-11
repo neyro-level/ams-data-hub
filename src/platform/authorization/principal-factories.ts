@@ -2,7 +2,7 @@ import { createCorrelationId } from "../http/correlation.ts";
 import { getPrismaClient } from "../database/prisma/client.ts";
 import type {
   PlatformAdminPrincipal,
-  PlatformAnalystPrincipal,
+  PlatformStaffPrincipal,
   PrincipalContext,
   TenantRole,
   TenantUserPrincipal,
@@ -51,8 +51,8 @@ export async function getPrincipalStateByUserId(
       userId: user.id,
       correlationId,
     } satisfies PlatformAdminPrincipal;
-  } else if (user.systemRole === "SEO_ANALYST") {
-    principal = { kind: "platform-analyst", userId: user.id, correlationId } satisfies PlatformAnalystPrincipal;
+  } else if (user.systemRole === "STAFF") {
+    principal = { kind: "platform-staff", userId: user.id, correlationId } satisfies PlatformStaffPrincipal;
   } else {
     const selectedMembership = user.members[0];
     if (!selectedMembership) return null;
@@ -74,13 +74,13 @@ export async function getPrincipalStateByUserId(
 
 export function createJobPrincipal(input: {
   jobName: string;
-  organizationId: string;
+  organizationId?: string | null;
   correlationId?: string;
 }): PrincipalContext {
   return {
     kind: "job",
     jobName: input.jobName,
-    organizationId: input.organizationId,
+    organizationId: input.organizationId ?? null,
     correlationId: input.correlationId ?? createCorrelationId(),
   };
 }
@@ -92,9 +92,9 @@ export function requirePlatformAdmin(principal: PrincipalContext): PlatformAdmin
   return principal;
 }
 
-export function requirePlatformAnalyst(principal: PrincipalContext): PlatformAnalystPrincipal {
-  if (principal.kind !== "platform-analyst") {
-    throw new Error("PLATFORM_ANALYST_REQUIRED");
+export function requirePlatformStaff(principal: PrincipalContext): PlatformStaffPrincipal {
+  if (principal.kind !== "platform-staff") {
+    throw new Error("PLATFORM_STAFF_REQUIRED");
   }
   return principal;
 }

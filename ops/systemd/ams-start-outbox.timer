@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AMS Start outbox retention daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=ams-start-outbox.service
+
+[Install]
+WantedBy=timers.target

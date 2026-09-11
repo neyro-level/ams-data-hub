@@ -1,10 +1,10 @@
-export type SystemRole = "PLATFORM_ADMIN" | "SEO_ANALYST" | "CLIENT_VIEWER";
+export type SystemRole = "PLATFORM_ADMIN" | "STAFF" | "MEMBER";
 
 export function parseSystemRole(value: string): SystemRole {
   if (
     value === "PLATFORM_ADMIN" ||
-    value === "SEO_ANALYST" ||
-    value === "CLIENT_VIEWER"
+    value === "STAFF" ||
+    value === "MEMBER"
   ) {
     return value;
   }
