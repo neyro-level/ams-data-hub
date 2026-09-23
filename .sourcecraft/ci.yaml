@@ -1,3 +1,16 @@
+# AMS MicroSaaS Starter CI policy.
+# Pushes and pull requests intentionally start nothing. This repository is an
+# EXPERIMENT copy-source: paid gates stay dormant until a derived product enters
+# an explicit COMMERCIAL/CRITICAL hardening stream.
+on:
+  push:
+    - workflows:
+        - merge-standard
+        - merge-risky
+        - release-check
+      filter:
+        paths: []
+
 workflows:
   merge-standard:
     inputs:
