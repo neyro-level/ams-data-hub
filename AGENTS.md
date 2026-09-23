@@ -63,6 +63,7 @@ DATABASE = product-defined-postgresql
 6. Applied migration не переписывается в зрелом производном продукте; этот starter допускает squash только до production.
 7. Legal TODO-реквизиты заменить до публикации.
 8. Производный продукт не наследует production-домен, secrets, database или deploy host.
+9. Сам starter не выпускается в production и не запускает paid CI; его manual workflows разрешены только после копирования в производный repository и отдельного delivery hardening.
 
 ## Checks
 

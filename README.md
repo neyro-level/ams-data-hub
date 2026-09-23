@@ -2,6 +2,8 @@
 
 Нейтральный starter для будущих CRM, аналитических кабинетов и внутренних веб-приложений АМС.
 
+Сам repository является copy-source шаблоном с `DELIVERY_PROFILE = EXPERIMENT`: он не имеет production и не расходует SourceCraft CI-минуты на push или Pull Request. Production-контур создаётся только в отдельном производном продукте после hardening.
+
 Внутри уже есть публичная главная страница, legal pages, login modal, приватный shell, Platform Admin, пользователи, организации, роли, проекты, audit trail, idempotency, outbox, worker, Docker/release templates и безопасный PWA-слой.
 
 ## Что оставлено
