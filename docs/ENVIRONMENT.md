@@ -27,3 +27,11 @@ Use `.env.example` as the neutral template.
 | `LOG_LEVEL` | server/worker | pino level |
 
 Provider credentials are intentionally absent. Add product-specific credentials only in a derived product.
+
+## Integration-test database
+
+`pnpm test:integration` accepts only a native PostgreSQL 18 target whose
+`APP_ENV=test`, host is literal loopback, database ends in `_test` and role is
+different from `LOCAL_POSTGRES_USER`. The command resets only that guarded
+database before and after the run; it never uses `DATABASE_URL` from a
+development or production target.

@@ -21,7 +21,7 @@
     "architecture:check": "depcruise src --config dependency-cruiser.config.cjs --output-type err-long && node scripts/verify-architecture.mjs",
     "test": "pnpm test:unit",
     "test:unit": "vitest run",
-    "test:integration": "node -e \"console.log('neutral_starter_integration_tests=not_configured')\"",
+    "test:integration": "node scripts/run-integration-tests.mjs",
     "test:security": "vitest run tests/principal.test.ts tests/starter-contracts.test.ts tests/pwa.test.ts",
     "test:e2e": "pnpm build && pnpm test:e2e:run",
     "test:e2e:run": "playwright test",
