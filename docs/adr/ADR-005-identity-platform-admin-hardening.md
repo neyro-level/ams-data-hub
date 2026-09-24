@@ -1,6 +1,6 @@
 # ADR-005: Identity And Platform Admin Hardening Contract
 
-**Status:** accepted for E02 implementation  
+**Status:** accepted for E02 implementation
 **Scope:** `PLATFORM_ADMIN = enabled`; this is a starter contract, not a production release.
 
 ## Decision
