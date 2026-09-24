@@ -35,9 +35,13 @@ Secrets must stay in environment/secret manager, never in Git, docs, browser cod
 
 E02 makes Platform Admin authority conditional on verified TOTP and replaces
 permanent bootstrap passwords with one-time hashed setup and recovery material.
-Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins and proxy
-boundaries are exact; CSRF/origin protection stays enabled. Public errors and
-logs use safe codes and never reveal tokens, secrets or recovery material.
+Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins are exact;
+CSRF/origin protection stays enabled. A production-derived product must define
+the exact reverse-proxy IP/CIDR boundary in `BETTER_AUTH_TRUSTED_PROXY_CIDRS`
+and restrict the origin so it is not directly reachable by clients. Without that
+value Better Auth refuses to start in production; the starter never trusts an
+unconfigured forwarded-IP header. Public errors and logs use safe codes and
+never reveal tokens, secrets or recovery material.
 
 The complete implementation/evidence contract is
 [`ADR-005`](adr/ADR-005-identity-platform-admin-hardening.md).

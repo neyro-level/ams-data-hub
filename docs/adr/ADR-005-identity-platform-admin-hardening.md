@@ -38,9 +38,11 @@ introduced.
    recovery rotates or revokes the material and requires a new verified TOTP.
 7. Sensitive authentication endpoints use PostgreSQL-backed, bounded rate-limit
    records. Trusted origins are exact, CSRF/origin protection remains enabled,
-   and forwarded headers/IP data are accepted only from an explicit trusted
-   proxy boundary. Responses and logs expose safe error codes, never tokens,
-   secrets or recovery material.
+   and production refuses to start until the derived product supplies the exact
+   `BETTER_AUTH_TRUSTED_PROXY_CIDRS` boundary. Forwarded IP data are accepted
+   only through that boundary; the deployment must make the origin private from
+   direct client traffic. Responses and logs expose safe error codes, never
+   tokens, secrets or recovery material.
 
 ## Implementation And Evidence Map
 
@@ -48,7 +50,7 @@ introduced.
 | --- | --- | --- |
 | Fresh principal; disable/revoke on next request | `principal-session` resolves persisted session/user; principal factory validates enabled user and selected membership; revoke paths delete/invalidate sessions | unit tests for disabled, expired/deleted session and revoked membership; PostgreSQL integration; auth E2E |
 | No implicit tenant for multi-membership | explicit active-organization state, validated against current membership; no ordered-membership fallback | unit + PostgreSQL integration for zero, one and several memberships; E2E selection/change attempt |
-| Admin requires TOTP | Better Auth-compatible two-factor schema/configuration; admin gate verifies factor for current session | unit gate tests; PostgreSQL integration of factor state; E2E rejects password-only admin session |
+| Admin requires TOTP | Better Auth-compatible two-factor schema/configuration; only a session created by `/two-factor/verify-totp` receives the MFA timestamp accepted by the admin gate | unit gate tests; PostgreSQL integration of factor state; E2E rejects password-only admin session |
 | One-time account setup | hashed `account-setup` token state with expiry/used/revoked markers; command/API consumes atomically and revokes siblings | unit token lifecycle tests; PostgreSQL transaction integration; E2E denies dashboard before completion |
 | No permanent bootstrap password | provisioning commands issue setup token rather than a reusable password; migration revokes fallback after setup | command tests and safe-log inspection; E2E verifies fallback cannot obtain business principal |
 | Admin recovery is deterministic | hashed one-time recovery state; operator-only audited recovery command; factor re-enrolment and material rotation | unit lifecycle tests; PostgreSQL integration; operator runbook dry-run without secret output |

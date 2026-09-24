@@ -12,3 +12,21 @@ export function createAuthRateLimitConfig() {
     },
   };
 }
+
+export function createAuthIpAddressConfig(input: {
+  trustedProxyCidrs: string[];
+  isProduction: boolean;
+}) {
+  if (input.isProduction && input.trustedProxyCidrs.length === 0) {
+    throw new Error("BETTER_AUTH_TRUSTED_PROXY_CIDRS is required when Better Auth runs in production");
+  }
+
+  return {
+    ipAddressHeaders: input.trustedProxyCidrs.length > 0 ? ["x-forwarded-for"] : [],
+    trustedProxies: input.trustedProxyCidrs,
+  };
+}
+
+export function isTotpVerificationPath(path: string | undefined): boolean {
+  return path === "/two-factor/verify-totp";
+}

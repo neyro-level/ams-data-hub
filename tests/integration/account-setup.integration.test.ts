@@ -2,13 +2,16 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { completeAccountSetup } from "../../src/modules/identity-access/application/complete-account-setup.ts";
 import { completePlatformRecovery } from "../../src/modules/identity-access/application/complete-platform-recovery.ts";
+import { getPrincipalStateByUserId } from "../../src/platform/authorization/principal-factories.ts";
 import { getPrismaClient } from "../../src/platform/database/prisma/client.ts";
 
 const userId = "integration-account-setup-user";
 const token = "integration-setup-token-must-be-long-enough";
 
 afterEach(async () => {
-  await getPrismaClient().user.deleteMany({ where: { id: userId } });
+  const prisma = getPrismaClient();
+  await prisma.user.deleteMany({ where: { id: userId } });
+  await prisma.organization.deleteMany({ where: { slug: { in: ["principal-first", "principal-second"] } } });
 });
 
 describe("account setup token lifecycle", () => {
@@ -70,5 +73,39 @@ describe("platform recovery token lifecycle", () => {
     expect(result.sessions).toHaveLength(0);
     expect(result.twoFactors).toHaveLength(0);
     expect(result.recoveryTokens[0]?.consumedAt).not.toBeNull();
+  });
+});
+
+describe("fresh principal enforcement", () => {
+  it("denies a password-only platform admin and a multi-membership user without an explicit organization", async () => {
+    const prisma = getPrismaClient();
+    const firstOrganization = await prisma.organization.create({ data: { slug: "principal-first", name: "Principal first" } });
+    const secondOrganization = await prisma.organization.create({ data: { slug: "principal-second", name: "Principal second" } });
+    await prisma.user.create({
+      data: {
+        id: userId,
+        name: "Principal user",
+        username: "principal_user",
+        email: "principal-user@example.test",
+        systemRole: "PLATFORM_ADMIN",
+      },
+    });
+
+    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: false })).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toMatchObject({
+      principal: { kind: "platform-admin", userId },
+    });
+
+    await prisma.user.update({ where: { id: userId }, data: { systemRole: "MEMBER" } });
+    await prisma.member.createMany({
+      data: [
+        { organizationId: firstOrganization.id, userId, tenantRole: "VIEWER" },
+        { organizationId: secondOrganization.id, userId, tenantRole: "ORG_MEMBER" },
+      ],
+    });
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId, { selectedOrganizationId: secondOrganization.id })).resolves.toMatchObject({
+      principal: { kind: "tenant-user", organizationId: secondOrganization.id, userId },
+    });
   });
 });
