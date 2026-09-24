@@ -14,6 +14,7 @@ function runGuard(environment: Record<string, string>) {
 
 const safeEnvironment = {
   APP_ENV: "test",
+  NODE_ENV: "test" as const,
   LOCAL_POSTGRES_USER: "ams_start_local",
   TEST_DATABASE_HOST: "127.0.0.1",
   TEST_DATABASE_PORT: "5435",
