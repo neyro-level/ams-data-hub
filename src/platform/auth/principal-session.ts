@@ -60,6 +60,24 @@ export async function getCurrentPrincipalState(): Promise<PrincipalState | null>
   return (await getFreshPrincipalState())?.state ?? null;
 }
 
+export async function setCurrentActiveOrganization(organizationId: string): Promise<void> {
+  if (!auth) throw new CabinetPrincipalError("AUTHENTICATION_REQUIRED");
+  const normalizedOrganizationId = organizationId.trim();
+  if (!normalizedOrganizationId) throw new CabinetPrincipalError("CABINET_USER_INACTIVE");
+  const requestHeaders = await headers();
+  const session = await auth.api.getSession({ headers: requestHeaders, query: { disableCookieCache: true } });
+  if (!session) throw new CabinetPrincipalError("AUTHENTICATION_REQUIRED");
+  const database = getPrismaClient();
+  const [persistedSession, membership] = await Promise.all([
+    database.session.findUnique({ where: { id: session.session.id }, select: { userId: true, expiresAt: true } }),
+    database.member.findUnique({ where: { organizationId_userId: { organizationId: normalizedOrganizationId, userId: session.user.id } }, select: { id: true } }),
+  ]);
+  if (!persistedSession || persistedSession.userId !== session.user.id || persistedSession.expiresAt <= new Date() || !membership) {
+    throw new CabinetPrincipalError("CABINET_USER_INACTIVE");
+  }
+  await database.session.update({ where: { id: session.session.id }, data: { activeOrganizationId: normalizedOrganizationId } });
+}
+
 export function requireCabinetPrincipalFromState(state: PrincipalState) {
   return state.principal;
 }
