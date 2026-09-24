@@ -30,6 +30,7 @@ export async function getPrincipalStateByUserId(
   userId: string,
   options: PrincipalFactoryOptions = {},
 ): Promise<PrincipalState | null> {
+  const now = new Date();
   const user = await getPrismaClient().user.findUnique({
     where: { id: userId },
     select: {
@@ -37,13 +38,18 @@ export async function getPrincipalStateByUserId(
       name: true,
       systemRole: true,
       disabledAt: true,
+      setupTokens: {
+        where: { consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+        select: { id: true },
+        take: 1,
+      },
       members: {
         orderBy: { organizationId: "asc" },
         select: { id: true, organizationId: true, tenantRole: true },
       },
     },
   });
-  if (!user || user.disabledAt) return null;
+  if (!user || user.disabledAt || user.setupTokens.length > 0) return null;
 
   const correlationId = options.correlationId ?? createCorrelationId();
   let principal: PrincipalContext;

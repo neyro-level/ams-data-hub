@@ -43,6 +43,11 @@ export const resetUserPasswordInputSchema = z.object({
   password: fixedPasswordSchema,
 });
 
+export const completeAccountSetupInputSchema = z.object({
+  token: z.string().trim().min(32).max(256),
+  password: z.string().min(12).max(128),
+});
+
 export const setUserEnabledInputSchema = z.object({
   userId: identifierSchema,
   enabled: z.boolean(),
@@ -95,6 +100,7 @@ export type UpdateMembershipInput = z.infer<typeof updateMembershipInputSchema>;
 export type RemoveMembershipInput = z.infer<typeof removeMembershipInputSchema>;
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
 export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordInputSchema>;
+export type CompleteAccountSetupInput = z.infer<typeof completeAccountSetupInputSchema>;
 export type SetUserEnabledInput = z.infer<typeof setUserEnabledInputSchema>;
 
 export interface CreateUserResult {

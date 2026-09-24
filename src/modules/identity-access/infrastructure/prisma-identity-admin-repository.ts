@@ -315,6 +315,30 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     await this.prisma.accountSetupToken.create({ data: input });
   }
 
+  async completeAccountSetup(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<string | null> {
+    const token = await this.prisma.accountSetupToken.findUnique({
+      where: { tokenHash: input.tokenHash },
+      select: { id: true, userId: true },
+    });
+    if (!token) return null;
+    const consumed = await this.prisma.accountSetupToken.updateMany({
+      where: { id: token.id, consumedAt: null, revokedAt: null, expiresAt: { gt: input.now } },
+      data: { consumedAt: input.now },
+    });
+    if (consumed.count !== 1) return null;
+    await this.prisma.account.updateMany({
+      where: { userId: token.userId, providerId: "credential" },
+      data: { password: input.passwordHash },
+    });
+    await this.prisma.user.update({ where: { id: token.userId }, data: { setupCompletedAt: input.now } });
+    await this.prisma.accountSetupToken.updateMany({
+      where: { userId: token.userId, consumedAt: null, revokedAt: null },
+      data: { revokedAt: input.now },
+    });
+    await this.prisma.session.deleteMany({ where: { userId: token.userId } });
+    return token.userId;
+  }
+
   async setUserEnabled(userId: string, enabled: boolean): Promise<boolean> {
     const result = await this.prisma.user.updateMany({
       where: { id: userId },

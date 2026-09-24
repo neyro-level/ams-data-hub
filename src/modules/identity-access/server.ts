@@ -15,6 +15,7 @@ export {
   createMembership,
   createOrganization,
   createUser,
+  completeAccountSetup,
   getIdentityAdminFormOptions,
   listMemberships,
   listOrganizations,
