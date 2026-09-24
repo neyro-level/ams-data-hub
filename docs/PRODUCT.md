@@ -1,4 +1,9 @@
-# Product
+# Superseded — see `01_PRD.md`
+
+This legacy document is retained for historical reading only. `01_PRD.md` is
+the authoritative product contract.
+
+# Legacy product baseline
 
 `АМС Старт` — нейтральная стартовая база для кабинетов, CRM, аналитики и внутренних веб-приложений.
 

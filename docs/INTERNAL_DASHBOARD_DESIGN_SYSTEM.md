@@ -1,5 +1,8 @@
 # АМС Старт Application Design System
 
+**Status:** Active extension. `06_DESIGN_SYSTEM.md` owns cross-surface design
+policy; this file defines the private application-surface detail.
+
 Private UI is optimized for CRM, analytics and internal operations:
 
 - predictable left navigation;

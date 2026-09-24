@@ -1,5 +1,8 @@
 # Auth
 
+**Status:** Active extension. `03_ARCHITECTURE.md` owns the platform profile and
+cross-cutting policy; this file owns the detailed starter auth contract.
+
 Better Auth owns identity, password and session lifecycle.
 
 ## Login

@@ -1,5 +1,8 @@
 # Environment
 
+**Status:** Active extension. This file is the value-free variable registry
+defined by `03_ARCHITECTURE.md`.
+
 Use `.env.example` as the neutral template.
 
 ## Required
