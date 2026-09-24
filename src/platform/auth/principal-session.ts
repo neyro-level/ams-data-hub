@@ -36,6 +36,8 @@ async function getFreshPrincipalState(): Promise<{
     select: {
       userId: true,
       expiresAt: true,
+      activeOrganizationId: true,
+      twoFactorVerifiedAt: true,
       user: { select: { disabledAt: true } },
     },
   });
@@ -47,7 +49,10 @@ async function getFreshPrincipalState(): Promise<{
     return null;
   }
 
-  const state = await getPrincipalStateByUserId(session.user.id);
+  const state = await getPrincipalStateByUserId(session.user.id, {
+    selectedOrganizationId: persistedSession.activeOrganizationId,
+    platformAdminMfaVerified: persistedSession.twoFactorVerifiedAt !== null,
+  });
   return { state, disabled: persistedSession.user.disabledAt !== null };
 }
 

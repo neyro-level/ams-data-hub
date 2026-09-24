@@ -83,6 +83,8 @@ model User {
   email             String             @unique
   emailVerified     Boolean            @default(false)
   image             String?
+  twoFactorEnabled  Boolean            @default(false)
+  setupCompletedAt  DateTime?
   systemRole        SystemRole         @default(MEMBER)
   disabledAt        DateTime?          @db.Timestamptz(3)
   createdAt         DateTime           @default(now())
@@ -91,6 +93,58 @@ model User {
   accounts          Account[]
   members           Member[]
   notificationReads NotificationRead[]
+  twoFactors        TwoFactor[]
+  setupTokens       AccountSetupToken[]
+  recoveryTokens    PlatformRecoveryToken[]
+}
+
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  userId                  String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
+
+model AccountSetupToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PlatformRecoveryToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Session {
@@ -101,11 +155,15 @@ model Session {
   ipAddress    String?
   userAgent    String?
   activeTeamId String?
+  activeOrganizationId String?
+  twoFactorVerifiedAt DateTime?
+  setupCompletedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId])
+  @@index([activeOrganizationId])
 }
 
 model Account {

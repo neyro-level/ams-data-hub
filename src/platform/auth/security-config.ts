@@ -5,7 +5,7 @@ export function createAuthRateLimitConfig() {
     enabled: true,
     window: 60,
     max: 100,
-    storage: "memory" as const,
+    storage: "database" as const,
     customRules: {
       "/sign-in/email": strictRule(60, 5),
       "/sign-in/username": strictRule(60, 5),

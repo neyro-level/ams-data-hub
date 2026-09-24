@@ -10,6 +10,8 @@ import type {
 
 export interface PrincipalFactoryOptions {
   correlationId?: string;
+  selectedOrganizationId?: string | null;
+  platformAdminMfaVerified?: boolean;
 }
 
 export interface PrincipalState {
@@ -46,6 +48,7 @@ export async function getPrincipalStateByUserId(
   const correlationId = options.correlationId ?? createCorrelationId();
   let principal: PrincipalContext;
   if (user.systemRole === "PLATFORM_ADMIN") {
+    if (!options.platformAdminMfaVerified) return null;
     principal = {
       kind: "platform-admin",
       userId: user.id,
@@ -54,7 +57,9 @@ export async function getPrincipalStateByUserId(
   } else if (user.systemRole === "STAFF") {
     principal = { kind: "platform-staff", userId: user.id, correlationId } satisfies PlatformStaffPrincipal;
   } else {
-    const selectedMembership = user.members[0];
+    const selectedMembership = options.selectedOrganizationId
+      ? user.members.find((membership) => membership.organizationId === options.selectedOrganizationId)
+      : user.members.length === 1 ? user.members[0] : null;
     if (!selectedMembership) return null;
     principal = {
       kind: "tenant-user",

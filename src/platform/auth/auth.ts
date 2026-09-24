@@ -2,7 +2,7 @@ import "server-only";
 
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { betterAuth } from "better-auth";
-import { username } from "better-auth/plugins";
+import { twoFactor, username } from "better-auth/plugins";
 import {
   hasDatabaseConfiguration,
   readAuthEnvironment,
@@ -18,9 +18,10 @@ export function hasAuthConfiguration() {
 
 export const auth =
   hasAuthConfiguration() && authEnvironment
-    ? betterAuth({
+      ? betterAuth({
         secret: authEnvironment.secret,
         baseURL: authEnvironment.baseUrl,
+        appName: "АМС Старт",
         trustedOrigins: [
           authEnvironment.baseUrl,
           ...(process.env.NODE_ENV === "production"
@@ -38,6 +39,7 @@ export const auth =
         },
         rateLimit: createAuthRateLimitConfig(),
         plugins: [
+          twoFactor(),
           username({
             displayUsername: false,
             immutableUsername: true,
