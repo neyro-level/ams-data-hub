@@ -1,5 +1,8 @@
 # Runbook Deploy
 
+**Status:** Active extension. `05_RELEASE_CHECKLIST.md` owns derived-product
+release readiness; this file provides reusable procedure detail.
+
 `ams-microsaas-starter` is a copy-source template, not a production target. Do not create a domain, VPS, production database, production secrets, rehearsal or live deployment for this repository. Its `release-check`, Docker, Compose and ops files are reusable starting material only; they are not approved evidence for a real release.
 
 After copying the starter into a product-owned repository, a derived app should use this sequence:

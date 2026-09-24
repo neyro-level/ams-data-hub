@@ -1,5 +1,8 @@
 # Data Model
 
+**Status:** Active extension. `prisma/schema.prisma` and migrations remain the
+runtime source of truth; this file is their neutral model map.
+
 Prisma schema is the runtime source of truth.
 
 ## Neutral Foundation

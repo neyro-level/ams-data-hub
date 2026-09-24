@@ -1,5 +1,8 @@
 # Security
 
+**Status:** Active extension. `03_ARCHITECTURE.md` owns the cross-cutting
+policy; this file records the starter's detailed trust boundaries.
+
 ## Trust Boundaries
 
 - browser never receives secrets;

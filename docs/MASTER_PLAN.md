@@ -1,4 +1,10 @@
-# Master Plan
+# Superseded — see `04_BACKLOG.md`
+
+This legacy checklist is retained for historical reading only. `04_BACKLOG.md`
+is the canonical product-facing backlog; the approved Task Manager plan owns
+execution graph detail.
+
+# Legacy starter checklist
 
 ## Neutral Starter Baseline
 

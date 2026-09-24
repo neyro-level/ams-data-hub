@@ -1,4 +1,9 @@
-# Architecture
+# Superseded — see `03_ARCHITECTURE.md`
+
+This legacy document is retained for historical reading only. `03_ARCHITECTURE.md`
+and ADRs are the authoritative architecture contract.
+
+# Legacy architecture baseline
 
 `АМС Старт` следует `AMS Application Platform Core 3.4 — Solo Minimal`.
 

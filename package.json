@@ -47,6 +47,7 @@
     "user:add-to-organization": "tsx scripts/auth-admin.ts add-to-organization",
     "user:remove-from-organization": "tsx scripts/auth-admin.ts remove-from-organization",
     "verify:config": "pnpm verify:public-data && pnpm verify:ui && node scripts/verify-config.mjs",
+    "docs:check": "node scripts/verify-docs-canon.mjs",
     "verify:ui": "node scripts/verify-ui-conformance.mjs",
     "verify:public-data": "node scripts/verify-public-data.mjs",
     "verify:web-environment": "node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs scripts/verify-web-environment.ts",

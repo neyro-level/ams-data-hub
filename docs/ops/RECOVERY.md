@@ -1,5 +1,8 @@
 # Recovery
 
+**Status:** Active extension. A derived product must add its own data and
+integration recovery contract before production.
+
 Starter-level recovery checklist:
 
 1. confirm exact commit SHA and branch;
