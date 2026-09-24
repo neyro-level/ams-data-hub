@@ -10,6 +10,7 @@
 | Current product work | `04_BACKLOG.md` |
 | Derived-product release readiness | `05_RELEASE_CHECKLIST.md` |
 | Cross-surface visual rules | `06_DESIGN_SYSTEM.md` |
+| Copy-source derivation and identity verification | `DERIVATION.md` |
 
 ## Justified detailed extensions
 
