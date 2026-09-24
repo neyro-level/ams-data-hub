@@ -32,7 +32,6 @@ export const createUserInputSchema = z.object({
   name: z.string().trim().min(2, "Укажите имя пользователя").max(160),
   username: usernameSchema,
   email: z.email("Укажите корректный email").optional().or(z.literal("")).default(""),
-  password: fixedPasswordSchema,
   systemRole: systemRoleSchema.default("MEMBER"),
   organizationId: identifierSchema.optional().or(z.literal("")).default(""),
   tenantRole: tenantRoleSchema.default("VIEWER"),

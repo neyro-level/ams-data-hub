@@ -50,8 +50,8 @@ export function createIdentityAdminCommands(
     execute: async ({ principal, input, transaction }) => {
       const actor = requireIdentityAdminActor(principal);
       const repository = dependencies.createRepository(transaction);
-      const { password, ...safeInput } = input;
-      const passwordHash = await hashPassword(password);
+      const safeInput = input;
+      const passwordHash = await hashPassword(randomBytes(32).toString("base64url"));
       const result = await repository.createUser({ ...safeInput, passwordHash });
       const setupToken = randomBytes(32).toString("base64url");
       await repository.issueAccountSetupToken({

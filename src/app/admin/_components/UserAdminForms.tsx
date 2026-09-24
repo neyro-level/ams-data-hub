@@ -104,7 +104,6 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
       name: "",
       username: "",
       email: "",
-      password: "",
       systemRole: "MEMBER",
       organizationId: "",
       tenantRole: "VIEWER",
@@ -117,8 +116,8 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
       setFeedback(feedbackFrom(result));
       return;
     }
-    form.reset({ name: "", username: "", email: "", password: "", systemRole: "MEMBER", organizationId: "", tenantRole: "VIEWER" });
-    setFeedback({ kind: "success", message: "Пользователь создан" });
+    form.reset({ name: "", username: "", email: "", systemRole: "MEMBER", organizationId: "", tenantRole: "VIEWER" });
+    setFeedback({ kind: "success", message: `Пользователь создан. Передайте setup-материал один раз через защищённый канал: ${result.data.setupToken}` });
     router.refresh();
   });
 
@@ -144,11 +143,6 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
           <FormField error={form.formState.errors.tenantRole?.message} label="Доступ в организации" required>
             <SelectInput options={tenantRoleOptions} {...form.register("tenantRole")} />
           </FormField>
-          <div className="xl:col-span-3">
-            <FormField error={form.formState.errors.password?.message} label="Пароль" helper="Ровно 8 печатных символов без пробелов." required>
-              <TextInput autoComplete="new-password" type="password" {...form.register("password")} />
-            </FormField>
-          </div>
           <div className="md:col-span-2 xl:col-span-3">
             <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Создать пользователя" onRefresh={() => router.refresh()} pendingLabel="Создаём..." />
           </div>
