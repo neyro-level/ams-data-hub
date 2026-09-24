@@ -2,6 +2,7 @@ export { auth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
 export {
   getCurrentCabinetRedirect,
   getCurrentPrincipalState,
+  setCurrentActiveOrganization,
 } from "../../platform/auth/principal-session.ts";
 export {
   createJobPrincipal,
@@ -15,6 +16,7 @@ export {
   createMembership,
   createOrganization,
   createUser,
+  completeAccountSetup,
   getIdentityAdminFormOptions,
   listMemberships,
   listOrganizations,

@@ -5,10 +5,28 @@ export function createAuthRateLimitConfig() {
     enabled: true,
     window: 60,
     max: 100,
-    storage: "memory" as const,
+    storage: "database" as const,
     customRules: {
       "/sign-in/email": strictRule(60, 5),
       "/sign-in/username": strictRule(60, 5),
     },
   };
+}
+
+export function createAuthIpAddressConfig(input: {
+  trustedProxyCidrs: string[];
+  isProduction: boolean;
+}) {
+  if (input.isProduction && input.trustedProxyCidrs.length === 0) {
+    throw new Error("BETTER_AUTH_TRUSTED_PROXY_CIDRS is required when Better Auth runs in production");
+  }
+
+  return {
+    ipAddressHeaders: input.trustedProxyCidrs.length > 0 ? ["x-forwarded-for"] : [],
+    trustedProxies: input.trustedProxyCidrs,
+  };
+}
+
+export function isTotpVerificationPath(path: string | undefined): boolean {
+  return path === "/two-factor/verify-totp";
 }

@@ -1,4 +1,5 @@
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
+import { createHash, randomBytes } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { defineCommand } from "../../../platform/commands/define-command.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
@@ -7,6 +8,7 @@ import {
   createOrganizationInputSchema,
   createUserInputSchema,
   IdentityAdminError,
+  issuePlatformRecoveryInputSchema,
   nextIdentityVersion,
   removeMembershipInputSchema,
   resetUserPasswordInputSchema,
@@ -41,16 +43,22 @@ export interface IdentityAdminCommandDependencies {
 export function createIdentityAdminCommands(
   dependencies: IdentityAdminCommandDependencies,
 ) {
-  const createUser = defineCommand<PrincipalContext, typeof createUserInputSchema, { userId: string; membershipId: string | null }>({
+  const createUser = defineCommand<PrincipalContext, typeof createUserInputSchema, { userId: string; membershipId: string | null; setupToken: string }>({
     name: "identity-access.user.create",
     input: createUserInputSchema,
     authorize: (principal) => { requireIdentityAdminActor(principal); },
     execute: async ({ principal, input, transaction }) => {
       const actor = requireIdentityAdminActor(principal);
       const repository = dependencies.createRepository(transaction);
-      const { password, ...safeInput } = input;
-      const passwordHash = await hashPassword(password);
+      const safeInput = input;
+      const passwordHash = await hashPassword(randomBytes(32).toString("base64url"));
       const result = await repository.createUser({ ...safeInput, passwordHash });
+      const setupToken = randomBytes(32).toString("base64url");
+      await repository.issueAccountSetupToken({
+        userId: result.userId,
+        tokenHash: createHash("sha256").update(setupToken).digest("hex"),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
       await repository.appendAudit({
         actorId: actor.actorId,
         action: "user.create",
@@ -65,7 +73,7 @@ export function createIdentityAdminCommands(
         },
         correlationId: actor.correlationId,
       });
-      return result;
+      return { ...result, setupToken };
     },
   });
 
@@ -80,6 +88,21 @@ export function createIdentityAdminCommands(
       if (!await repository.resetUserPassword(input.userId, passwordHash)) throw new IdentityAdminError("USER_NOT_FOUND");
       await repository.appendAudit({ actorId: actor.actorId, action: "user.password-reset", entityType: "User", entityId: input.userId, organizationId: null, beforeMarker: null, afterMarker: { sessionsRevoked: true }, correlationId: actor.correlationId });
       return { userId: input.userId };
+    },
+  });
+
+  const issuePlatformRecovery = defineCommand<PrincipalContext, typeof issuePlatformRecoveryInputSchema, { userId: string; recoveryToken: string }>({
+    name: "identity-access.platform-admin.recovery.issue",
+    input: issuePlatformRecoveryInputSchema,
+    authorize: (principal) => { requireIdentityAdminActor(principal); },
+    execute: async ({ principal, input, transaction }) => {
+      const actor = requireIdentityAdminActor(principal);
+      const recoveryToken = randomBytes(32).toString("base64url");
+      const repository = dependencies.createRepository(transaction);
+      const issued = await repository.issuePlatformRecoveryToken({ userId: input.userId, tokenHash: createHash("sha256").update(recoveryToken).digest("hex"), expiresAt: new Date(Date.now() + 60 * 60 * 1000) });
+      if (!issued) throw new IdentityAdminError("USER_NOT_FOUND");
+      await repository.appendAudit({ actorId: actor.actorId, action: "platform-admin.recovery.issue", entityType: "User", entityId: input.userId, organizationId: null, beforeMarker: null, afterMarker: { expiresInMinutes: 60 }, correlationId: actor.correlationId });
+      return { userId: input.userId, recoveryToken };
     },
   });
 
@@ -318,6 +341,7 @@ export function createIdentityAdminCommands(
     createMembership,
     createOrganization,
     createUser,
+    issuePlatformRecovery,
     removeMembership,
     resetUserPassword,
     setUserEnabled,

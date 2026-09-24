@@ -18,7 +18,6 @@ describe("starter admin contracts", () => {
     expect(createUserInputSchema.parse({
       username: "member_1",
       name: "Member",
-      password: "Abc123!?",
       systemRole: "MEMBER",
     }).systemRole).toBe("MEMBER");
   });

@@ -24,7 +24,7 @@
     "test:integration": "node scripts/run-integration-tests.mjs",
     "derive:verify": "node scripts/verify-derivation.mjs",
     "test:security": "vitest run tests/principal.test.ts tests/starter-contracts.test.ts tests/pwa.test.ts",
-    "test:e2e": "pnpm build && pnpm test:e2e:run",
+    "test:e2e": "pnpm build && node scripts/run-e2e-tests.mjs",
     "test:e2e:run": "playwright test",
     "playwright:install": "playwright install chromium",
     "verify:quick": "pnpm verify:config && pnpm typecheck && pnpm lint && pnpm architecture:check",

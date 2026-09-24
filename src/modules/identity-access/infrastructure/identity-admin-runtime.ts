@@ -3,6 +3,8 @@ import type { DatabaseTransaction } from "../../../platform/database/transaction
 import { createIdentityAdminCommands } from "../application/identity-admin-commands.ts";
 import { createIdentityAdminQueries } from "../application/identity-admin-queries.ts";
 import { PrismaIdentityAdminRepository } from "./prisma-identity-admin-repository.ts";
+export { completeAccountSetup } from "../application/complete-account-setup.ts";
+export { completePlatformRecovery } from "../application/complete-platform-recovery.ts";
 
 const commands = createIdentityAdminCommands({
   createRepository(transaction: DatabaseTransaction) {
@@ -20,6 +22,7 @@ export const {
   createMembership,
   createOrganization,
   createUser,
+  issuePlatformRecovery,
   removeMembership,
   updateMembership,
   updateOrganization,

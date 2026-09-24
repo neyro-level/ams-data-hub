@@ -10,6 +10,8 @@ import type {
 
 export interface PrincipalFactoryOptions {
   correlationId?: string;
+  selectedOrganizationId?: string | null;
+  platformAdminMfaVerified?: boolean;
 }
 
 export interface PrincipalState {
@@ -28,6 +30,7 @@ export async function getPrincipalStateByUserId(
   userId: string,
   options: PrincipalFactoryOptions = {},
 ): Promise<PrincipalState | null> {
+  const now = new Date();
   const user = await getPrismaClient().user.findUnique({
     where: { id: userId },
     select: {
@@ -35,17 +38,23 @@ export async function getPrincipalStateByUserId(
       name: true,
       systemRole: true,
       disabledAt: true,
+      setupTokens: {
+        where: { consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+        select: { id: true },
+        take: 1,
+      },
       members: {
         orderBy: { organizationId: "asc" },
         select: { id: true, organizationId: true, tenantRole: true },
       },
     },
   });
-  if (!user || user.disabledAt) return null;
+  if (!user || user.disabledAt || user.setupTokens.length > 0) return null;
 
   const correlationId = options.correlationId ?? createCorrelationId();
   let principal: PrincipalContext;
   if (user.systemRole === "PLATFORM_ADMIN") {
+    if (!options.platformAdminMfaVerified) return null;
     principal = {
       kind: "platform-admin",
       userId: user.id,
@@ -54,7 +63,9 @@ export async function getPrincipalStateByUserId(
   } else if (user.systemRole === "STAFF") {
     principal = { kind: "platform-staff", userId: user.id, correlationId } satisfies PlatformStaffPrincipal;
   } else {
-    const selectedMembership = user.members[0];
+    const selectedMembership = options.selectedOrganizationId
+      ? user.members.find((membership) => membership.organizationId === options.selectedOrganizationId)
+      : user.members.length === 1 ? user.members[0] : null;
     if (!selectedMembership) return null;
     principal = {
       kind: "tenant-user",
