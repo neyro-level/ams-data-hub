@@ -9,6 +9,10 @@ policy; this file records the starter's detailed trust boundaries.
 - server actions require authenticated principal context;
 - tenant access requires both auth and resource authorization;
 - Platform Admin does not use fake tenant identity;
+- every protected request resolves a fresh server-owned principal; disabled,
+  revoked or expired access is denied on the next request;
+- membership and organization selection are revalidated server-side; an input
+  `organizationId` is never tenant-access proof;
 - external HTTP/email/AI/storage calls are outside business transactions.
 
 ## PII
@@ -26,3 +30,14 @@ Service worker skips `/api/*`, `/admin/*`, `/dashboard/*`, `/notifications/*`, a
 ## Secrets
 
 Secrets must stay in environment/secret manager, never in Git, docs, browser code, argv or logs.
+
+## Authentication Transition
+
+E02 makes Platform Admin authority conditional on verified TOTP and replaces
+permanent bootstrap passwords with one-time hashed setup and recovery material.
+Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins and proxy
+boundaries are exact; CSRF/origin protection stays enabled. Public errors and
+logs use safe codes and never reveal tokens, secrets or recovery material.
+
+The complete implementation/evidence contract is
+[`ADR-005`](adr/ADR-005-identity-platform-admin-hardening.md).

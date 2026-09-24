@@ -17,7 +17,26 @@ Public login modal redirects successful users to `/dashboard/`. Public signup is
 
 ## Provisioning
 
-Users can be created in Platform Admin or by operator CLI:
+E02 replaces the reusable bootstrap-password path with a one-time setup flow.
+Until E02 implementation is delivered, the commands below are transitional
+starter tooling only and must not be treated as a production provisioning
+contract.
+
+The target flow is:
+
+```text
+operator creates identity
+→ one-time hashed setup token
+→ user sets password
+→ token is consumed and siblings are revoked
+→ business principal becomes available
+```
+
+Platform Admin additionally requires verified TOTP for every authority-bearing
+session. A user with several memberships must explicitly select an active
+organization; selecting the first membership is forbidden.
+
+The current commands remain subject to the E02 transition contract:
 
 ```bash
 pnpm user:create -- --username <name> --name "<display name>" --system-role MEMBER
@@ -25,4 +44,5 @@ pnpm user:set-system-role -- --username <name> --system-role STAFF
 pnpm user:add-to-organization -- --username <name> --organization ams-start --tenant-role VIEWER
 ```
 
-Password is exactly 8 printable characters and must be passed through stdin only.
+Any temporary password is a migration fallback only, must be passed through
+stdin, and cannot bypass completion of one-time setup.
