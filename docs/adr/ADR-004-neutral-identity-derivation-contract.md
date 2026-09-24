@@ -30,8 +30,9 @@ must change before a copied project is prepared for commercial use.
 - The verifier must report every required unresolved starter token, example
   origin and legal `TODO:` record together; it must not silently accept a
   partially derived copy.
-- It may allow intentional neutral text only when the manifest marks the value
-  as a starter-only source token. A derived project has no implicit allowlist.
+- It may skip only its own verifier, test and contract documents, which are an
+  explicit fixed allowlist in the verifier. A derived product has no editable
+  or implicit allowlist for application, runtime, operation or legal files.
 - It operates on local source files and credential-free repository metadata;
   it never reads secrets, database URLs or production configuration.
 - The starter's ordinary checks remain neutral. The derived-copy check runs
