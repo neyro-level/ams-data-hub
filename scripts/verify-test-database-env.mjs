@@ -21,7 +21,7 @@ function requiredEnvironmentValue(environment, key) {
   return value;
 }
 
-export function readTestDatabaseTarget(environment = process.env) {
+export function readTestDatabaseTarget(environment = process.env, options = {}) {
   const missingKeys = requiredKeys.filter((key) => !environment[key]?.trim());
   if (missingKeys.length > 0) {
     throw new Error(`Missing isolated test database variables: ${missingKeys.join(", ")}`);
@@ -45,16 +45,24 @@ export function readTestDatabaseTarget(environment = process.env) {
   if (!database.endsWith("_test")) {
     throw new Error(`Unsafe test database name: ${database}. Expected a *_test database.`);
   }
-  if (database === environment.DATABASE_NAME?.trim()) {
-    throw new Error("Test and development database names must differ.");
-  }
-
   const user = requiredEnvironmentValue(environment, "TEST_DATABASE_USER");
   if (!/(^|_)test($|_)/i.test(user)) {
     throw new Error("Unsafe test database identity. Expected a dedicated test role.");
   }
-  if (user === environment.LOCAL_POSTGRES_USER.trim() || user === environment.DATABASE_USER?.trim()) {
+  if (user === environment.LOCAL_POSTGRES_USER.trim()) {
     throw new Error("Test and development database identities must differ.");
+  }
+
+  const applicationTargetIsCurrentTestTarget =
+    environment.DATABASE_NAME?.trim() === database &&
+    environment.DATABASE_USER?.trim() === user;
+  if (!options.allowApplicationTarget || !applicationTargetIsCurrentTestTarget) {
+    if (database === environment.DATABASE_NAME?.trim()) {
+      throw new Error("Test and development database names must differ.");
+    }
+    if (user === environment.DATABASE_USER?.trim()) {
+      throw new Error("Test and development database identities must differ.");
+    }
   }
 
   return {

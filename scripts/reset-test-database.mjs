@@ -1,7 +1,7 @@
 import pg from "pg";
 import { readTestDatabaseTarget } from "./verify-test-database-env.mjs";
 
-const target = readTestDatabaseTarget(process.env);
+const target = readTestDatabaseTarget(process.env, { allowApplicationTarget: true });
 const client = new pg.Client({
   host: target.host,
   port: target.port,

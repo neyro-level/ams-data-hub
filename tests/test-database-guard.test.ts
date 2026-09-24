@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { readTestDatabaseTarget } from "../scripts/verify-test-database-env.mjs";
 
 const guard = path.resolve("scripts/verify-test-database-env.mjs");
 
@@ -42,5 +43,29 @@ describe("isolated PostgreSQL test target guard", () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).not.toContain(safeEnvironment.TEST_DATABASE_PASSWORD);
     expect(result.stderr).not.toContain(safeEnvironment.TEST_DATABASE_PASSWORD);
+  });
+
+  it("allows the harness only when its application target exactly matches the guarded test target", () => {
+    expect(() =>
+      readTestDatabaseTarget(
+        {
+          ...safeEnvironment,
+          DATABASE_NAME: safeEnvironment.TEST_DATABASE_NAME,
+          DATABASE_USER: safeEnvironment.TEST_DATABASE_USER,
+        },
+        { allowApplicationTarget: true },
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      readTestDatabaseTarget(
+        {
+          ...safeEnvironment,
+          DATABASE_NAME: safeEnvironment.TEST_DATABASE_NAME,
+          DATABASE_USER: "ams_start_local",
+        },
+        { allowApplicationTarget: true },
+      ),
+    ).toThrow("Test and development database names must differ.");
   });
 });
