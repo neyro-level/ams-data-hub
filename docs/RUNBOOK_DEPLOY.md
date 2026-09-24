@@ -2,6 +2,8 @@
 
 `ams-microsaas-starter` is a copy-source template, not a production target. Do not create a domain, VPS, production database, production secrets, rehearsal or live deployment for this repository. Its `release-check`, Docker, Compose and ops files are reusable starting material only; they are not approved evidence for a real release.
 
+The E08 template contract separates build/runtime/migrator artifacts and binds a reviewed SHA to image and rollback digests. It is local reusable material, not a starter release route: see [`ADR-011`](adr/ADR-011-runtime-artifact-and-release-template.md).
+
 After copying the starter into a product-owned repository, a derived app should use this sequence:
 
 1. choose DELIVERY_PROFILE;
