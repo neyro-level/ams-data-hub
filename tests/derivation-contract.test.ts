@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const verifier = path.resolve("scripts/verify-derivation.mjs");
+const repositoryRoot = path.resolve(".");
 const temporaryRoots: string[] = [];
 
 function createDerivedFixture() {
@@ -38,6 +39,42 @@ function runVerifier(root: string) {
   });
 }
 
+function replaceStarterIdentity(value: string) {
+  return value
+    .replaceAll("https://ams-start.example", "https://atlas.example.com")
+    .replaceAll("ams-microsaas-starter", "atlas-portal")
+    .replaceAll("ams-start", "atlas-portal")
+    .replaceAll("АМС Старт", "Atlas Portal")
+    .replaceAll("TODO:", "Configured:");
+}
+
+function createCleanRoomDerivedCopy() {
+  const root = mkdtempSync(path.join(tmpdir(), "ams-derivation-clean-room-"));
+  temporaryRoots.push(root);
+  const files = execFileSync("git", ["ls-files", "-z"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  }).split("\0").filter(Boolean);
+
+  for (const relativePath of files) {
+    const destination = path.join(root, replaceStarterIdentity(relativePath));
+    mkdirSync(path.dirname(destination), { recursive: true });
+    const source = path.join(repositoryRoot, relativePath);
+    const contents = readFileSync(source);
+    if (contents.includes(0)) {
+      copyFileSync(source, destination);
+    } else {
+      writeFileSync(destination, replaceStarterIdentity(contents.toString("utf8")));
+    }
+  }
+
+  const manifestPath = path.join(root, "starter.identity.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.mode = "derived";
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  return root;
+}
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -62,5 +99,13 @@ describe("copy-source derivation verifier", () => {
     writeFileSync(manifestPath, JSON.stringify(manifest));
 
     expect(() => runVerifier(root)).toThrow(/identity\.legalOperatorEmail/);
+  });
+
+  it("passes a clean-room copied starter and rejects one restored source token", () => {
+    const root = createCleanRoomDerivedCopy();
+
+    expect(runVerifier(root)).toContain("derivation_identity=valid");
+    writeFileSync(path.join(root, "README.md"), ["ams", "start"].join("-"));
+    expect(() => runVerifier(root)).toThrow(/unresolved starter token/);
   });
 });
