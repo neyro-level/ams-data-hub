@@ -8,6 +8,7 @@ import {
   createOrganizationInputSchema,
   createUserInputSchema,
   IdentityAdminError,
+  issuePlatformRecoveryInputSchema,
   nextIdentityVersion,
   removeMembershipInputSchema,
   resetUserPasswordInputSchema,
@@ -87,6 +88,21 @@ export function createIdentityAdminCommands(
       if (!await repository.resetUserPassword(input.userId, passwordHash)) throw new IdentityAdminError("USER_NOT_FOUND");
       await repository.appendAudit({ actorId: actor.actorId, action: "user.password-reset", entityType: "User", entityId: input.userId, organizationId: null, beforeMarker: null, afterMarker: { sessionsRevoked: true }, correlationId: actor.correlationId });
       return { userId: input.userId };
+    },
+  });
+
+  const issuePlatformRecovery = defineCommand<PrincipalContext, typeof issuePlatformRecoveryInputSchema, { userId: string; recoveryToken: string }>({
+    name: "identity-access.platform-admin.recovery.issue",
+    input: issuePlatformRecoveryInputSchema,
+    authorize: (principal) => { requireIdentityAdminActor(principal); },
+    execute: async ({ principal, input, transaction }) => {
+      const actor = requireIdentityAdminActor(principal);
+      const recoveryToken = randomBytes(32).toString("base64url");
+      const repository = dependencies.createRepository(transaction);
+      const issued = await repository.issuePlatformRecoveryToken({ userId: input.userId, tokenHash: createHash("sha256").update(recoveryToken).digest("hex"), expiresAt: new Date(Date.now() + 60 * 60 * 1000) });
+      if (!issued) throw new IdentityAdminError("USER_NOT_FOUND");
+      await repository.appendAudit({ actorId: actor.actorId, action: "platform-admin.recovery.issue", entityType: "User", entityId: input.userId, organizationId: null, beforeMarker: null, afterMarker: { expiresInMinutes: 60 }, correlationId: actor.correlationId });
+      return { userId: input.userId, recoveryToken };
     },
   });
 
@@ -325,6 +341,7 @@ export function createIdentityAdminCommands(
     createMembership,
     createOrganization,
     createUser,
+    issuePlatformRecovery,
     removeMembership,
     resetUserPassword,
     setUserEnabled,

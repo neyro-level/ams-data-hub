@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { completeAccountSetup } from "../../src/modules/identity-access/application/complete-account-setup.ts";
+import { completePlatformRecovery } from "../../src/modules/identity-access/application/complete-platform-recovery.ts";
 import { getPrismaClient } from "../../src/platform/database/prisma/client.ts";
 
 const userId = "integration-account-setup-user";
@@ -44,5 +45,30 @@ describe("account setup token lifecycle", () => {
     expect(result.setupTokens.find((item) => item.tokenHash === tokenHash)?.consumedAt).not.toBeNull();
     expect(result.setupTokens.find((item) => item.tokenHash === "sibling-token-hash")?.revokedAt).not.toBeNull();
     expect(result.setupCompletedAt!.getTime()).toBeGreaterThanOrEqual(now.getTime());
+  });
+});
+
+describe("platform recovery token lifecycle", () => {
+  it("consumes recovery once and revokes sessions and the old second factor", async () => {
+    const prisma = getPrismaClient();
+    const recoveryToken = "integration-recovery-token-must-be-long-enough";
+    const tokenHash = createHash("sha256").update(recoveryToken).digest("hex");
+    await prisma.user.create({
+      data: {
+        id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", twoFactorEnabled: true,
+        accounts: { create: { id: "recovery-account", issuer: "credential", accountId: userId, providerId: "credential", password: "legacy" } },
+        sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000), twoFactorVerifiedAt: new Date() } },
+        twoFactors: { create: { id: "recovery-factor", secret: "secret", backupCodes: "[]" } },
+        recoveryTokens: { create: { tokenHash, expiresAt: new Date(Date.now() + 60_000) } },
+      },
+    });
+
+    await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toEqual({ userId });
+    await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { twoFactorEnabled: true, sessions: true, twoFactors: true, recoveryTokens: true } });
+    expect(result.twoFactorEnabled).toBe(false);
+    expect(result.sessions).toHaveLength(0);
+    expect(result.twoFactors).toHaveLength(0);
+    expect(result.recoveryTokens[0]?.consumedAt).not.toBeNull();
   });
 });

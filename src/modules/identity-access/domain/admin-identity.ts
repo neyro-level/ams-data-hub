@@ -48,6 +48,9 @@ export const completeAccountSetupInputSchema = z.object({
   password: z.string().min(12).max(128),
 });
 
+export const issuePlatformRecoveryInputSchema = z.object({ userId: identifierSchema });
+export const completePlatformRecoveryInputSchema = z.object({ token: z.string().trim().min(32).max(256), password: z.string().min(12).max(128) });
+
 export const setUserEnabledInputSchema = z.object({
   userId: identifierSchema,
   enabled: z.boolean(),
@@ -101,6 +104,8 @@ export type RemoveMembershipInput = z.infer<typeof removeMembershipInputSchema>;
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
 export type ResetUserPasswordInput = z.infer<typeof resetUserPasswordInputSchema>;
 export type CompleteAccountSetupInput = z.infer<typeof completeAccountSetupInputSchema>;
+export type IssuePlatformRecoveryInput = z.infer<typeof issuePlatformRecoveryInputSchema>;
+export type CompletePlatformRecoveryInput = z.infer<typeof completePlatformRecoveryInputSchema>;
 export type SetUserEnabledInput = z.infer<typeof setUserEnabledInputSchema>;
 
 export interface CreateUserResult {

@@ -339,6 +339,27 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     return token.userId;
   }
 
+  async issuePlatformRecoveryToken(input: { userId: string; tokenHash: string; expiresAt: Date }): Promise<boolean> {
+    const user = await this.prisma.user.findFirst({ where: { id: input.userId, systemRole: "PLATFORM_ADMIN", disabledAt: null }, select: { id: true } });
+    if (!user) return false;
+    await this.prisma.platformRecoveryToken.updateMany({ where: { userId: input.userId, consumedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.prisma.platformRecoveryToken.create({ data: input });
+    return true;
+  }
+
+  async completePlatformRecovery(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<string | null> {
+    const token = await this.prisma.platformRecoveryToken.findUnique({ where: { tokenHash: input.tokenHash }, select: { id: true, userId: true } });
+    if (!token) return null;
+    const consumed = await this.prisma.platformRecoveryToken.updateMany({ where: { id: token.id, consumedAt: null, revokedAt: null, expiresAt: { gt: input.now } }, data: { consumedAt: input.now } });
+    if (consumed.count !== 1) return null;
+    await this.prisma.account.updateMany({ where: { userId: token.userId, providerId: "credential" }, data: { password: input.passwordHash } });
+    await this.prisma.twoFactor.deleteMany({ where: { userId: token.userId } });
+    await this.prisma.user.update({ where: { id: token.userId }, data: { twoFactorEnabled: false } });
+    await this.prisma.platformRecoveryToken.updateMany({ where: { userId: token.userId, consumedAt: null, revokedAt: null }, data: { revokedAt: input.now } });
+    await this.prisma.session.deleteMany({ where: { userId: token.userId } });
+    return token.userId;
+  }
+
   async setUserEnabled(userId: string, enabled: boolean): Promise<boolean> {
     const result = await this.prisma.user.updateMany({
       where: { id: userId },
