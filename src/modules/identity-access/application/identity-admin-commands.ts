@@ -1,4 +1,5 @@
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
+import { createHash, randomBytes } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { defineCommand } from "../../../platform/commands/define-command.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
@@ -41,7 +42,7 @@ export interface IdentityAdminCommandDependencies {
 export function createIdentityAdminCommands(
   dependencies: IdentityAdminCommandDependencies,
 ) {
-  const createUser = defineCommand<PrincipalContext, typeof createUserInputSchema, { userId: string; membershipId: string | null }>({
+  const createUser = defineCommand<PrincipalContext, typeof createUserInputSchema, { userId: string; membershipId: string | null; setupToken: string }>({
     name: "identity-access.user.create",
     input: createUserInputSchema,
     authorize: (principal) => { requireIdentityAdminActor(principal); },
@@ -51,6 +52,12 @@ export function createIdentityAdminCommands(
       const { password, ...safeInput } = input;
       const passwordHash = await hashPassword(password);
       const result = await repository.createUser({ ...safeInput, passwordHash });
+      const setupToken = randomBytes(32).toString("base64url");
+      await repository.issueAccountSetupToken({
+        userId: result.userId,
+        tokenHash: createHash("sha256").update(setupToken).digest("hex"),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      });
       await repository.appendAudit({
         actorId: actor.actorId,
         action: "user.create",
@@ -65,7 +72,7 @@ export function createIdentityAdminCommands(
         },
         correlationId: actor.correlationId,
       });
-      return result;
+      return { ...result, setupToken };
     },
   });
 

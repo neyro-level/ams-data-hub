@@ -307,6 +307,14 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     return account.count === 1;
   }
 
+  async issueAccountSetupToken(input: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await this.prisma.accountSetupToken.updateMany({
+      where: { userId: input.userId, consumedAt: null, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.prisma.accountSetupToken.create({ data: input });
+  }
+
   async setUserEnabled(userId: string, enabled: boolean): Promise<boolean> {
     const result = await this.prisma.user.updateMany({
       where: { id: userId },

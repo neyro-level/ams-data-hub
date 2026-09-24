@@ -49,6 +49,7 @@ export interface IdentityAdminRepository {
   listFormOptions(): Promise<IdentityAdminFormOptions>;
   listUsers(): Promise<IdentityAdminUserListItem[]>;
   createUser(input: CreateUserPersistenceInput): Promise<CreateUserResult>;
+  issueAccountSetupToken(input: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void>;
   resetUserPassword(userId: string, passwordHash: string): Promise<boolean>;
   setUserEnabled(userId: string, enabled: boolean): Promise<boolean>;
   createOrganization(input: CreateOrganizationInput): Promise<{ id: string; version: number }>;
