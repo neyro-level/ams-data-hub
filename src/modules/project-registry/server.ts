@@ -3,8 +3,10 @@ import "server-only";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client.ts";
 import type { PrincipalContext } from "../../platform/authorization/principal.ts";
 import { requirePlatformAdmin } from "../../platform/authorization/principal-factories.ts";
-import { getPrismaClient } from "../../platform/database/prisma/client.ts";
-import type { DatabaseTransaction } from "../../platform/database/transaction.ts";
+import {
+  runInPrincipalDatabaseTransaction,
+  type DatabaseTransaction,
+} from "../../platform/database/transaction.ts";
 import {
   createProjectInputSchema,
   updateProjectInputSchema,
@@ -64,7 +66,7 @@ function translateProjectWriteError(error: unknown): never {
 }
 
 class ProjectRegistryRepository {
-  constructor(private readonly prisma: PrismaStore = getPrismaClient()) {}
+  constructor(private readonly prisma: PrismaStore) {}
 
   async listProjects(query: ProjectListQuery): Promise<ProjectListResult> {
     const where = projectWhere(query.search);
@@ -187,79 +189,89 @@ function requireProjectAdmin(principal: PrincipalContext) {
 
 export async function listProjects(principal: PrincipalContext, query: ProjectListQuery) {
   requireProjectAdmin(principal);
-  return new ProjectRegistryRepository().listProjects(query);
+  return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+    new ProjectRegistryRepository(transaction).listProjects(query),
+  );
 }
 
 export async function getProjectRegistryFormOptions(principal: PrincipalContext) {
   requireProjectAdmin(principal);
-  return new ProjectRegistryRepository().listFormOptions();
+  return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+    new ProjectRegistryRepository(transaction).listFormOptions(),
+  );
 }
 
 export async function createProject(principal: PrincipalContext, rawInput: CreateProjectInput) {
   const actor = requireProjectAdmin(principal);
   const input = createProjectInputSchema.parse(rawInput);
-  const repository = new ProjectRegistryRepository();
-  const project = await repository.createProject(input);
-  await repository.appendAudit({
-    actorId: actor.userId,
-    action: "project.create",
-    entityId: project.id,
-    organizationId: input.organizationId,
-    beforeMarker: null,
-    afterMarker: { name: input.name, slug: input.slug, status: input.status, version: project.version },
-    correlationId: actor.correlationId,
+  return runInPrincipalDatabaseTransaction(principal, async (transaction) => {
+    const repository = new ProjectRegistryRepository(transaction);
+    const project = await repository.createProject(input);
+    await repository.appendAudit({
+      actorId: actor.userId,
+      action: "project.create",
+      entityId: project.id,
+      organizationId: input.organizationId,
+      beforeMarker: null,
+      afterMarker: { name: input.name, slug: input.slug, status: input.status, version: project.version },
+      correlationId: actor.correlationId,
+    });
+    return { projectId: project.id, version: project.version };
   });
-  return { projectId: project.id, version: project.version };
 }
 
 export async function updateProject(principal: PrincipalContext, rawInput: UpdateProjectInput) {
   const actor = requireProjectAdmin(principal);
   const input = updateProjectInputSchema.parse(rawInput);
-  const repository = new ProjectRegistryRepository();
-  const project = await repository.findProjectForAction(input.projectId);
-  if (!project || project.version !== input.version || project.organizationId !== input.organizationId) {
-    throw new Error("PROJECT_NOT_FOUND_OR_STALE");
-  }
-  const updated = await repository.updateProject(input);
-  if (!updated) throw new Error("PROJECT_NOT_FOUND_OR_STALE");
-  const version = input.version + 1;
-  await repository.appendAudit({
-    actorId: actor.userId,
-    action: "project.update",
-    entityId: input.projectId,
-    organizationId: input.organizationId,
-    beforeMarker: {
-      name: project.name,
-      slug: project.slug,
-      description: project.description,
-      status: project.status,
-      version: project.version,
-    },
-    afterMarker: {
-      name: input.name,
-      slug: input.slug,
-      description: input.description || null,
-      status: input.status,
-      version,
-    },
-    correlationId: actor.correlationId,
+  return runInPrincipalDatabaseTransaction(principal, async (transaction) => {
+    const repository = new ProjectRegistryRepository(transaction);
+    const project = await repository.findProjectForAction(input.projectId);
+    if (!project || project.version !== input.version || project.organizationId !== input.organizationId) {
+      throw new Error("PROJECT_NOT_FOUND_OR_STALE");
+    }
+    const updated = await repository.updateProject(input);
+    if (!updated) throw new Error("PROJECT_NOT_FOUND_OR_STALE");
+    const version = input.version + 1;
+    await repository.appendAudit({
+      actorId: actor.userId,
+      action: "project.update",
+      entityId: input.projectId,
+      organizationId: input.organizationId,
+      beforeMarker: {
+        name: project.name,
+        slug: project.slug,
+        description: project.description,
+        status: project.status,
+        version: project.version,
+      },
+      afterMarker: {
+        name: input.name,
+        slug: input.slug,
+        description: input.description || null,
+        status: input.status,
+        version,
+      },
+      correlationId: actor.correlationId,
+    });
+    return { projectId: input.projectId, version };
   });
-  return { projectId: input.projectId, version };
 }
 
 export async function listProjectTreesForUser(principal: PrincipalContext) {
-  if (principal.kind === "platform-admin" || principal.kind === "platform-staff") {
-    return getPrismaClient().project.findMany({
-      orderBy: [{ organization: { name: "asc" } }, { name: "asc" }],
+  return runInPrincipalDatabaseTransaction(principal, (transaction) => {
+    if (principal.kind === "platform-admin" || principal.kind === "platform-staff") {
+      return transaction.project.findMany({
+        orderBy: [{ organization: { name: "asc" } }, { name: "asc" }],
+        take: 100,
+        select: { id: true, slug: true, name: true, organization: { select: { slug: true, name: true } } },
+      });
+    }
+    if (principal.kind !== "tenant-user") return Promise.resolve([]);
+    return transaction.project.findMany({
+      where: { organizationId: principal.organizationId },
+      orderBy: { name: "asc" },
       take: 100,
       select: { id: true, slug: true, name: true, organization: { select: { slug: true, name: true } } },
     });
-  }
-  if (principal.kind !== "tenant-user") return [];
-  return getPrismaClient().project.findMany({
-    where: { organizationId: principal.organizationId },
-    orderBy: { name: "asc" },
-    take: 100,
-    select: { id: true, slug: true, name: true, organization: { select: { slug: true, name: true } } },
   });
 }

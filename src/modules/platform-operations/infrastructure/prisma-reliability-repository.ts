@@ -5,7 +5,10 @@ import {
   OutboxStatus,
   Prisma,
 } from "../../../generated/prisma/client.ts";
-import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
+import {
+  runInPrincipalDatabaseTransaction,
+  runInSystemJobDatabaseTransaction,
+} from "../../../platform/database/transaction.ts";
 import type {
   ClaimReliabilityEventInput,
   ClaimedReliabilityEvent,
@@ -55,7 +58,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
   async enqueueEvent(
     input: EnqueueReliabilityEventInput,
   ): Promise<EnqueueReliabilityEventResult> {
-    const prisma = getPrismaClient();
+    const { principal } = input;
     const uniqueWhere = {
       scope_organizationScope_key: {
         scope: input.idempotencyScope,
@@ -65,7 +68,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
     };
 
     try {
-      return await prisma.$transaction(async (transaction) => {
+      return await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
         const existing = await transaction.idempotencyKey.findUnique({
           where: uniqueWhere,
           select: { requestHash: true, outboxEventId: true },
@@ -137,10 +140,12 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         throw error;
       }
 
-      const existing = await prisma.idempotencyKey.findUnique({
-        where: uniqueWhere,
-        select: { requestHash: true, outboxEventId: true },
-      });
+      const existing = await runInPrincipalDatabaseTransaction(principal, (transaction) =>
+        transaction.idempotencyKey.findUnique({
+          where: uniqueWhere,
+          select: { requestHash: true, outboxEventId: true },
+        }),
+      );
       if (!existing || existing.requestHash !== input.requestHash) {
         throw reliabilityError(
           "IDEMPOTENCY_KEY_REUSED",
@@ -160,7 +165,9 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
     const now = new Date(input.now);
     const expiredLease = new Date(now.getTime() - input.leaseTimeoutMs);
 
-    return getPrismaClient().$transaction(async (transaction) => {
+    return runInSystemJobDatabaseTransaction(
+      { jobName: "outbox-claim", correlationId: `outbox-claim-${input.workerId}-${input.now}` },
+      async (transaction) => {
       const claimable = {
         OR: [
           { status: OutboxStatus.PENDING, availableAt: { lte: now } },
@@ -221,14 +228,17 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         jobRun.id,
         input.workerId,
       );
-    });
+      },
+    );
   }
 
   async takeOverEvent(
     input: TakeOverReliabilityEventInput,
   ): Promise<ClaimedReliabilityEvent | null> {
     const now = new Date(input.now);
-    return getPrismaClient().$transaction(async (transaction) => {
+    return runInSystemJobDatabaseTransaction(
+      { jobName: "outbox-takeover", correlationId: `outbox-takeover-${input.workerId}-${input.now}` },
+      async (transaction) => {
       const event = await transaction.outboxEvent.findFirst({
         where: {
           id: input.outboxEventId,
@@ -273,11 +283,14 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         return null;
       }
       return toClaimedEvent(event, input.jobRunId, input.workerId);
-    });
+      },
+    );
   }
 
   async completeEvent(input: CompleteReliabilityEventInput): Promise<void> {
-    await getPrismaClient().$transaction(async (transaction) => {
+    await runInSystemJobDatabaseTransaction(
+      { jobName: "outbox-complete", correlationId: `outbox-complete-${input.workerId}-${input.finishedAt}` },
+      async (transaction) => {
       const event = await transaction.outboxEvent.updateMany({
         where: {
           id: input.outboxEventId,
@@ -308,11 +321,14 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       if (event.count !== 1 || job.count !== 1) {
         throw reliabilityError("OUTBOX_LEASE_LOST", "Outbox lease ownership was lost");
       }
-    });
+      },
+    );
   }
 
   async failEvent(input: FailReliabilityEventInput): Promise<FailReliabilityEventResult> {
-    return getPrismaClient().$transaction(async (transaction) => {
+    return runInSystemJobDatabaseTransaction(
+      { jobName: "outbox-fail", correlationId: `outbox-fail-${input.workerId}-${input.finishedAt}` },
+      async (transaction) => {
       const event = await transaction.outboxEvent.findFirst({
         where: {
           id: input.outboxEventId,
@@ -363,7 +379,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       }
       if (terminal) {
         await transaction.notification.createMany({
-          data: [{ organizationId: event.organizationId, category: "QUEUE", severity: "ERROR", visibility: "PLATFORM_ADMIN_ONLY", title: "Задание остановлено", message: `Задание ${event.topic} помещено в dead letter. Код: ${input.safeErrorCode}`, route: "/admin/operations/", sourceType: "OutboxEvent", sourceId: input.outboxEventId, dedupKey: `outbox-dead:${input.outboxEventId}`, occurredAt: new Date(input.finishedAt) }],
+          data: [{ organizationId: null, category: "QUEUE", severity: "ERROR", visibility: "PLATFORM_ADMIN_ONLY", title: "Задание остановлено", message: `Задание ${event.topic} помещено в dead letter. Код: ${input.safeErrorCode}`, route: "/admin/operations/", sourceType: "OutboxEvent", sourceId: input.outboxEventId, dedupKey: `outbox-dead:${input.outboxEventId}`, occurredAt: new Date(input.finishedAt) }],
           skipDuplicates: true,
         });
       }
@@ -372,15 +388,19 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         status: terminal ? "dead_letter" : "pending",
         availableAt: availableAt?.toISOString() ?? null,
       };
-    });
+      },
+    );
   }
 
   async getOutboxHealth(): Promise<OutboxHealth> {
-    const [pending, processing, deadLetter] = await Promise.all([
-      getPrismaClient().outboxEvent.count({ where: { status: OutboxStatus.PENDING } }),
-      getPrismaClient().outboxEvent.count({ where: { status: OutboxStatus.PROCESSING } }),
-      getPrismaClient().outboxEvent.count({ where: { status: OutboxStatus.DEAD_LETTER } }),
-    ]);
+    const [pending, processing, deadLetter] = await runInSystemJobDatabaseTransaction(
+      { jobName: "outbox-health", correlationId: `outbox-health-${Date.now()}` },
+      (transaction) => Promise.all([
+        transaction.outboxEvent.count({ where: { status: OutboxStatus.PENDING } }),
+        transaction.outboxEvent.count({ where: { status: OutboxStatus.PROCESSING } }),
+        transaction.outboxEvent.count({ where: { status: OutboxStatus.DEAD_LETTER } }),
+      ]),
+    );
     return { pending, processing, deadLetter };
   }
 }

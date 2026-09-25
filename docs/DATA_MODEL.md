@@ -27,4 +27,10 @@ Prisma schema is the runtime source of truth.
 
 ## Migration Policy
 
-Starter baseline is a single initial migration because there is no production database. A derived production product must stop squashing applied migrations.
+The neutral initial migration is followed by forward hardening migrations while
+this starter has no production database. A derived production product must stop
+squashing applied migrations.
+
+## Tenant Isolation Transition
+
+E03 treats `Organization`, `Member`, `Project`, tenant-scoped notifications, audit, idempotency and async records as an explicit PostgreSQL RLS coverage inventory. A model with tenant data is incomplete until it has a coverage entry, policy and isolation test. The definitive transaction-context, role and composite-key contract is [`ADR-006`](adr/ADR-006-postgresql-tenant-isolation.md).

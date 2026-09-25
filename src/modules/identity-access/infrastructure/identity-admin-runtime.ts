@@ -1,4 +1,3 @@
-import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { createIdentityAdminCommands } from "../application/identity-admin-commands.ts";
 import { createIdentityAdminQueries } from "../application/identity-admin-queries.ts";
@@ -13,8 +12,8 @@ const commands = createIdentityAdminCommands({
 });
 
 const queries = createIdentityAdminQueries({
-  createRepository() {
-    return new PrismaIdentityAdminRepository(getPrismaClient());
+  createRepository(transaction: DatabaseTransaction) {
+    return new PrismaIdentityAdminRepository(transaction);
   },
 });
 

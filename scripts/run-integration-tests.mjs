@@ -37,6 +37,7 @@ let cleanupStarted = false;
 try {
   runNodeScript("scripts/reset-test-database.mjs");
   cleanupStarted = true;
+  runNodeScript("scripts/prepare-rls-test-identities.mjs");
   runNodeScript("node_modules/prisma/build/index.js", ["generate"]);
   runNodeScript("node_modules/prisma/build/index.js", ["migrate", "deploy"]);
   runNodeScript("scripts/pgboss-migrate.mjs");

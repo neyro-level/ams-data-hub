@@ -144,7 +144,7 @@ export default async function AdminResourcePageRoute({
 
   if (resource === "organizations") {
     const [summary, result] = await Promise.all([
-      getPlatformAdminDashboardSummary(),
+      getPlatformAdminDashboardSummary(state.principal),
       listOrganizations(state.principal, listQuery),
     ]);
     const rows: PlatformAdminDisplayRow[] = result.items.map((item) => ({
@@ -170,7 +170,7 @@ export default async function AdminResourcePageRoute({
 
   if (resource === "memberships") {
     const [summary, result, options, users] = await Promise.all([
-      getPlatformAdminDashboardSummary(),
+      getPlatformAdminDashboardSummary(state.principal),
       listMemberships(state.principal, listQuery),
       getIdentityAdminFormOptions(state.principal),
       listUsers(state.principal),
@@ -199,7 +199,7 @@ export default async function AdminResourcePageRoute({
 
   if (resource === "projects") {
     const [summary, result, options] = await Promise.all([
-      getPlatformAdminDashboardSummary(),
+      getPlatformAdminDashboardSummary(state.principal),
       listProjects(state.principal, listQuery),
       getProjectRegistryFormOptions(state.principal),
     ]);
@@ -226,7 +226,7 @@ export default async function AdminResourcePageRoute({
 
   if (resource === "operations") {
     const [summary, result] = await Promise.all([
-      getPlatformAdminDashboardSummary(),
+      getPlatformAdminDashboardSummary(state.principal),
       listOperations(state.principal, listQuery),
     ]);
     const rows: PlatformAdminDisplayRow[] = result.items.map((item) => ({

@@ -1,4 +1,4 @@
-import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
+import { runInPrincipalDatabaseTransaction } from "../../../platform/database/transaction.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import { ReliabilityService } from "../application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "./prisma-reliability-repository.ts";
@@ -40,19 +40,20 @@ export async function listOperations(
   query: PlatformAdminListQuery,
 ): Promise<OperationListResult> {
   requirePlatformAdmin(principal);
-  const prisma = getPrismaClient();
-  const outboxEvents = await prisma.outboxEvent.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 200,
-    select: {
-      id: true,
-      topic: true,
-      status: true,
-      attempts: true,
-      lastErrorCode: true,
-      updatedAt: true,
-    },
-  });
+  const outboxEvents = await runInPrincipalDatabaseTransaction(principal, (transaction) =>
+    transaction.outboxEvent.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        topic: true,
+        status: true,
+        attempts: true,
+        lastErrorCode: true,
+        updatedAt: true,
+      },
+    }),
+  );
 
   const search = query.search.toLocaleLowerCase("ru");
   const rows = outboxEvents
@@ -91,7 +92,7 @@ export async function requestMaintenance(
 ) {
   const actor = requirePlatformAdmin(principal);
   const input = requestMaintenanceInputSchema.parse(rawInput);
-  const result = await reliabilityService.enqueue({
+  const result = await reliabilityService.enqueue(principal, {
     organizationId: null,
     organizationScope: "platform",
     idempotencyScope: "platform-admin.maintenance",
