@@ -1,4 +1,5 @@
-const CACHE_NAME = "ams-start-shell-v1";
+const CACHE_PREFIX = "ams-start-shell-";
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const SHELL_ASSETS = ["/", "/offline/", "/ams-start-icon.svg", "/ams-favicon.svg"];
 const PRIVATE_PATH_PREFIXES = [
   "/api/",
@@ -25,7 +26,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((names) =>
-        Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))),
+        Promise.all(names.filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME).map((name) => caches.delete(name))),
       ),
   );
   self.clients.claim();
@@ -50,6 +51,7 @@ self.addEventListener("fetch", (event) => {
       caches.match(request).then((cached) =>
         cached ??
         fetch(request).then((response) => {
+          if (!response.ok || response.headers.get("Cache-Control")?.includes("no-store")) return response;
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           return response;

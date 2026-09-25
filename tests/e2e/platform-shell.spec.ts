@@ -28,6 +28,11 @@ test("offline page is available", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /Откройте страницу снова/ })).toBeVisible();
 });
 
+test("API responses are not cacheable", async ({ page }) => {
+  const response = await page.request.get("/api/health/live");
+  expect(response.headers()["cache-control"]).toContain("no-store");
+});
+
 test("authentication endpoint throttles repeated invalid credentials", async ({ page }, testInfo) => {
   const username = `missing_${testInfo.project.name.replace(/[^a-z0-9]/gi, "_")}`;
   const responses = [];

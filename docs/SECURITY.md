@@ -27,6 +27,8 @@ The visual form is kept, but delivery is disabled by default. It sends only when
 
 Service worker skips `/api/*`, `/admin/*`, `/dashboard/*`, `/notifications/*`, auth/session routes and non-GET requests. It caches only public shell/static assets.
 
+E09 formalizes route-aware cache/error/log safeguards in [`ADR-012`](adr/ADR-012-ui-pwa-error-observability-safety.md).
+
 ## Secrets
 
 Secrets must stay in environment/secret manager, never in Git, docs, browser code, argv or logs.

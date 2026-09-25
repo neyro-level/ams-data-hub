@@ -17,5 +17,7 @@ describe("PWA baseline", () => {
       expect(source).toContain(privatePath);
     }
     expect(source).toContain("isPrivateRequest(url)");
+    expect(source).toContain("CACHE_PREFIX");
+    expect(source).toContain("response.ok");
   });
 });
