@@ -57,6 +57,7 @@
     "security:dependencies": "pnpm audit --prod --audit-level high",
     "worker:module-smoke": "tsx src/worker/main.ts module-smoke",
     "worker:maintenance-smoke": "tsx src/worker/main.ts maintenance-smoke",
+    "worker:outbox": "tsx src/worker/main.ts outbox-worker",
     "worker:outbox:drain": "tsx src/worker/main.ts outbox-drain",
     "worker:outbox:retention": "tsx src/worker/main.ts outbox-retention"
   },

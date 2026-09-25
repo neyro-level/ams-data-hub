@@ -35,11 +35,12 @@ function toClaimedEvent(event: {
   correlationId: string;
   schemaVersion: number;
   occurredAt: Date;
-}, jobRunId: string, workerId: string): ClaimedReliabilityEvent {
+}, jobRunId: string, workerId: string, leaseAcquiredAt: Date): ClaimedReliabilityEvent {
   return {
     outboxEventId: event.id,
     jobRunId,
     workerId,
+    leaseAcquiredAt: leaseAcquiredAt.toISOString(),
     organizationId: event.organizationId,
     topic: event.topic,
     payload: event.payload as Record<string, unknown>,
@@ -83,7 +84,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
     if (existing) {
       if (existing.requestHash !== input.requestHash) {
         throw reliabilityError(
-          "IDEMPOTENCY_KEY_REUSED",
+          "IDEMPOTENCY_CONFLICT",
           "Idempotency key was reused with a different request",
         );
       }
@@ -189,6 +190,18 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         return null;
       }
 
+      await transaction.jobRun.updateMany({
+        where: {
+          outboxEventId: candidate.id,
+          status: JobRunStatus.RUNNING,
+        },
+        data: {
+          status: JobRunStatus.FAILED,
+          finishedAt: now,
+          safeErrorCode: "OUTBOX_LEASE_EXPIRED",
+        },
+      });
+
       const attempt = candidate.attempts + 1;
       const jobRun = await transaction.jobRun.create({
         data: {
@@ -211,6 +224,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         },
         jobRun.id,
         input.workerId,
+        now,
       );
       },
     );
@@ -220,13 +234,17 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
     input: TakeOverReliabilityEventInput,
   ): Promise<ClaimedReliabilityEvent | null> {
     const now = new Date(input.now);
-    return runInSystemJobDatabaseTransaction(
+    try {
+      return await runInSystemJobDatabaseTransaction(
       { jobName: "outbox-takeover", correlationId: `outbox-takeover-${input.workerId}-${input.now}` },
       async (transaction) => {
       const event = await transaction.outboxEvent.findFirst({
         where: {
           id: input.outboxEventId,
           status: OutboxStatus.PROCESSING,
+          attempts: input.expectedAttempt,
+          lockedBy: input.expectedWorkerId,
+          lockedAt: new Date(input.expectedLeaseAcquiredAt),
         },
         select: {
           id: true,
@@ -246,6 +264,9 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         where: {
           id: input.outboxEventId,
           status: OutboxStatus.PROCESSING,
+          attempts: input.expectedAttempt,
+          lockedBy: input.expectedWorkerId,
+          lockedAt: new Date(input.expectedLeaseAcquiredAt),
         },
         data: {
           lockedAt: now,
@@ -256,6 +277,8 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         where: {
           id: input.jobRunId,
           outboxEventId: input.outboxEventId,
+          attempt: input.expectedAttempt,
+          workerId: input.expectedWorkerId,
           status: JobRunStatus.RUNNING,
         },
         data: {
@@ -264,11 +287,22 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
         },
       });
       if (updatedEvent.count !== 1 || updatedJob.count !== 1) {
+        throw reliabilityError("OUTBOX_TAKEOVER_LOST", "Outbox takeover precondition was lost");
+      }
+      return toClaimedEvent(event, input.jobRunId, input.workerId, now);
+      },
+      );
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "OUTBOX_TAKEOVER_LOST"
+      ) {
         return null;
       }
-      return toClaimedEvent(event, input.jobRunId, input.workerId);
-      },
-    );
+      throw error;
+    }
   }
 
   async completeEvent(input: CompleteReliabilityEventInput): Promise<void> {
@@ -280,6 +314,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
           id: input.outboxEventId,
           status: OutboxStatus.PROCESSING,
           lockedBy: input.workerId,
+          lockedAt: new Date(input.leaseAcquiredAt),
         },
         data: {
           status: OutboxStatus.PROCESSED,
@@ -318,6 +353,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
           id: input.outboxEventId,
           status: OutboxStatus.PROCESSING,
           lockedBy: input.workerId,
+          lockedAt: new Date(input.leaseAcquiredAt),
         },
         select: { attempts: true, organizationId: true, topic: true },
       });
@@ -336,6 +372,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
           id: input.outboxEventId,
           status: OutboxStatus.PROCESSING,
           lockedBy: input.workerId,
+          lockedAt: new Date(input.leaseAcquiredAt),
         },
         data: {
           status: terminal ? OutboxStatus.DEAD_LETTER : OutboxStatus.PENDING,

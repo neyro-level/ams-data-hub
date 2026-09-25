@@ -48,7 +48,12 @@ switch (mode) {
     await run(process.execPath, [".next/standalone/server.js"]);
     break;
   case "outbox-worker":
-    await run(process.execPath, ["scripts/worker-daemon.mjs"]);
+    await run(process.execPath, [
+      "node_modules/tsx/dist/cli.mjs",
+      "src/worker/main.ts",
+      "outbox-worker",
+      args[0] ?? process.env.OUTBOX_WORKER_ID ?? `ams-start-outbox-${process.pid}`,
+    ]);
     break;
   case "outbox-drain":
     await run(process.execPath, [

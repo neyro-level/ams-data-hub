@@ -58,3 +58,10 @@ E04 requires a fresh server principal, authorization and one transaction for
 every business mutation. Audit/outbox/idempotency records share that transaction;
 safe public errors carry a correlation ID, while raw persistence details stay
 server-side. The complete rule is [`ADR-007`](adr/ADR-007-command-atomicity-and-repository-boundary.md).
+
+## Async Transition
+
+E05 queue payloads are untrusted, validated again by the worker, versioned and
+free of secrets or unnecessary PII. Runtime worker access is a separate
+non-owner database identity; external effects happen only after commit. See
+[`ADR-008`](adr/ADR-008-outbox-plus-queue-reliability.md).

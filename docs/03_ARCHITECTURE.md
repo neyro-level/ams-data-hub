@@ -58,9 +58,10 @@ RLS is an additional PostgreSQL protection layer, not a replacement for
 authorization; its policy and runtime-role design are implemented in E03.
 
 `outbox-plus-queue` is retained because durable business delivery, replay and
-integration journaling are target guarantees. A derived product does not start
-a worker until it introduces a real async contract. Outbox payloads are
-minimal, versioned and secret/PII-safe; external delivery is after commit.
+integration journaling are target guarantees. The starter ships a neutral,
+disabled-by-deployment worker foundation; a derived product enables it only
+after adding an owned async consumer contract. Outbox payloads are minimal,
+versioned and secret/PII-safe; external delivery is after commit.
 
 ## PII lifecycle
 

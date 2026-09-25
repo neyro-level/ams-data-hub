@@ -138,6 +138,9 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: workerSchema.parse(workerId),
+      expectedWorkerId: event.workerId,
+      expectedLeaseAcquiredAt: event.leaseAcquiredAt,
+      expectedAttempt: event.attempt,
       now: this.now().toISOString(),
     });
   }
@@ -147,6 +150,7 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: event.workerId,
+      leaseAcquiredAt: event.leaseAcquiredAt,
       finishedAt: this.now().toISOString(),
     });
   }
@@ -161,6 +165,7 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: event.workerId,
+      leaseAcquiredAt: event.leaseAcquiredAt,
       finishedAt: this.now().toISOString(),
       safeErrorCode: safeErrorCodeSchema.parse(safeErrorCode),
       retryable,

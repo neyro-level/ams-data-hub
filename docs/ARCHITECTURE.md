@@ -49,6 +49,13 @@ The normative contract is [`ADR-007`](adr/ADR-007-command-atomicity-and-reposito
 - outbox + pg-boss compatible worker boundary;
 - Docker standalone image for production packaging.
 
+## Async Reliability Transition
+
+E05 preserves `outbox-plus-queue`: a command atomically records a neutral,
+versioned outbox event, while a separate worker owns at-least-once delivery,
+leases, retries, dead-letter visibility, heartbeat and retention. The full
+contract is [`ADR-008`](adr/ADR-008-outbox-plus-queue-reliability.md).
+
 ## PWA
 
 The app is installable in browser standalone mode. Service worker caches only public shell/static assets and explicitly skips private routes and API requests.
