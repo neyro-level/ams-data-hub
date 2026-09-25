@@ -22,11 +22,13 @@
 | `ENVIRONMENT.md` | variable registry without values | Active extension |
 | `RUNBOOK_DEPLOY.md`, `ops/*` | reusable local/recovery/deploy procedures | Active extension |
 | `EXTERNAL_SITE_DESIGN_SYSTEM.md`, `INTERNAL_DASHBOARD_DESIGN_SYSTEM.md` | detailed public/private surface rules | Active extension |
+| `MASTER_PLAN.md`, `MASTER_PLAN.inventory.json` | approved Task Manager execution graph and import inventory | Active execution artifacts |
 
-`PRODUCT.md`, `ARCHITECTURE.md` and `MASTER_PLAN.md` are retained only as
-legacy reading aids and are superseded by the numbered canon above. Task Manager
-stores execution state locally in `.beads`; it does not replace the canonical
-backlog.
+`PRODUCT.md` and `ARCHITECTURE.md` are retained only as legacy reading aids and
+are superseded by the numbered canon above. `MASTER_PLAN.md` does not replace
+the product backlog: it is the approved execution graph for this finite
+hardening program. Task Manager stores mutable execution state locally in
+`.beads`.
 
 Starter does not contain an industry vertical. Domain model, integrations,
 pricing, legal texts and production topology belong to a derived repository.

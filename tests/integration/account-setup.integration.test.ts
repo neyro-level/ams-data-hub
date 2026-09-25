@@ -98,6 +98,23 @@ describe("fresh principal enforcement", () => {
       principal: { kind: "platform-admin", userId },
     });
 
+    await prisma.accountSetupToken.create({
+      data: {
+        userId,
+        tokenHash: "fresh-principal-setup-gate",
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await prisma.accountSetupToken.updateMany({
+      where: { userId },
+      data: { revokedAt: new Date() },
+    });
+
+    await prisma.user.update({ where: { id: userId }, data: { disabledAt: new Date() } });
+    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await prisma.user.update({ where: { id: userId }, data: { disabledAt: null } });
+
     await prisma.user.update({ where: { id: userId }, data: { systemRole: "MEMBER" } });
     await prisma.member.createMany({
       data: [

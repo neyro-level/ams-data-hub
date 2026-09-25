@@ -5,7 +5,7 @@ import type { ProjectAuditInput } from "../../src/modules/project-registry/appli
 import { createProjectRegistryCommands } from "../../src/modules/project-registry/application/project-registry-commands.ts";
 import { PrismaProjectRegistryRepository } from "../../src/modules/project-registry/infrastructure/prisma-project-registry-repository.ts";
 import { requestMaintenance } from "../../src/modules/platform-operations/server.ts";
-import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
+import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
 function platformAdmin(): PlatformAdminPrincipal {
@@ -24,6 +24,35 @@ class FailingAuditProjectRepository extends PrismaProjectRegistryRepository {
 }
 
 describe("E04 command atomicity", () => {
+  it("rejects an unauthorized command before persistence", async () => {
+    const suffix = randomUUID().slice(0, 12);
+    const principal: TenantUserPrincipal = {
+      kind: "tenant-user",
+      userId: `e04-tenant-${suffix}`,
+      organizationId: `e04-org-${suffix}`,
+      membershipId: `e04-membership-${suffix}`,
+      role: "ORG_OWNER",
+      correlationId: randomUUID(),
+    };
+    const slug = `e04-unauthorized-${suffix}`;
+
+    const commands = createProjectRegistryCommands({
+      createRepository: (transaction) => new PrismaProjectRegistryRepository(transaction),
+    });
+    await expect(commands.createProject(principal, {
+      organizationId: principal.organizationId,
+      slug,
+      name: "Must not persist",
+      description: "Authorization precedes persistence",
+      status: "ACTIVE",
+    })).rejects.toThrow("PROJECT_REGISTRY_ADMIN_ACCESS_DENIED");
+
+    const count = await runInPrincipalDatabaseTransaction(platformAdmin(), (transaction) =>
+      transaction.project.count({ where: { slug } }),
+    );
+    expect(count).toBe(0);
+  });
+
   it("rolls back business state when the command audit write fails", async () => {
     const principal = platformAdmin();
     const suffix = randomUUID().slice(0, 12);

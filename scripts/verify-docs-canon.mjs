@@ -33,10 +33,21 @@ for (const reference of ["docs/README.md", "01_PRD.md", "02_PRODUCT_STRUCTURE.md
   requireText("AGENTS.md", `\`${reference}\``);
 }
 
-for (const file of ["docs/PRODUCT.md", "docs/ARCHITECTURE.md", "docs/MASTER_PLAN.md"]) {
+for (const file of ["docs/PRODUCT.md", "docs/ARCHITECTURE.md"]) {
   if (!read(file).startsWith("# Superseded")) {
     throw new Error(`Legacy document must be explicitly superseded: ${file}`);
   }
+}
+
+for (const text of [
+  "Plan ID: AMS-MICROSAAS-HARDENING-2026-01",
+  "Status: APPROVED",
+  "Production: prohibited by this plan",
+]) {
+  requireText("docs/MASTER_PLAN.md", text);
+}
+if (!existsSync(resolve(root, "docs/MASTER_PLAN.inventory.json"))) {
+  throw new Error("Missing approved Task Manager inventory: docs/MASTER_PLAN.inventory.json");
 }
 
 for (const file of [

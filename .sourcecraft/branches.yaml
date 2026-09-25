@@ -1,0 +1,13 @@
+# SourceCraft branch protection for the copy-source starter.
+branch_protection:
+  policies:
+    - target: default_branch
+      message: "Direct changes to main are forbidden. Open a Pull Request."
+      rules:
+        - prevent_force_push
+        - prevent_non_pr_changes
+        - prevent_deletion
+
+pull_request:
+  branch_cleanup:
+    matches: ["work/**", "feature/**", "hotfix/**", "chore/**"]

@@ -23,6 +23,10 @@ const ignoredDirectories = new Set([
   "coverage",
   "graphify-out",
 ]);
+const ignoredFiles = new Set([
+  "docs/MASTER_PLAN.md",
+  "docs/MASTER_PLAN.inventory.json",
+]);
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -43,10 +47,12 @@ async function collectFiles(directory) {
 
 const violations = [];
 for (const file of await collectFiles(root)) {
+  const relativeFile = path.relative(root, file).replaceAll("\\", "/");
+  if (ignoredFiles.has(relativeFile)) continue;
   const content = await readFile(file, "utf8");
   for (const pattern of forbiddenPatterns) {
     if (pattern.test(content)) {
-      violations.push(`${path.relative(root, file).replaceAll("\\", "/")}: ${pattern.source}`);
+      violations.push(`${relativeFile}: ${pattern.source}`);
     }
   }
 }
