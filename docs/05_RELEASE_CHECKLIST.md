@@ -15,8 +15,9 @@
       or `BYPASSRLS` privilege.
 - [ ] Configure a manual exact-head SourceCraft merge gate; push and PR remain
       zero-CI.
-- [ ] Build one immutable, non-root image from reviewed canonical `main` SHA;
-      do not build on the production host.
+- [ ] Build one immutable artifact set with separate non-root web, worker and
+      migrator images from reviewed canonical `main` SHA; do not build on the
+      production host.
 - [ ] Document backup, restore, rollback digest, connection budget and trusted
       proxy policy.
 

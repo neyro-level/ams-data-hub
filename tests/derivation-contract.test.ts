@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -57,6 +57,7 @@ function createCleanRoomDerivedCopy() {
   }).split("\0").filter(Boolean);
 
   for (const relativePath of files) {
+    if (!existsSync(path.join(repositoryRoot, relativePath))) continue;
     const destination = path.join(root, replaceStarterIdentity(relativePath));
     mkdirSync(path.dirname(destination), { recursive: true });
     const source = path.join(repositoryRoot, relativePath);
