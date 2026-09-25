@@ -30,6 +30,10 @@ Use `.env.example` as the neutral template.
 
 Provider credentials are intentionally absent. Add product-specific credentials only in a derived product.
 
+## PostgreSQL Evidence Transition
+
+E06 uses only the E00A guarded `*_test` PostgreSQL 18 lifecycle. A successful integration pass emits a secret-free coverage summary for E02–E05; it is local starter evidence, never production attestation. See [`ADR-009`](adr/ADR-009-postgresql-security-evidence.md).
+
 ## Integration-test database
 
 `pnpm test:integration` accepts only a native PostgreSQL 18 target whose
