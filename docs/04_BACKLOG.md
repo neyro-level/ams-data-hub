@@ -1,31 +1,32 @@
 # Backlog — АМС Старт
 
 **Статус:** Active
-**Execution source:** `AMS-MICROSAAS-HARDENING-2026-01 v3` and local Task
+**Execution source:** `AMS-MICROSAAS-HARDENING-2026-01 v4` and local Task
 Manager graph. This file is the product-facing summary, not a duplicate graph.
 
 ## NOW
 
-- **E00 / E00A:** normalize canon and create safe real PostgreSQL test
-  foundation.
-- **E01:** establish neutral copy-source derivation contract.
+- No active foundation epic remains in the starter tree. E00–E10 are merged;
+  E11 supplies the final conformance and handover candidate through its own
+  PR-only owner gate.
+- Git and Task Manager, not this product backlog, record whether that final PR
+  has already landed in canonical `main`.
 
 ## NEXT
 
-- **E02–E03:** harden identity, Platform Admin, tenant context and database
-  isolation.
-- **E04–E06:** make commands, audit, outbox and PostgreSQL evidence atomic and
-  reproducible.
-- **E07–E09:** align SourceCraft gates, runtime artifact and UI/observability
-  safety.
+- Create a derived repository through `DERIVATION.md` and `HANDOVER.md`.
+- Select the derived product domain, `COMMERCIAL | CRITICAL` delivery profile,
+  secrets, PostgreSQL topology and release target before product work.
 
-E08 runtime/artifact implementation is locally verified and awaits its own
-PR-only review path; this does not authorize merge or production.
+## COMPLETED HARDENING
 
-## LATER
-
-- **E10–E11:** clean-room derivation proof and final conformance handover.
-- Product-specific vertical slices only in a derived repository.
+- **E00–E01:** canon, safe PostgreSQL test foundation and neutral derivation.
+- **E02–E06:** identity, RLS, atomic commands, outbox-plus-queue and integrated
+  PostgreSQL evidence.
+- **E07–E10:** manual gates, runtime artifacts, UI/PWA safety and clean-room
+  derivation proof.
+- **E11:** final matrix, bounded exceptions, command map and handover contract
+  in the final PR-only stream.
 
 ## Constraints
 

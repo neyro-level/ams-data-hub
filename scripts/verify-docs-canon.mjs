@@ -17,6 +17,7 @@ const canonical = [
   "docs/04_BACKLOG.md",
   "docs/05_RELEASE_CHECKLIST.md",
   "docs/06_DESIGN_SYSTEM.md",
+  "docs/HANDOVER.md",
 ];
 
 for (const file of canonical) {
@@ -28,6 +29,12 @@ for (const file of canonical) {
 for (const name of ["01_PRD.md", "02_PRODUCT_STRUCTURE.md", "03_ARCHITECTURE.md", "04_BACKLOG.md", "05_RELEASE_CHECKLIST.md", "06_DESIGN_SYSTEM.md"]) {
   requireText("docs/README.md", `\`${name}\``);
 }
+
+for (const section of ["## Guarantee-to-proof matrix", "## Known bounded exceptions", "## Derived-product handover", "## Final-main closure"]) {
+  requireText("docs/HANDOVER.md", section);
+}
+requireText("docs/03_ARCHITECTURE.md", "`HANDOVER.md` and ADR-014");
+requireText("docs/DERIVATION.md", "`HANDOVER.md`");
 
 for (const reference of ["docs/README.md", "01_PRD.md", "02_PRODUCT_STRUCTURE.md", "03_ARCHITECTURE.md", "04_BACKLOG.md"]) {
   requireText("AGENTS.md", `\`${reference}\``);
