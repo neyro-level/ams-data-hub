@@ -1,6 +1,6 @@
 # Final Conformance And Derived-Product Handover
 
-**Status:** Active extension  
+**Status:** Active extension
 **Repository role:** reusable copy-source starter; not a production target
 
 This document closes the neutral hardening program without turning the starter
