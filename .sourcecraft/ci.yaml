@@ -1,31 +1,31 @@
-# AMS MicroSaaS Starter CI policy.
-# Pushes and pull requests intentionally start nothing. This repository is an
-# EXPERIMENT copy-source: paid gates stay dormant until a derived product enters
-# an explicit COMMERCIAL/CRITICAL hardening stream.
-on:
-  push:
-    - workflows:
-        - merge-standard
-        - merge-risky
-        - release-check
-      filter:
-        paths: []
-
+# AMS MicroSaaS Starter: dormant, manual-only merge gates.
+# There is intentionally no `on` block: push, Pull Request and schedule events
+# must never spend SourceCraft CI quota in this EXPERIMENT repository.
 workflows:
   merge-standard:
     inputs:
       expected_commit_sha:
         type: string
         required: true
-        description: "Reviewed standard PR head SHA"
+        description: "Full reviewed Pull Request head SHA"
+      unit_test_files:
+        type: string
+        required: true
+        description: "Comma-separated relevant unit test files"
+      changed_paths:
+        type: string
+        required: true
+        description: "Comma-separated changed paths for the non-authoritative risk hint"
     checkout:
       fetch_depth: 0
     settings:
-      max_cube_duration: 20m
+      max_cube_duration: 30m
     tasks:
       - name: exact-head-standard
         env:
           EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          UNIT_TEST_FILES: ${{ inputs.unit_test_files }}
+          CHANGED_PATHS: ${{ inputs.changed_paths }}
         cubes:
           - name: verify
             image: docker.io/library/node:24.20.0-bookworm
@@ -34,14 +34,37 @@ workflows:
               - corepack prepare pnpm@11.5.1 --activate
               - pnpm install --frozen-lockfile
               - node scripts/ci/verify-exact-head.mjs
+              - node scripts/ci/classify-risk.mjs
+              - pnpm security:secrets
               - pnpm verify:quick
+              - node scripts/ci/run-scoped-proof.mjs unit
 
   merge-risky:
     inputs:
       expected_commit_sha:
         type: string
         required: true
-        description: "Reviewed risky PR head SHA"
+        description: "Full reviewed Pull Request head SHA"
+      unit_test_files:
+        type: string
+        required: true
+        description: "Comma-separated relevant unit test files"
+      changed_paths:
+        type: string
+        required: true
+        description: "Comma-separated changed paths for the non-authoritative risk hint"
+      integration_test_files:
+        type: string
+        required: true
+        description: "Comma-separated relevant integration tests, or none"
+      run_dependency_scan:
+        type: string
+        required: true
+        description: "true only when a dependency artifact changed; otherwise false"
+      run_build:
+        type: string
+        required: true
+        description: "true only when the reviewed risk requires a production build"
     checkout:
       fetch_depth: 0
     settings:
@@ -51,6 +74,11 @@ workflows:
         env:
           APP_ENV: test
           EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          UNIT_TEST_FILES: ${{ inputs.unit_test_files }}
+          CHANGED_PATHS: ${{ inputs.changed_paths }}
+          INTEGRATION_TEST_FILES: ${{ inputs.integration_test_files }}
+          RUN_DEPENDENCY_SCAN: ${{ inputs.run_dependency_scan }}
+          RUN_BUILD: ${{ inputs.run_build }}
           TEST_DATABASE_HOST: 127.0.0.1
           TEST_DATABASE_PORT: "5432"
           TEST_DATABASE_USER: ams_start_test
@@ -72,49 +100,13 @@ workflows:
             script:
               - corepack enable
               - corepack prepare pnpm@11.5.1 --activate
+              - pnpm install --frozen-lockfile
               - node scripts/verify-release-runtime.mjs
-              - pnpm install --frozen-lockfile
-              - bash scripts/ci/prepare-heavy-environment.sh
+              - bash scripts/ci/prepare-scoped-risk-environment.sh
               - node scripts/ci/verify-exact-head.mjs
-              - pnpm verify:risky
-
-  release-check:
-    inputs:
-      expected_commit_sha:
-        type: string
-        required: true
-        description: "Reviewed canonical main SHA for release"
-    checkout:
-      fetch_depth: 0
-    settings:
-      max_cube_duration: 120m
-    tasks:
-      - name: exact-head-release
-        env:
-          APP_ENV: test
-          EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
-          TEST_DATABASE_HOST: 127.0.0.1
-          TEST_DATABASE_PORT: "5432"
-          TEST_DATABASE_USER: ams_start_test
-          TEST_DATABASE_PASSWORD: ams_start_test
-          TEST_DATABASE_NAME: ams_start_ci_test
-          TEST_DATABASE_SSLMODE: disable
-          DATABASE_HOST: 127.0.0.1
-          DATABASE_PORT: "5432"
-          DATABASE_USER: ams_start_test
-          DATABASE_PASSWORD: ams_start_test
-          DATABASE_NAME: ams_start_ci_test
-          DATABASE_SSLMODE: disable
-          DATABASE_URL: postgresql://ams_start_test:ams_start_test@127.0.0.1:5432/ams_start_ci_test?sslmode=disable
-          BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
-          BETTER_AUTH_URL: http://127.0.0.1:3100
-        cubes:
-          - name: verify
-            image: docker.io/library/node:24.20.0-bookworm
-            script:
-              - corepack enable
-              - corepack prepare pnpm@11.5.1 --activate
-              - pnpm install --frozen-lockfile
-              - bash scripts/ci/prepare-daily-environment.sh
-              - node scripts/ci/verify-exact-head.mjs
-              - pnpm verify:release
+              - node scripts/ci/classify-risk.mjs
+              - pnpm security:secrets
+              - pnpm verify:quick
+              - node scripts/ci/run-scoped-proof.mjs unit
+              - node scripts/ci/run-scoped-proof.mjs integration
+              - node scripts/ci/run-scoped-proof.mjs optional-risk

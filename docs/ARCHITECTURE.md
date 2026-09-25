@@ -17,6 +17,10 @@ and ADRs are the authoritative architecture contract.
 - Перед первым реальным пользователем производный repository проходит отдельный `EXPERIMENT -> COMMERCIAL | CRITICAL` stream и получает собственные secrets, database topology, immutable artifact, rollback identity и production runbook.
 - Сам `ams-microsaas-starter` в production не выпускается.
 
+The E07 SourceCraft template is dormant: it forbids push/PR CI in this starter
+and gives a derived commercial project one manual exact-head gate. Its contract
+is [`ADR-010`](adr/ADR-010-risk-based-sourcecraft-gates.md).
+
 ## Layers
 
 - `src/app` — Next.js routes, server actions and layouts;
