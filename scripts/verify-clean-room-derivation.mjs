@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -29,6 +30,10 @@ const sample = {
   legalOperatorEmail: "operator@atlas.example.com",
   legalOperatorAddress: "Clean Room Verification Address",
 };
+const proofEnvironment = {
+  BETTER_AUTH_URL: sample.publicOrigin,
+  BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
+};
 const replacements = [
   [["https://", "ams", "-start.example"].join(""), sample.publicOrigin],
   [["ams", "-microsaas-starter"].join(""), sample.repositorySlug],
@@ -51,7 +56,7 @@ function run(command, args, cwd) {
   const commandArgs = isWindowsPnpm ? ["/d", "/s", "/c", ["pnpm", ...args].join(" ")] : args;
   const result = spawnSync(executable, commandArgs, {
     cwd,
-    env: { ...process.env, CI: "1", NEXT_TELEMETRY_DISABLED: "1" },
+    env: { ...process.env, ...proofEnvironment, CI: "1", NEXT_TELEMETRY_DISABLED: "1" },
     stdio: "inherit",
   });
   if (result.error) throw result.error;

@@ -11,6 +11,7 @@
 | Derived-product release readiness | `05_RELEASE_CHECKLIST.md` |
 | Cross-surface visual rules | `06_DESIGN_SYSTEM.md` |
 | Copy-source derivation and identity verification | `DERIVATION.md` |
+| Final guarantee matrix and derived-product handover | `HANDOVER.md` |
 
 ## Justified detailed extensions
 
@@ -23,6 +24,7 @@
 | `RUNBOOK_DEPLOY.md`, `ops/*` | reusable local/recovery/deploy procedures | Active extension |
 | `EXTERNAL_SITE_DESIGN_SYSTEM.md`, `INTERNAL_DASHBOARD_DESIGN_SYSTEM.md` | detailed public/private surface rules | Active extension |
 | `MASTER_PLAN.md`, `MASTER_PLAN.inventory.json` | approved Task Manager execution graph and import inventory | Active execution artifacts |
+| `HANDOVER.md` | final guarantee-to-proof matrix, bounded exceptions and derived-product transfer | Active extension |
 
 `PRODUCT.md` and `ARCHITECTURE.md` are retained only as legacy reading aids and
 are superseded by the numbered canon above. `MASTER_PLAN.md` does not replace
