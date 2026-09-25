@@ -33,6 +33,14 @@ and ADRs are the authoritative architecture contract.
 
 Presentation calls module public entrypoints. Module internals stay private. Prisma is allowed only in platform database and module infrastructure. Domain/application layers do not import Next.js, React or Prisma.
 
+## Mutation Transition
+
+E04 makes `defineCommand` the single transaction-bound mutation boundary.
+Business state, audit, idempotency and outbox must share its scoped transaction;
+external effects occur only through a post-commit worker path. Module consumers
+use public application entrypoints, not another module's persistence internals.
+The normative contract is [`ADR-007`](adr/ADR-007-command-atomicity-and-repository-boundary.md).
+
 ## Runtime
 
 - Next.js 16 / React 19 / TypeScript strict;

@@ -1,7 +1,4 @@
-import type { PrincipalContext } from "../../../../platform/authorization/principal.ts";
-
 export interface EnqueueReliabilityEventInput {
-  principal: PrincipalContext;
   organizationId: string | null;
   organizationScope: string;
   idempotencyScope: string;

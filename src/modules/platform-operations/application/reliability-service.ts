@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import type {
   ClaimedReliabilityEvent,
   EnqueueReliabilityEventResult,
@@ -98,7 +97,6 @@ export class ReliabilityService {
   ) {}
 
   async enqueue(
-    principal: PrincipalContext,
     command: EnqueueEventCommand,
   ): Promise<EnqueueReliabilityEventResult> {
     const input = enqueueEventSchema.parse(command);
@@ -106,7 +104,6 @@ export class ReliabilityService {
     const requestHash = createHash("sha256").update(canonicalJson(input.payload)).digest("hex");
 
     return this.repository.enqueueEvent({
-      principal,
       organizationId: input.organizationId,
       organizationScope: input.organizationScope,
       idempotencyScope: input.idempotencyScope,

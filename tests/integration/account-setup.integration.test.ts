@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
-import { completeAccountSetup } from "../../src/modules/identity-access/application/complete-account-setup.ts";
-import { completePlatformRecovery } from "../../src/modules/identity-access/application/complete-platform-recovery.ts";
+import {
+  completeAccountSetup,
+  completePlatformRecovery,
+} from "../../src/modules/identity-access/server.ts";
 import { getPrincipalStateByUserId } from "../../src/platform/authorization/principal-factories.ts";
 import { getPrismaClient } from "../../src/platform/database/prisma/client.ts";
 

@@ -51,3 +51,10 @@ The complete implementation/evidence contract is
 ## Tenant Isolation Transition
 
 E03 adds database defence in depth: each protected transaction receives a server-owned local PostgreSQL context, and RLS denies missing or mismatched tenant context. Runtime web and worker identities are non-owner `NOBYPASSRLS` roles; production credentials are intentionally outside this starter. The disposable local test identity can bypass RLS only to reset and seed its own `*_test` database; assertions switch to the runtime role first. See [`ADR-006`](adr/ADR-006-postgresql-tenant-isolation.md).
+
+## Atomic Mutation Transition
+
+E04 requires a fresh server principal, authorization and one transaction for
+every business mutation. Audit/outbox/idempotency records share that transaction;
+safe public errors carry a correlation ID, while raw persistence details stay
+server-side. The complete rule is [`ADR-007`](adr/ADR-007-command-atomicity-and-repository-boundary.md).

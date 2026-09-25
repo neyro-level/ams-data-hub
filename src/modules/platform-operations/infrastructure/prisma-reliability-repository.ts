@@ -6,8 +6,8 @@ import {
   Prisma,
 } from "../../../generated/prisma/client.ts";
 import {
-  runInPrincipalDatabaseTransaction,
   runInSystemJobDatabaseTransaction,
+  type DatabaseTransaction,
 } from "../../../platform/database/transaction.ts";
 import type {
   ClaimReliabilityEventInput,
@@ -24,10 +24,6 @@ import type {
 
 function reliabilityError(code: string, message: string) {
   return Object.assign(new Error(message), { code });
-}
-
-function isUniqueConstraintError(error: unknown) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 function toClaimedEvent(event: {
@@ -55,10 +51,18 @@ function toClaimedEvent(event: {
 }
 
 export class PrismaReliabilityRepository implements ReliabilityRepository {
+  constructor(private readonly commandTransaction?: DatabaseTransaction) {}
+
   async enqueueEvent(
     input: EnqueueReliabilityEventInput,
   ): Promise<EnqueueReliabilityEventResult> {
-    const { principal } = input;
+    const transaction = this.commandTransaction;
+    if (!transaction) {
+      throw reliabilityError(
+        "COMMAND_TRANSACTION_REQUIRED",
+        "Outbox enqueue requires the command transaction",
+      );
+    }
     const uniqueWhere = {
       scope_organizationScope_key: {
         scope: input.idempotencyScope,
@@ -67,86 +71,17 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       },
     };
 
-    try {
-      return await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
-        const existing = await transaction.idempotencyKey.findUnique({
-          where: uniqueWhere,
-          select: { requestHash: true, outboxEventId: true },
-        });
-        if (existing) {
-          if (existing.requestHash !== input.requestHash) {
-            throw reliabilityError(
-              "IDEMPOTENCY_KEY_REUSED",
-              "Idempotency key was reused with a different request",
-            );
-          }
-          if (!existing.outboxEventId) {
-            throw reliabilityError("IDEMPOTENCY_IN_PROGRESS", "Idempotent command is in progress");
-          }
-          return { outboxEventId: existing.outboxEventId, duplicate: true };
-        }
+    const lockKey = `${input.idempotencyScope}:${input.organizationScope}:${input.idempotencyKey}`;
+    await transaction.$queryRaw(Prisma.sql`
+      select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text as lock_result
+    `);
 
-        const marker = await transaction.idempotencyKey.create({
-          data: {
-            organizationId: input.organizationId,
-            organizationScope: input.organizationScope,
-            scope: input.idempotencyScope,
-            key: input.idempotencyKey,
-            requestHash: input.requestHash,
-            status: IdempotencyStatus.PROCESSING,
-            expiresAt: new Date(input.expiresAt),
-          },
-          select: { id: true },
-        });
-        const event = await transaction.outboxEvent.create({
-          data: {
-            organizationId: input.organizationId,
-            topic: input.topic,
-            payload: input.payload as Prisma.InputJsonValue,
-            correlationId: input.correlationId,
-            schemaVersion: input.schemaVersion,
-            occurredAt: new Date(input.occurredAt),
-            availableAt: new Date(input.availableAt),
-          },
-          select: { id: true },
-        });
-        await transaction.idempotencyKey.update({
-          where: { id: marker.id },
-          data: {
-            status: IdempotencyStatus.COMPLETED,
-            outboxEventId: event.id,
-            response: { outboxEventId: event.id },
-          },
-        });
-        await transaction.auditEvent.create({
-          data: {
-            organizationId: input.organizationId,
-            actorType:
-              input.actorType === "USER" ? AuditActorType.USER : AuditActorType.SYSTEM,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            afterMarker: { outboxEventId: event.id, topic: input.topic },
-            source: input.source,
-            correlationId: input.correlationId,
-          },
-        });
-
-        return { outboxEventId: event.id, duplicate: false };
-      });
-    } catch (error) {
-      if (!isUniqueConstraintError(error)) {
-        throw error;
-      }
-
-      const existing = await runInPrincipalDatabaseTransaction(principal, (transaction) =>
-        transaction.idempotencyKey.findUnique({
-          where: uniqueWhere,
-          select: { requestHash: true, outboxEventId: true },
-        }),
-      );
-      if (!existing || existing.requestHash !== input.requestHash) {
+    const existing = await transaction.idempotencyKey.findUnique({
+      where: uniqueWhere,
+      select: { requestHash: true, outboxEventId: true },
+    });
+    if (existing) {
+      if (existing.requestHash !== input.requestHash) {
         throw reliabilityError(
           "IDEMPOTENCY_KEY_REUSED",
           "Idempotency key was reused with a different request",
@@ -157,6 +92,55 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       }
       return { outboxEventId: existing.outboxEventId, duplicate: true };
     }
+
+    const marker = await transaction.idempotencyKey.create({
+      data: {
+        organizationId: input.organizationId,
+        organizationScope: input.organizationScope,
+        scope: input.idempotencyScope,
+        key: input.idempotencyKey,
+        requestHash: input.requestHash,
+        status: IdempotencyStatus.PROCESSING,
+        expiresAt: new Date(input.expiresAt),
+      },
+      select: { id: true },
+    });
+    const event = await transaction.outboxEvent.create({
+      data: {
+        organizationId: input.organizationId,
+        topic: input.topic,
+        payload: input.payload as Prisma.InputJsonValue,
+        correlationId: input.correlationId,
+        schemaVersion: input.schemaVersion,
+        occurredAt: new Date(input.occurredAt),
+        availableAt: new Date(input.availableAt),
+      },
+      select: { id: true },
+    });
+    await transaction.idempotencyKey.update({
+      where: { id: marker.id },
+      data: {
+        status: IdempotencyStatus.COMPLETED,
+        outboxEventId: event.id,
+        response: { outboxEventId: event.id },
+      },
+    });
+    await transaction.auditEvent.create({
+      data: {
+        organizationId: input.organizationId,
+        actorType:
+          input.actorType === "USER" ? AuditActorType.USER : AuditActorType.SYSTEM,
+        actorId: input.actorId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        afterMarker: { outboxEventId: event.id, topic: input.topic },
+        source: input.source,
+        correlationId: input.correlationId,
+      },
+    });
+
+    return { outboxEventId: event.id, duplicate: false };
   }
 
   async claimNextEvent(

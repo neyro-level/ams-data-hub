@@ -20,15 +20,32 @@ export interface CommandDefinition<TPrincipal, TSchema extends z.ZodType, TResul
   ) => Promise<TResult>;
 }
 
-export function defineCommand<TPrincipal extends PrincipalContext, TSchema extends z.ZodType, TResult>(
-  definition: CommandDefinition<TPrincipal, TSchema, TResult>,
-) {
-  return async (principal: TPrincipal, rawInput: z.input<TSchema>): Promise<TResult> => {
-    const input = definition.input.parse(rawInput);
-    await definition.authorize(principal, input);
+export type CommandTransactionRunner = <TResult>(
+  principal: PrincipalContext,
+  execute: (transaction: DatabaseTransaction) => Promise<TResult>,
+) => Promise<TResult>;
 
-    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
-      definition.execute({ principal, input, transaction }),
-    );
+export interface CommandFactoryDependencies {
+  runInTransaction: CommandTransactionRunner;
+}
+
+export function createCommandFactory(dependencies: CommandFactoryDependencies) {
+  return function defineBoundCommand<
+    TPrincipal extends PrincipalContext,
+    TSchema extends z.ZodType,
+    TResult,
+  >(definition: CommandDefinition<TPrincipal, TSchema, TResult>) {
+    return async (principal: TPrincipal, rawInput: z.input<TSchema>): Promise<TResult> => {
+      const input = definition.input.parse(rawInput);
+      await definition.authorize(principal, input);
+
+      return dependencies.runInTransaction(principal, (transaction) =>
+        definition.execute({ principal, input, transaction }),
+      );
+    };
   };
 }
+
+export const defineCommand = createCommandFactory({
+  runInTransaction: runInPrincipalDatabaseTransaction,
+});

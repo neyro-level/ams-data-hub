@@ -1,5 +1,6 @@
 import { runInPrincipalDatabaseTransaction } from "../../../platform/database/transaction.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
+import { defineCommand } from "../../../platform/commands/define-command.ts";
 import { ReliabilityService } from "../application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "./prisma-reliability-repository.ts";
 import {
@@ -9,8 +10,6 @@ import {
   type RequestMaintenanceInput,
 } from "../domain/platform-admin.ts";
 import type { PlatformAdminListQuery } from "../../platform-admin/contracts.ts";
-
-const reliabilityService = new ReliabilityService(new PrismaReliabilityRepository());
 
 const operationStatusLabels: Record<string, string> = {
   PENDING: "Ожидает запуска",
@@ -90,22 +89,35 @@ export async function requestMaintenance(
   principal: PrincipalContext,
   rawInput: RequestMaintenanceInput,
 ) {
-  const actor = requirePlatformAdmin(principal);
-  const input = requestMaintenanceInputSchema.parse(rawInput);
-  const result = await reliabilityService.enqueue(principal, {
-    organizationId: null,
-    organizationScope: "platform",
-    idempotencyScope: "platform-admin.maintenance",
-    idempotencyKey: input.idempotencyKey,
-    topic: "platform.maintenance.requested",
-    payload: { requestedBy: actor.actorId },
-    actorType: "USER",
-    actorId: actor.actorId,
-    action: "platform.maintenance.request",
-    entityType: "Platform",
-    entityId: "platform",
-    source: "platform-admin",
-    correlationId: actor.correlationId,
-  });
-  return { outboxEventId: result.outboxEventId, duplicate: result.duplicate };
+  return enqueueMaintenance(principal, rawInput);
 }
+
+const enqueueMaintenance = defineCommand({
+  name: "platform-operations.maintenance.request",
+  input: requestMaintenanceInputSchema,
+  authorize: (principal: PrincipalContext) => {
+    requirePlatformAdmin(principal);
+  },
+  execute: async ({ principal, input, transaction }) => {
+    const actor = requirePlatformAdmin(principal);
+    const reliabilityService = new ReliabilityService(
+      new PrismaReliabilityRepository(transaction),
+    );
+    const result = await reliabilityService.enqueue({
+      organizationId: null,
+      organizationScope: "platform",
+      idempotencyScope: "platform-admin.maintenance",
+      idempotencyKey: input.idempotencyKey,
+      topic: "platform.maintenance.requested",
+      payload: { requestedBy: actor.actorId },
+      actorType: "USER",
+      actorId: actor.actorId,
+      action: "platform.maintenance.request",
+      entityType: "Platform",
+      entityId: "platform",
+      source: "platform-admin",
+      correlationId: actor.correlationId,
+    });
+    return { outboxEventId: result.outboxEventId, duplicate: result.duplicate };
+  },
+});

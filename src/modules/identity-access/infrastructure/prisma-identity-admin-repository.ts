@@ -257,40 +257,38 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     try {
       const userId = randomUUID();
       const email = input.email || `${input.username}@users.ams-start.invalid`;
-      return await this.prisma.$transaction(async (transaction) => {
-        const user = await transaction.user.create({
-          data: {
-            id: userId,
-            name: input.name,
-            username: input.username,
-            email,
-            emailVerified: false,
-            systemRole: input.systemRole,
-          },
-          select: { id: true },
-        });
-        await transaction.account.create({
-          data: {
-            id: randomUUID(),
-            userId: user.id,
-            issuer: createLocalAccountIssuer("credential"),
-            accountId: user.id,
-            providerId: "credential",
-            password: input.passwordHash,
-          },
-        });
-        const membership = input.organizationId
-          ? await transaction.member.create({
-              data: {
-                organizationId: input.organizationId,
-                userId: user.id,
-                tenantRole: input.tenantRole,
-              },
-              select: { id: true },
-            })
-          : null;
-        return { userId: user.id, membershipId: membership?.id ?? null };
+      const user = await this.prisma.user.create({
+        data: {
+          id: userId,
+          name: input.name,
+          username: input.username,
+          email,
+          emailVerified: false,
+          systemRole: input.systemRole,
+        },
+        select: { id: true },
       });
+      await this.prisma.account.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          issuer: createLocalAccountIssuer("credential"),
+          accountId: user.id,
+          providerId: "credential",
+          password: input.passwordHash,
+        },
+      });
+      const membership = input.organizationId
+        ? await this.prisma.member.create({
+            data: {
+              organizationId: input.organizationId,
+              userId: user.id,
+              tenantRole: input.tenantRole,
+            },
+            select: { id: true },
+          })
+        : null;
+      return { userId: user.id, membershipId: membership?.id ?? null };
     } catch (error) {
       translateWriteError(error);
     }
