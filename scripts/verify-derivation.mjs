@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 const starterSlug = ["ams", "start"].join("-");
 const starterTokens = [
   starterSlug,
+  ["ams", "start"].join("_"),
+  ["AMS", "START"].join("_"),
+  ["ams", "favicon"].join("-"),
   ["АМС", "Старт"].join(" "),
   `https://${starterSlug}.example`,
   ["TO", "DO:"].join(""),
@@ -38,6 +41,7 @@ const derivationContractFiles = new Set([
   "docs/DERIVATION.md",
   "docs/adr/ADR-004-neutral-identity-derivation-contract.md",
   "scripts/verify-derivation.mjs",
+  "scripts/verify-clean-room-derivation.mjs",
   "tests/derivation-contract.test.ts",
 ]);
 const textFilePattern = /\.(?:cjs|css|html|js|json|md|mjs|prisma|sh|svg|ts|tsx|yaml|yml)$/u;
@@ -91,12 +95,38 @@ function validateIdentity(identity) {
   return violations;
 }
 
+function validateDerivation(derivation, identity) {
+  const violations = [];
+  if (!derivation || typeof derivation !== "object") {
+    return ["derivation decisions are required"];
+  }
+  if (typeof derivation.sourceRepository !== "string" || !derivation.sourceRepository.trim() || derivation.sourceRepository === "UNDECIDED") {
+    violations.push("derivation.sourceRepository must identify the derived repository");
+  }
+  if (derivation.defaultBranch !== "main") {
+    violations.push("derivation.defaultBranch must be main");
+  }
+  if (!new Set(["EXPERIMENT", "COMMERCIAL", "CRITICAL"]).has(derivation.deliveryProfile)) {
+    violations.push("derivation.deliveryProfile must be explicitly selected");
+  }
+  if (derivation.migrationOwner !== identity?.productSlug) {
+    violations.push("derivation.migrationOwner must match identity.productSlug");
+  }
+  for (const moduleName of ["outboxPlusQueue", "pwa", "platformAdmin"]) {
+    if (!new Set(["enabled", "disabled"]).has(derivation.optionalModules?.[moduleName])) {
+      violations.push(`derivation.optionalModules.${moduleName} must be enabled or disabled`);
+    }
+  }
+  return violations;
+}
+
 export function verifyDerivation({ root, manifestPath }) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const violations = [];
   if (manifest.schemaVersion !== 1) violations.push("identity manifest schemaVersion must be 1");
   if (manifest.mode !== "derived") violations.push("identity manifest mode must be derived");
   violations.push(...validateIdentity(manifest.identity));
+  violations.push(...validateDerivation(manifest.derivation, manifest.identity));
 
   for (const relativePath of listTrackedFiles(root)) {
     const normalizedPath = relativePath.replaceAll("\\", "/");

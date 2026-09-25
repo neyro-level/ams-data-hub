@@ -57,9 +57,18 @@ for (const file of await collectFiles(root)) {
   }
 }
 
-const manifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
-if (!manifest.includes('name: "АМС Старт"') || !manifest.includes('display: "standalone"')) {
-  violations.push("src/app/manifest.ts: PWA manifest must be installable and branded as АМС Старт");
+const identityManifest = JSON.parse(await readFile(path.join(root, "starter.identity.json"), "utf8"));
+const expectedProductName = identityManifest.mode === "derived"
+  ? identityManifest.identity?.productName
+  : "АМС Старт";
+const appManifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
+if (
+  typeof expectedProductName !== "string"
+  || !expectedProductName.trim()
+  || !appManifest.includes(`name: ${JSON.stringify(expectedProductName)}`)
+  || !appManifest.includes('display: "standalone"')
+) {
+  violations.push("src/app/manifest.ts: PWA manifest must be installable and match starter.identity.json");
 }
 
 const serviceWorker = await readFile(path.join(root, "public/sw.js"), "utf8");
