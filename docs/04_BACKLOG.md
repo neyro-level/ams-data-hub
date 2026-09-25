@@ -19,6 +19,9 @@ Manager graph. This file is the product-facing summary, not a duplicate graph.
 - **E07–E09:** align SourceCraft gates, runtime artifact and UI/observability
   safety.
 
+E08 runtime/artifact implementation is locally verified and awaits its own
+PR-only review path; this does not authorize merge or production.
+
 ## LATER
 
 - **E10–E11:** clean-room derivation proof and final conformance handover.

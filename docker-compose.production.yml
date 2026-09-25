@@ -1,7 +1,17 @@
+x-runtime-hardening: &runtime-hardening
+  read_only: true
+  init: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
 services:
   web:
-    image: ${AMS_START_IMAGE:?Set AMS_START_IMAGE}
-    command: ["web"]
+    <<: *runtime-hardening
+    image: ${AMS_START_WEB_IMAGE:?Set AMS_START_WEB_IMAGE}
     restart: always
     network_mode: host
     env_file:
@@ -14,10 +24,15 @@ services:
       HOSTNAME: 127.0.0.1
       PORT: 3000
       NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   worker:
-    image: ${AMS_START_IMAGE:?Set AMS_START_IMAGE}
-    command: ["outbox-worker"]
+    <<: *runtime-hardening
+    image: ${AMS_START_WORKER_IMAGE:?Set AMS_START_WORKER_IMAGE}
     restart: always
     network_mode: host
     env_file:
@@ -28,11 +43,16 @@ services:
     environment:
       APP_ENV: production
       NODE_ENV: production
-      OUTBOX_WORKER_ID: ams-start-outbox
+      OUTBOX_WORKER_ID: ${OUTBOX_WORKER_ID:?Set a host-unique OUTBOX_WORKER_ID}
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   migrate:
-    image: ${AMS_START_IMAGE:?Set AMS_START_IMAGE}
-    command: ["migrate"]
+    <<: *runtime-hardening
+    image: ${AMS_START_MIGRATOR_IMAGE:?Set AMS_START_MIGRATOR_IMAGE}
     restart: "no"
     network_mode: host
     profiles: ["manual"]
@@ -46,7 +66,8 @@ services:
       NODE_ENV: production
 
   maintenance:
-    image: ${AMS_START_IMAGE:?Set AMS_START_IMAGE}
+    <<: *runtime-hardening
+    image: ${AMS_START_WORKER_IMAGE:?Set AMS_START_WORKER_IMAGE}
     command: ["outbox-retention"]
     restart: "no"
     network_mode: host

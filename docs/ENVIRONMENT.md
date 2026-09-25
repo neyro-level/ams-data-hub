@@ -28,6 +28,11 @@ Use `.env.example` as the neutral template.
 | `RELEASE_SHA` | server | exact deployed commit |
 | `LOG_LEVEL` | server/worker | pino level |
 
+The generated release environment additionally binds `AMS_START_WEB_IMAGE`,
+`AMS_START_WORKER_IMAGE`, `AMS_START_MIGRATOR_IMAGE`, their exact digests and
+the corresponding previous-release identities. Operators do not hand-edit
+those values.
+
 Provider credentials are intentionally absent. Add product-specific credentials only in a derived product.
 
 ## PostgreSQL Evidence Transition
@@ -41,3 +46,10 @@ E06 uses only the E00A guarded `*_test` PostgreSQL 18 lifecycle. A successful in
 different from `LOCAL_POSTGRES_USER`. The command resets only that guarded
 database before and after the run; it never uses `DATABASE_URL` from a
 development or production target.
+
+## Production identity split
+
+Web, worker, migrator and backup use separate environment files. The migrator
+alone receives the DDL-capable role; web and worker retain the non-owner roles
+defined by E03. Backup credentials live only in the systemd backup environment.
+The template contains names and interfaces, never provider credentials.
