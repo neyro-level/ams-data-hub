@@ -14,6 +14,17 @@
     "legalOperatorEmail": "TODO: email оператора",
     "legalOperatorAddress": "TODO: юридический адрес"
   },
+  "derivation": {
+    "sourceRepository": "UNDECIDED",
+    "defaultBranch": "main",
+    "deliveryProfile": "UNDECIDED",
+    "migrationOwner": "UNDECIDED",
+    "optionalModules": {
+      "outboxPlusQueue": "UNDECIDED",
+      "pwa": "UNDECIDED",
+      "platformAdmin": "UNDECIDED"
+    }
+  },
   "surfaceInventory": {
     "product": ["README.md", "docs", "src/app", "src/components", "src/modules"],
     "publicOrigin": ["src/app/robots.ts", "src/app/sitemap.ts", "src/platform/auth", "ops/nginx"],

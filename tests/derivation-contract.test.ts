@@ -26,6 +26,17 @@ function createDerivedFixture() {
       legalOperatorName: "Atlas LLC",
       legalOperatorEmail: "operator@atlas.example.com",
       legalOperatorAddress: "1 Example Street"
+    },
+    derivation: {
+      sourceRepository: "https://git.sourcecraft.dev/clean-room/atlas-portal.git",
+      defaultBranch: "main",
+      deliveryProfile: "COMMERCIAL",
+      migrationOwner: "atlas-portal",
+      optionalModules: {
+        outboxPlusQueue: "enabled",
+        pwa: "enabled",
+        platformAdmin: "disabled"
+      }
     }
   }, null, 2));
   writeFileSync(path.join(root, "README.md"), "Derived product only\n");
@@ -43,9 +54,13 @@ function replaceStarterIdentity(value: string) {
   return value
     .replaceAll("https://ams-start.example", "https://atlas.example.com")
     .replaceAll("ams-microsaas-starter", "atlas-portal")
+    .replaceAll("ams-favicon", "atlas-portal-favicon")
+    .replaceAll("AMS_START", "ATLAS_PORTAL")
+    .replaceAll("ams_start", "atlas_portal")
     .replaceAll("ams-start", "atlas-portal")
     .replaceAll("АМС Старт", "Atlas Portal")
-    .replaceAll("TODO:", "Configured:");
+    .replaceAll("TODO:", "Configured:")
+    .replaceAll("DELIVERY_PROFILE = EXPERIMENT", "DELIVERY_PROFILE = COMMERCIAL");
 }
 
 function createCleanRoomDerivedCopy() {
@@ -72,6 +87,17 @@ function createCleanRoomDerivedCopy() {
   const manifestPath = path.join(root, "starter.identity.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   manifest.mode = "derived";
+  manifest.derivation = {
+    sourceRepository: "https://git.sourcecraft.dev/clean-room/atlas-portal.git",
+    defaultBranch: "main",
+    deliveryProfile: "COMMERCIAL",
+    migrationOwner: "atlas-portal",
+    optionalModules: {
+      outboxPlusQueue: "enabled",
+      pwa: "enabled",
+      platformAdmin: "disabled"
+    }
+  };
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   return root;
 }
@@ -100,6 +126,16 @@ describe("copy-source derivation verifier", () => {
     writeFileSync(manifestPath, JSON.stringify(manifest));
 
     expect(() => runVerifier(root)).toThrow(/identity\.legalOperatorEmail/);
+  });
+
+  it("rejects an undecided optional-module contract", () => {
+    const root = createDerivedFixture();
+    const manifestPath = path.join(root, "starter.identity.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.derivation.optionalModules.outboxPlusQueue = "UNDECIDED";
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+
+    expect(() => runVerifier(root)).toThrow(/optionalModules\.outboxPlusQueue/);
   });
 
   it("passes a clean-room copied starter and rejects one restored source token", () => {
