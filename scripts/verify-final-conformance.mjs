@@ -62,6 +62,9 @@ export function verifyFinalConformance({ root = process.cwd(), requireClean = tr
   if (!packageJson.scripts["verify:release"].includes("verify:conformance")) {
     throw new Error("verify:release must include verify:conformance.");
   }
+  if (packageJson.scripts["test:e2e:run"] !== "node scripts/run-e2e-tests.mjs") {
+    throw new Error("test:e2e:run must use the guarded local database lifecycle.");
+  }
 
   requireText(root, "docs/README.md", ["`HANDOVER.md`"]);
   requireText(root, "docs/HANDOVER.md", [

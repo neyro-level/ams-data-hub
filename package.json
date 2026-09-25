@@ -27,7 +27,7 @@
     "derive:smoke": "node scripts/verify-clean-room-derivation.mjs",
     "test:security": "vitest run tests/principal.test.ts tests/starter-contracts.test.ts tests/pwa.test.ts",
     "test:e2e": "pnpm build && node scripts/run-e2e-tests.mjs",
-    "test:e2e:run": "playwright test",
+    "test:e2e:run": "node scripts/run-e2e-tests.mjs",
     "playwright:install": "playwright install chromium",
     "verify:quick": "pnpm verify:sourcecraft-policy && pnpm verify:config && pnpm typecheck && pnpm lint && pnpm architecture:check",
     "verify:risky": "pnpm verify:quick && pnpm test:unit && pnpm test:security && pnpm build",
