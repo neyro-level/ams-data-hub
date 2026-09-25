@@ -1,5 +1,5 @@
 import { RetentionRunStatus } from "../../../generated/prisma/client.ts";
-import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
+import { runInSystemJobDatabaseTransaction } from "../../../platform/database/transaction.ts";
 
 const PROCESSED_RETENTION_DAYS = 14;
 const DEAD_LETTER_RETENTION_DAYS = 30;
@@ -15,11 +15,13 @@ function cutoffDate(now: Date, days: number) {
 }
 
 export async function runReliabilityRetention(now = new Date()): Promise<RunRetentionResult> {
-  const prisma = getPrismaClient();
   const processedCutoff = cutoffDate(now, PROCESSED_RETENTION_DAYS);
   const deadLetterCutoff = cutoffDate(now, DEAD_LETTER_RETENTION_DAYS);
 
-  return prisma.$transaction(async (transaction) => {
+  return runInSystemJobDatabaseTransaction({
+    jobName: "outbox-retention",
+    correlationId: `outbox-retention-${now.getTime()}`,
+  }, async (transaction) => {
     const retentionRun = await transaction.retentionRun.create({
       data: {
         status: RetentionRunStatus.RUNNING,

@@ -27,3 +27,19 @@ test("offline page is available", async ({ page }) => {
   await page.goto("/offline/");
   await expect(page.getByRole("heading", { name: /Откройте страницу снова/ })).toBeVisible();
 });
+
+test("API responses are not cacheable", async ({ page }) => {
+  const response = await page.request.get("/api/health/live");
+  expect(response.headers()["cache-control"]).toContain("no-store");
+});
+
+test("authentication endpoint throttles repeated invalid credentials", async ({ page }, testInfo) => {
+  const username = `missing_${testInfo.project.name.replace(/[^a-z0-9]/gi, "_")}`;
+  const responses = [];
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    responses.push(await page.request.post("/api/auth/sign-in/username", {
+      data: { username, password: "not-a-real-password" },
+    }));
+  }
+  expect(responses.map((response) => response.status())).toEqual([401, 401, 401, 401, 401, 429]);
+});

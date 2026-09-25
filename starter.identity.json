@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "mode": "starter",
+  "identity": {
+    "productName": "АМС Старт",
+    "productSlug": "ams-start",
+    "publicOrigin": "https://ams-start.example",
+    "serviceId": "ams-start",
+    "workerId": "ams-start-outbox",
+    "databaseApplicationPrefix": "ams-start",
+    "artifactPrefix": "ams-start",
+    "repositorySlug": "ams-microsaas-starter",
+    "legalOperatorName": "TODO: юридическое лицо или ИП",
+    "legalOperatorEmail": "TODO: email оператора",
+    "legalOperatorAddress": "TODO: юридический адрес"
+  },
+  "derivation": {
+    "sourceRepository": "UNDECIDED",
+    "defaultBranch": "main",
+    "deliveryProfile": "UNDECIDED",
+    "migrationOwner": "UNDECIDED",
+    "optionalModules": {
+      "outboxPlusQueue": "UNDECIDED",
+      "pwa": "UNDECIDED",
+      "platformAdmin": "UNDECIDED"
+    }
+  },
+  "surfaceInventory": {
+    "product": ["README.md", "docs", "src/app", "src/components", "src/modules"],
+    "publicOrigin": ["src/app/robots.ts", "src/app/sitemap.ts", "src/platform/auth", "ops/nginx"],
+    "runtime": ["src/platform/http", "src/worker", "scripts", "docker-compose.production.yml"],
+    "databaseAndQueue": [".env.example", "src/platform/database", "src/modules/platform-operations", "scripts"],
+    "artifactAndOperations": ["Dockerfile", "docker-compose.production.yml", "ops", "scripts/build-release.mjs"],
+    "legalAndAssets": ["src/shared/legal", "src/components/marketing/legal", "public", "src/app/manifest.ts"]
+  }
+}

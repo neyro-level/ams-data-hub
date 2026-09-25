@@ -27,7 +27,7 @@ export interface OutboxDrainDependencies {
   boss: OutboxQueueClient;
   reliability: ReliabilityWorker;
   heartbeat: (workerId: string) => Promise<unknown>;
-  handle?: (event: ClaimedReliabilityEvent) => Promise<void>;
+  handle?: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<void>;
 }
 
 function outboxError(code: string, retryable: boolean) {
@@ -76,7 +76,9 @@ async function processQueuedJob(
   job: JobWithMetadata<OutboxDispatchJob>,
   workerId: string,
   reliability: ReliabilityWorker,
-  eventHandler: (event: ClaimedReliabilityEvent) => Promise<void>,
+  eventHandler: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<void>,
+  signal?: AbortSignal,
+  shutdownDrainTimeoutMs = 30_000,
 ) {
   const parsed = outboxDispatchJobSchema.safeParse(job.data);
   if (!parsed.success) {
@@ -97,7 +99,11 @@ async function processQueuedJob(
   }
 
   try {
-    await eventHandler(event);
+    await withShutdownDeadline(
+      eventHandler(event, signal),
+      signal,
+      shutdownDrainTimeoutMs,
+    );
     await reliability.complete(event);
     await boss.complete(OUTBOX_DELIVERY_QUEUE, job.id, { status: "success" });
     return { claimed: 1, completed: 1, failed: 0 };
@@ -129,12 +135,70 @@ async function processQueuedJob(
 export interface DrainOutboxOptions {
   workerId: string;
   maxEvents?: number;
+  signal?: AbortSignal;
+  shutdownDrainTimeoutMs?: number;
 }
 
 export interface DrainOutboxResult {
   claimed: number;
   completed: number;
   failed: number;
+}
+
+export interface RunOutboxWorkerOptions extends DrainOutboxOptions {
+  pollIntervalMs?: number;
+  signal?: AbortSignal;
+}
+
+function waitForNextCycle(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(finish, delayMs);
+
+    function finish() {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }
+
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+function withShutdownDeadline<T>(
+  task: Promise<T>,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<T> {
+  if (!signal) return task;
+
+  return new Promise<T>((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (timeout) clearTimeout(timeout);
+      signal.removeEventListener("abort", startDeadline);
+    };
+    const startDeadline = () => {
+      timeout ??= setTimeout(() => {
+        cleanup();
+        reject(outboxError("WORKER_SHUTDOWN_TIMEOUT", true));
+      }, timeoutMs);
+    };
+
+    signal.addEventListener("abort", startDeadline, { once: true });
+    if (signal.aborted) startDeadline();
+    task.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
 }
 
 export async function drainOutboxWithDependencies(
@@ -144,12 +208,15 @@ export async function drainOutboxWithDependencies(
   const { boss, reliability } = dependencies;
   const eventHandler = dependencies.handle ?? handleEvent;
   const maxEvents = z.number().int().min(1).max(100).parse(options.maxEvents ?? 25);
+  const shutdownDrainTimeoutMs = z.number().int().min(10).max(300_000).parse(
+    options.shutdownDrainTimeoutMs ?? 30_000,
+  );
   const result: DrainOutboxResult = { claimed: 0, completed: 0, failed: 0 };
 
   await dependencies.heartbeat(options.workerId);
 
   let handled = 0;
-  while (handled < maxEvents) {
+  while (handled < maxEvents && !options.signal?.aborted) {
     const queued = await fetchQueuedJob(boss);
     if (!queued) {
       break;
@@ -160,6 +227,8 @@ export async function drainOutboxWithDependencies(
       options.workerId,
       reliability,
       eventHandler,
+      options.signal,
+      shutdownDrainTimeoutMs,
     );
     result.claimed += settled.claimed;
     result.completed += settled.completed;
@@ -168,7 +237,7 @@ export async function drainOutboxWithDependencies(
     await dependencies.heartbeat(options.workerId);
   }
 
-  while (handled < maxEvents) {
+  while (handled < maxEvents && !options.signal?.aborted) {
     const claimed = await reliability.claim(options.workerId);
     if (!claimed) {
       break;
@@ -196,6 +265,46 @@ export async function drainOutbox(options: DrainOutboxOptions): Promise<DrainOut
   const boss = await getPgBoss();
   try {
     return await drainOutboxWithDependencies(options, {
+      boss,
+      reliability: getWorkerReliabilityService(),
+      heartbeat: (workerId) =>
+        recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId }),
+    });
+  } finally {
+    await stopPgBoss();
+  }
+}
+
+export async function runOutboxWorkerWithDependencies(
+  options: RunOutboxWorkerOptions,
+  dependencies: OutboxDrainDependencies,
+): Promise<DrainOutboxResult> {
+  const pollIntervalMs = z.number().int().min(10).max(60_000).parse(
+    options.pollIntervalMs ?? 1_000,
+  );
+  const totals: DrainOutboxResult = { claimed: 0, completed: 0, failed: 0 };
+
+  while (!options.signal?.aborted) {
+    const cycle = await drainOutboxWithDependencies(options, dependencies);
+    totals.claimed += cycle.claimed;
+    totals.completed += cycle.completed;
+    totals.failed += cycle.failed;
+
+    if (options.signal?.aborted) break;
+    if (cycle.claimed === 0) {
+      await waitForNextCycle(pollIntervalMs, options.signal);
+    }
+  }
+
+  return totals;
+}
+
+export async function runOutboxWorker(
+  options: RunOutboxWorkerOptions,
+): Promise<DrainOutboxResult> {
+  const boss = await getPgBoss();
+  try {
+    return await runOutboxWorkerWithDependencies(options, {
       boss,
       reliability: getWorkerReliabilityService(),
       heartbeat: (workerId) =>

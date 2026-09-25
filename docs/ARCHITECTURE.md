@@ -1,4 +1,9 @@
-# Architecture
+# Superseded — see `03_ARCHITECTURE.md`
+
+This legacy document is retained for historical reading only. `03_ARCHITECTURE.md`
+and ADRs are the authoritative architecture contract.
+
+# Legacy architecture baseline
 
 `АМС Старт` следует `AMS Application Platform Core 3.4 — Solo Minimal`.
 
@@ -11,6 +16,10 @@
 - Ручные SourceCraft workflows являются не активным release-route, а шаблонами будущего hardening. Их нельзя запускать для starter.
 - Перед первым реальным пользователем производный repository проходит отдельный `EXPERIMENT -> COMMERCIAL | CRITICAL` stream и получает собственные secrets, database topology, immutable artifact, rollback identity и production runbook.
 - Сам `ams-microsaas-starter` в production не выпускается.
+
+The E07 SourceCraft template is dormant: it forbids push/PR CI in this starter
+and gives a derived commercial project one manual exact-head gate. Its contract
+is [`ADR-010`](adr/ADR-010-risk-based-sourcecraft-gates.md).
 
 ## Layers
 
@@ -28,6 +37,14 @@
 
 Presentation calls module public entrypoints. Module internals stay private. Prisma is allowed only in platform database and module infrastructure. Domain/application layers do not import Next.js, React or Prisma.
 
+## Mutation Transition
+
+E04 makes `defineCommand` the single transaction-bound mutation boundary.
+Business state, audit, idempotency and outbox must share its scoped transaction;
+external effects occur only through a post-commit worker path. Module consumers
+use public application entrypoints, not another module's persistence internals.
+The normative contract is [`ADR-007`](adr/ADR-007-command-atomicity-and-repository-boundary.md).
+
 ## Runtime
 
 - Next.js 16 / React 19 / TypeScript strict;
@@ -35,6 +52,13 @@ Presentation calls module public entrypoints. Module internals stay private. Pri
 - Better Auth owns identity/password/session;
 - outbox + pg-boss compatible worker boundary;
 - Docker standalone image for production packaging.
+
+## Async Reliability Transition
+
+E05 preserves `outbox-plus-queue`: a command atomically records a neutral,
+versioned outbox event, while a separate worker owns at-least-once delivery,
+leases, retries, dead-letter visibility, heartbeat and retention. The full
+contract is [`ADR-008`](adr/ADR-008-outbox-plus-queue-reliability.md).
 
 ## PWA
 

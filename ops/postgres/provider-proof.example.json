@@ -1,0 +1,10 @@
+{
+  "provider": "replace-with-managed-postgresql-provider",
+  "instanceId": "replace-with-non-secret-instance-id",
+  "backupPolicyVerifiedAt": "YYYY-MM-DDTHH:mm:ssZ",
+  "latestBackupId": "replace-with-provider-backup-id",
+  "latestBackupCreatedAt": "YYYY-MM-DDTHH:mm:ssZ",
+  "pointInTimeRecovery": false,
+  "restoreRehearsalId": "replace-with-isolated-rehearsal-id",
+  "restoreRehearsalStatus": "NOT_RUN"
+}

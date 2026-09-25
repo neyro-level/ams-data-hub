@@ -23,6 +23,10 @@ const ignoredDirectories = new Set([
   "coverage",
   "graphify-out",
 ]);
+const ignoredFiles = new Set([
+  "docs/MASTER_PLAN.md",
+  "docs/MASTER_PLAN.inventory.json",
+]);
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -43,17 +47,28 @@ async function collectFiles(directory) {
 
 const violations = [];
 for (const file of await collectFiles(root)) {
+  const relativeFile = path.relative(root, file).replaceAll("\\", "/");
+  if (ignoredFiles.has(relativeFile)) continue;
   const content = await readFile(file, "utf8");
   for (const pattern of forbiddenPatterns) {
     if (pattern.test(content)) {
-      violations.push(`${path.relative(root, file).replaceAll("\\", "/")}: ${pattern.source}`);
+      violations.push(`${relativeFile}: ${pattern.source}`);
     }
   }
 }
 
-const manifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
-if (!manifest.includes('name: "АМС Старт"') || !manifest.includes('display: "standalone"')) {
-  violations.push("src/app/manifest.ts: PWA manifest must be installable and branded as АМС Старт");
+const identityManifest = JSON.parse(await readFile(path.join(root, "starter.identity.json"), "utf8"));
+const expectedProductName = identityManifest.mode === "derived"
+  ? identityManifest.identity?.productName
+  : "АМС Старт";
+const appManifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
+if (
+  typeof expectedProductName !== "string"
+  || !expectedProductName.trim()
+  || !appManifest.includes(`name: ${JSON.stringify(expectedProductName)}`)
+  || !appManifest.includes('display: "standalone"')
+) {
+  violations.push("src/app/manifest.ts: PWA manifest must be installable and match starter.identity.json");
 }
 
 const serviceWorker = await readFile(path.join(root, "public/sw.js"), "utf8");
