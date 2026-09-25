@@ -133,6 +133,10 @@ PREVIOUS_MIGRATOR_IMAGE_DIGEST=$PREVIOUS_MIGRATOR_DIGEST
 EOF
 
 docker run --rm --network host \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
   --env-file /etc/ams-platform/ams-start-migrator.env \
   -e APP_ENV=production \
   -e NODE_ENV=production \

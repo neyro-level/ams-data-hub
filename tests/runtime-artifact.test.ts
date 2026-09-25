@@ -13,6 +13,7 @@ describe("runtime artifact template", () => {
 
   it("hardens services and keeps database identities separate", async () => {
     const compose = await readFile("docker-compose.production.yml", "utf8");
+    const deploy = await readFile("scripts/deploy-production.mjs", "utf8");
     expect(compose).toContain("read_only: true");
     expect(compose).toContain("no-new-privileges:true");
     expect(compose).toContain("ams-start-web.env");
@@ -21,6 +22,10 @@ describe("runtime artifact template", () => {
     expect(compose).toContain("AMS_START_WEB_IMAGE");
     expect(compose).toContain("AMS_START_WORKER_IMAGE");
     expect(compose).toContain("AMS_START_MIGRATOR_IMAGE");
+    expect(deploy).toContain("--read-only");
+    expect(deploy).toContain("--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m");
+    expect(deploy).toContain("--cap-drop ALL");
+    expect(deploy).toContain("--security-opt no-new-privileges:true");
   });
 
   it("keeps live proof local and cache/access aware", async () => {
