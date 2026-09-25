@@ -1,5 +1,8 @@
 # Runbook Deploy
 
+**Status:** Active extension. `05_RELEASE_CHECKLIST.md` owns derived-product
+release readiness; this file provides reusable procedure detail.
+
 `ams-microsaas-starter` is a copy-source template, not a production target. Do not create a domain, VPS, production database, production secrets, rehearsal or live deployment for this repository. Its `release-check`, Docker, Compose and ops files are reusable starting material only; they are not approved evidence for a real release.
 
 The E08 template contract separates build/runtime/migrator artifacts and binds a reviewed SHA to image and rollback digests. It is local reusable material, not a starter release route: see [`ADR-011`](adr/ADR-011-runtime-artifact-and-release-template.md).

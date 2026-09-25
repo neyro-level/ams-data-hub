@@ -13,3 +13,7 @@ export type {
   ProjectStatus,
   UpdateProjectInput,
 } from "./contracts.ts";
+export {
+  ProjectRegistryError,
+  type ProjectRegistryErrorCode,
+} from "./domain/project-registry-error.ts";

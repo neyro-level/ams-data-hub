@@ -96,7 +96,9 @@ export class ReliabilityService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async enqueue(command: EnqueueEventCommand): Promise<EnqueueReliabilityEventResult> {
+  async enqueue(
+    command: EnqueueEventCommand,
+  ): Promise<EnqueueReliabilityEventResult> {
     const input = enqueueEventSchema.parse(command);
     const now = this.now();
     const requestHash = createHash("sha256").update(canonicalJson(input.payload)).digest("hex");
@@ -136,6 +138,9 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: workerSchema.parse(workerId),
+      expectedWorkerId: event.workerId,
+      expectedLeaseAcquiredAt: event.leaseAcquiredAt,
+      expectedAttempt: event.attempt,
       now: this.now().toISOString(),
     });
   }
@@ -145,6 +150,7 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: event.workerId,
+      leaseAcquiredAt: event.leaseAcquiredAt,
       finishedAt: this.now().toISOString(),
     });
   }
@@ -159,6 +165,7 @@ export class ReliabilityService {
       outboxEventId: event.outboxEventId,
       jobRunId: event.jobRunId,
       workerId: event.workerId,
+      leaseAcquiredAt: event.leaseAcquiredAt,
       finishedAt: this.now().toISOString(),
       safeErrorCode: safeErrorCodeSchema.parse(safeErrorCode),
       retryable,

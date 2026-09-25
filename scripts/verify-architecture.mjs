@@ -84,6 +84,22 @@ for (const filePath of await collectFiles(sourceDir)) {
   if (source.includes("ActorContext")) {
     failures.push(`Legacy authorization context: ${relativePath}`);
   }
+  if (
+    source.includes("defineCommand({")
+    && (
+      /\bfetch\s*\(/.test(source)
+      || /from\s+["']node:(?:fs|http|https|net|tls)["']/.test(source)
+      || /from\s+["'](?:axios|nodemailer|stripe)(?:\/|["'])/.test(source)
+    )
+  ) {
+    failures.push(`External I/O inside command boundary: ${relativePath}`);
+  }
+  if (
+    /^src\/modules\/[^/]+\/infrastructure\/prisma-.*-repository\.ts$/.test(relativePath)
+    && source.includes("runInPrincipalDatabaseTransaction")
+  ) {
+    failures.push(`Repository opens a nested principal transaction: ${relativePath}`);
+  }
 }
 
 if (failures.length > 0) {

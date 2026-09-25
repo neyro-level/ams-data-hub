@@ -1,5 +1,8 @@
 import { createCorrelationId } from "../http/correlation.ts";
-import { getPrismaClient } from "../database/prisma/client.ts";
+import {
+  createIdentityDatabaseAuthorizationContext,
+  runInAuthorizedDatabaseTransaction,
+} from "../database/transaction.ts";
 import type {
   PlatformAdminPrincipal,
   PlatformStaffPrincipal,
@@ -10,6 +13,8 @@ import type {
 
 export interface PrincipalFactoryOptions {
   correlationId?: string;
+  selectedOrganizationId?: string | null;
+  platformAdminMfaVerified?: boolean;
 }
 
 export interface PrincipalState {
@@ -28,24 +33,34 @@ export async function getPrincipalStateByUserId(
   userId: string,
   options: PrincipalFactoryOptions = {},
 ): Promise<PrincipalState | null> {
-  const user = await getPrismaClient().user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      name: true,
-      systemRole: true,
-      disabledAt: true,
-      members: {
-        orderBy: { organizationId: "asc" },
-        select: { id: true, organizationId: true, tenantRole: true },
-      },
-    },
-  });
-  if (!user || user.disabledAt) return null;
-
+  const now = new Date();
   const correlationId = options.correlationId ?? createCorrelationId();
+  const user = await runInAuthorizedDatabaseTransaction(
+    createIdentityDatabaseAuthorizationContext({ userId, correlationId }),
+    (transaction) => transaction.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        systemRole: true,
+        disabledAt: true,
+        setupTokens: {
+          where: { consumedAt: null, revokedAt: null, expiresAt: { gt: now } },
+          select: { id: true },
+          take: 1,
+        },
+        members: {
+          orderBy: { organizationId: "asc" },
+          select: { id: true, organizationId: true, tenantRole: true },
+        },
+      },
+    }),
+  );
+  if (!user || user.disabledAt || user.setupTokens.length > 0) return null;
+
   let principal: PrincipalContext;
   if (user.systemRole === "PLATFORM_ADMIN") {
+    if (!options.platformAdminMfaVerified) return null;
     principal = {
       kind: "platform-admin",
       userId: user.id,
@@ -54,7 +69,9 @@ export async function getPrincipalStateByUserId(
   } else if (user.systemRole === "STAFF") {
     principal = { kind: "platform-staff", userId: user.id, correlationId } satisfies PlatformStaffPrincipal;
   } else {
-    const selectedMembership = user.members[0];
+    const selectedMembership = options.selectedOrganizationId
+      ? user.members.find((membership) => membership.organizationId === options.selectedOrganizationId)
+      : user.members.length === 1 ? user.members[0] : null;
     if (!selectedMembership) return null;
     principal = {
       kind: "tenant-user",
