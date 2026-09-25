@@ -1,5 +1,6 @@
 import { IdentityAdminError } from "../../../modules/identity-access/contracts.ts";
 import { PlatformOperationsAdminError } from "../../../modules/platform-operations/contracts.ts";
+import { ProjectRegistryError } from "../../../modules/project-registry/index.ts";
 import { defineAction } from "../../../platform/actions/define-action.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 
@@ -9,8 +10,8 @@ function mapError(error: unknown) {
       ? error.code
       : error instanceof PlatformOperationsAdminError
         ? error.code
-        : error instanceof Error
-          ? error.message
+        : error instanceof ProjectRegistryError
+          ? error.code
           : "PLATFORM_ADMIN_ACTION_FAILED";
 
   const messages: Record<string, string> = {

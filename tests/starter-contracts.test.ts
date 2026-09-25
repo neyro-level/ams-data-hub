@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProjectInputSchema } from "../src/modules/project-registry/contracts.ts";
 import { createUserInputSchema, systemRoleSchema } from "../src/modules/identity-access/contracts.ts";
 import { requestMaintenanceInputSchema } from "../src/modules/platform-operations/contracts.ts";
+import { readFileSync } from "node:fs";
 
 describe("starter admin contracts", () => {
   it("uses neutral system roles", () => {
@@ -18,7 +19,6 @@ describe("starter admin contracts", () => {
     expect(createUserInputSchema.parse({
       username: "member_1",
       name: "Member",
-      password: "Abc123!?",
       systemRole: "MEMBER",
     }).systemRole).toBe("MEMBER");
   });
@@ -27,5 +27,12 @@ describe("starter admin contracts", () => {
     expect(requestMaintenanceInputSchema.parse({ idempotencyKey: "manual-1" })).toEqual({
       idempotencyKey: "manual-1",
     });
+  });
+
+  it("keeps approved Task Manager artifacts outside product neutrality scanning", () => {
+    const verifier = readFileSync("scripts/verify-config.mjs", "utf8");
+    expect(verifier).toContain('"docs/MASTER_PLAN.md"');
+    expect(verifier).toContain('"docs/MASTER_PLAN.inventory.json"');
+    expect(verifier).toContain("if (ignoredFiles.has(relativeFile)) continue");
   });
 });

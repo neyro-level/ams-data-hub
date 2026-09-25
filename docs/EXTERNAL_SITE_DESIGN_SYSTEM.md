@@ -1,5 +1,8 @@
 # АМС Старт External Site Design System
 
+**Status:** Active extension. `06_DESIGN_SYSTEM.md` owns cross-surface design
+policy; this file defines the public-surface detail.
+
 The public layer keeps the existing composition and visual language:
 
 - dark premium public theme;

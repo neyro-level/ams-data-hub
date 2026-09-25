@@ -34,6 +34,7 @@ export interface ClaimedReliabilityEvent {
   outboxEventId: string;
   jobRunId: string;
   workerId: string;
+  leaseAcquiredAt: string;
   organizationId: string | null;
   topic: string;
   payload: Record<string, unknown>;
@@ -47,6 +48,7 @@ export interface CompleteReliabilityEventInput {
   outboxEventId: string;
   jobRunId: string;
   workerId: string;
+  leaseAcquiredAt: string;
   finishedAt: string;
 }
 
@@ -65,6 +67,9 @@ export interface TakeOverReliabilityEventInput {
   outboxEventId: string;
   jobRunId: string;
   workerId: string;
+  expectedWorkerId: string;
+  expectedLeaseAcquiredAt: string;
+  expectedAttempt: number;
   now: string;
 }
 

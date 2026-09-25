@@ -24,6 +24,7 @@ export const outboxDispatchEventSchema = z.object({
   outboxEventId: z.string().trim().min(1),
   jobRunId: z.string().trim().min(1),
   workerId: z.string().trim().min(1),
+  leaseAcquiredAt: z.string().datetime(),
   organizationId: z.string().trim().min(1).nullable(),
   topic: z.string().trim().min(1),
   payload: z.record(z.string(), jsonValueSchema),

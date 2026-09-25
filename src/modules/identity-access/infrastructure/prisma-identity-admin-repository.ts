@@ -257,40 +257,38 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     try {
       const userId = randomUUID();
       const email = input.email || `${input.username}@users.ams-start.invalid`;
-      return await this.prisma.$transaction(async (transaction) => {
-        const user = await transaction.user.create({
-          data: {
-            id: userId,
-            name: input.name,
-            username: input.username,
-            email,
-            emailVerified: false,
-            systemRole: input.systemRole,
-          },
-          select: { id: true },
-        });
-        await transaction.account.create({
-          data: {
-            id: randomUUID(),
-            userId: user.id,
-            issuer: createLocalAccountIssuer("credential"),
-            accountId: user.id,
-            providerId: "credential",
-            password: input.passwordHash,
-          },
-        });
-        const membership = input.organizationId
-          ? await transaction.member.create({
-              data: {
-                organizationId: input.organizationId,
-                userId: user.id,
-                tenantRole: input.tenantRole,
-              },
-              select: { id: true },
-            })
-          : null;
-        return { userId: user.id, membershipId: membership?.id ?? null };
+      const user = await this.prisma.user.create({
+        data: {
+          id: userId,
+          name: input.name,
+          username: input.username,
+          email,
+          emailVerified: false,
+          systemRole: input.systemRole,
+        },
+        select: { id: true },
       });
+      await this.prisma.account.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          issuer: createLocalAccountIssuer("credential"),
+          accountId: user.id,
+          providerId: "credential",
+          password: input.passwordHash,
+        },
+      });
+      const membership = input.organizationId
+        ? await this.prisma.member.create({
+            data: {
+              organizationId: input.organizationId,
+              userId: user.id,
+              tenantRole: input.tenantRole,
+            },
+            select: { id: true },
+          })
+        : null;
+      return { userId: user.id, membershipId: membership?.id ?? null };
     } catch (error) {
       translateWriteError(error);
     }
@@ -305,6 +303,59 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     });
     await this.prisma.session.deleteMany({ where: { userId } });
     return account.count === 1;
+  }
+
+  async issueAccountSetupToken(input: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await this.prisma.accountSetupToken.updateMany({
+      where: { userId: input.userId, consumedAt: null, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.prisma.accountSetupToken.create({ data: input });
+  }
+
+  async completeAccountSetup(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<string | null> {
+    const token = await this.prisma.accountSetupToken.findUnique({
+      where: { tokenHash: input.tokenHash },
+      select: { id: true, userId: true },
+    });
+    if (!token) return null;
+    const consumed = await this.prisma.accountSetupToken.updateMany({
+      where: { id: token.id, consumedAt: null, revokedAt: null, expiresAt: { gt: input.now } },
+      data: { consumedAt: input.now },
+    });
+    if (consumed.count !== 1) return null;
+    await this.prisma.account.updateMany({
+      where: { userId: token.userId, providerId: "credential" },
+      data: { password: input.passwordHash },
+    });
+    await this.prisma.user.update({ where: { id: token.userId }, data: { setupCompletedAt: input.now } });
+    await this.prisma.accountSetupToken.updateMany({
+      where: { userId: token.userId, consumedAt: null, revokedAt: null },
+      data: { revokedAt: input.now },
+    });
+    await this.prisma.session.deleteMany({ where: { userId: token.userId } });
+    return token.userId;
+  }
+
+  async issuePlatformRecoveryToken(input: { userId: string; tokenHash: string; expiresAt: Date }): Promise<boolean> {
+    const user = await this.prisma.user.findFirst({ where: { id: input.userId, systemRole: "PLATFORM_ADMIN", disabledAt: null }, select: { id: true } });
+    if (!user) return false;
+    await this.prisma.platformRecoveryToken.updateMany({ where: { userId: input.userId, consumedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.prisma.platformRecoveryToken.create({ data: input });
+    return true;
+  }
+
+  async completePlatformRecovery(input: { tokenHash: string; passwordHash: string; now: Date }): Promise<string | null> {
+    const token = await this.prisma.platformRecoveryToken.findUnique({ where: { tokenHash: input.tokenHash }, select: { id: true, userId: true } });
+    if (!token) return null;
+    const consumed = await this.prisma.platformRecoveryToken.updateMany({ where: { id: token.id, consumedAt: null, revokedAt: null, expiresAt: { gt: input.now } }, data: { consumedAt: input.now } });
+    if (consumed.count !== 1) return null;
+    await this.prisma.account.updateMany({ where: { userId: token.userId, providerId: "credential" }, data: { password: input.passwordHash } });
+    await this.prisma.twoFactor.deleteMany({ where: { userId: token.userId } });
+    await this.prisma.user.update({ where: { id: token.userId }, data: { twoFactorEnabled: false } });
+    await this.prisma.platformRecoveryToken.updateMany({ where: { userId: token.userId, consumedAt: null, revokedAt: null }, data: { revokedAt: input.now } });
+    await this.prisma.session.deleteMany({ where: { userId: token.userId } });
+    return token.userId;
   }
 
   async setUserEnabled(userId: string, enabled: boolean): Promise<boolean> {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isIP } from "node:net";
 
 type EnvironmentSource = Record<string, string | undefined>;
 
@@ -77,11 +78,29 @@ export function readDatabaseEnvironment(
 const authEnvironmentSchema = z.object({
   BETTER_AUTH_SECRET: z.string().trim().min(32),
   BETTER_AUTH_URL: z.string().trim().url(),
+  BETTER_AUTH_TRUSTED_PROXY_CIDRS: optionalEnvironmentValue,
 });
 
 export interface AuthEnvironment {
   secret: string;
   baseUrl: string;
+  trustedProxyCidrs: string[];
+}
+
+function parseTrustedProxyCidrs(value: string | undefined): string[] {
+  if (!value) return [];
+
+  const cidrs = value.split(",").map((item) => item.trim()).filter(Boolean);
+  for (const cidr of cidrs) {
+    const [address, prefix] = cidr.split("/");
+    const ipVersion = address ? isIP(address) : 0;
+    const maxPrefix = ipVersion === 6 ? 128 : ipVersion === 4 ? 32 : 0;
+    const prefixValue = prefix === undefined ? null : Number(prefix);
+    if (!address || ipVersion === 0 || (prefix !== undefined && (!Number.isInteger(prefixValue) || prefixValue! < 0 || prefixValue! > maxPrefix))) {
+      throw new Error("BETTER_AUTH_TRUSTED_PROXY_CIDRS contains an invalid IP or CIDR range");
+    }
+  }
+  return cidrs;
 }
 
 export function readAuthEnvironment(
@@ -96,6 +115,7 @@ export function readAuthEnvironment(
   const parsed = authEnvironmentSchema.safeParse({
     BETTER_AUTH_SECRET: secret,
     BETTER_AUTH_URL: baseUrl,
+    BETTER_AUTH_TRUSTED_PROXY_CIDRS: env.BETTER_AUTH_TRUSTED_PROXY_CIDRS,
   });
   if (!parsed.success) {
     throw new Error("Better Auth environment is invalid or incomplete");
@@ -110,6 +130,7 @@ export function readAuthEnvironment(
   return {
     secret: parsed.data.BETTER_AUTH_SECRET,
     baseUrl: url.origin,
+    trustedProxyCidrs: parseTrustedProxyCidrs(parsed.data.BETTER_AUTH_TRUSTED_PROXY_CIDRS),
   };
 }
 

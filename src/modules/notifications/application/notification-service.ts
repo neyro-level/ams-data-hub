@@ -1,6 +1,9 @@
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import { defineCommand } from "../../../platform/commands/define-command.ts";
-import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import {
+  runInPrincipalDatabaseTransaction,
+  type DatabaseTransaction,
+} from "../../../platform/database/transaction.ts";
 import { markAllNotificationsReadInputSchema, notificationIdInputSchema, notificationListQuerySchema, NotificationAccessError, type NotificationListQuery, type NotificationListResult } from "../domain/notification.ts";
 
 export type NotificationAudience = { userId: string; includeAdminOnly: boolean };
@@ -21,12 +24,24 @@ function audienceFor(principal: PrincipalContext): NotificationAudience {
 
 export function createNotificationService(dependencies: { createRepository(transaction?: DatabaseTransaction): NotificationRepository }) {
   async function listNotifications(principal: PrincipalContext, raw: NotificationListQuery) {
-    return dependencies.createRepository().list(audienceFor(principal), notificationListQuerySchema.parse(raw));
+    const audience = audienceFor(principal);
+    const query = notificationListQuerySchema.parse(raw);
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).list(audience, query),
+    );
   }
   async function getNotificationSummary(principal: PrincipalContext) {
-    return dependencies.createRepository().recent(audienceFor(principal), 8);
+    const audience = audienceFor(principal);
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).recent(audience, 8),
+    );
   }
-  async function getNotificationFilterOptions(principal: PrincipalContext) { return dependencies.createRepository().filterOptions(audienceFor(principal)); }
+  async function getNotificationFilterOptions(principal: PrincipalContext) {
+    const audience = audienceFor(principal);
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).filterOptions(audience),
+    );
+  }
   const setNotificationRead = defineCommand<PrincipalContext, typeof notificationIdInputSchema, { notificationId: string; read: boolean }>({
     name: "notifications.set-read", input: notificationIdInputSchema,
     authorize: (principal) => { audienceFor(principal); },

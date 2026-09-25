@@ -1,5 +1,8 @@
 # Local Development
 
+**Status:** Active extension. Local-runtime procedure detail for the architecture
+contract; it does not define production topology.
+
 Canonical local mode: Windows-native checkout and Windows-native PostgreSQL.
 
 Suggested local names:

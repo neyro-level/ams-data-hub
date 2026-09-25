@@ -1,5 +1,9 @@
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import {
+  runInPrincipalDatabaseTransaction,
+  type DatabaseTransaction,
+} from "../../../platform/database/transaction.ts";
+import {
   identityAdminListQuerySchema,
   type IdentityAdminListQuery,
 } from "../domain/admin-identity.ts";
@@ -7,7 +11,7 @@ import { requireIdentityAdminActor } from "./identity-admin-authorization.ts";
 import type { IdentityAdminRepository } from "./ports/identity-admin-repository.ts";
 
 export interface IdentityAdminQueryDependencies {
-  createRepository(): IdentityAdminRepository;
+  createRepository(transaction: DatabaseTransaction): IdentityAdminRepository;
 }
 
 export function createIdentityAdminQueries(
@@ -19,7 +23,9 @@ export function createIdentityAdminQueries(
   ) {
     requireIdentityAdminActor(principal);
     const query = identityAdminListQuerySchema.parse(rawQuery);
-    return dependencies.createRepository().listOrganizations(query);
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).listOrganizations(query),
+    );
   }
 
   async function listMemberships(
@@ -28,17 +34,23 @@ export function createIdentityAdminQueries(
   ) {
     requireIdentityAdminActor(principal);
     const query = identityAdminListQuerySchema.parse(rawQuery);
-    return dependencies.createRepository().listMemberships(query);
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).listMemberships(query),
+    );
   }
 
   async function getIdentityAdminFormOptions(principal: PrincipalContext) {
     requireIdentityAdminActor(principal);
-    return dependencies.createRepository().listFormOptions();
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).listFormOptions(),
+    );
   }
 
   async function listUsers(principal: PrincipalContext) {
     requireIdentityAdminActor(principal);
-    return dependencies.createRepository().listUsers();
+    return runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      dependencies.createRepository(transaction).listUsers(),
+    );
   }
 
   return {
