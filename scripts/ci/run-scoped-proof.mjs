@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createTestDatabaseUrl, readTestDatabaseTarget } from "../verify-test-database-env.mjs";
 
 const rootDir = path.resolve(import.meta.dirname, "../..");
 const testPathPattern = /^tests\/[A-Za-z0-9._/-]+\.test\.ts$/;
@@ -34,15 +35,32 @@ export function parseBoolean(rawValue, inputName) {
   throw new Error(`${inputName} must be true or false`);
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, {
+function run(command, args, environment = process.env) {
+  const windowsPnpm = process.platform === "win32" && command === "pnpm";
+  const executable = windowsPnpm ? (process.env.ComSpec ?? "cmd.exe") : command;
+  const commandArgs = windowsPnpm ? ["/d", "/s", "/c", ["pnpm", ...args].join(" ")] : args;
+  const result = spawnSync(executable, commandArgs, {
     cwd: rootDir,
-    env: process.env,
+    env: environment,
     stdio: "inherit",
     shell: false,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+export function createRiskBuildEnvironment(environment) {
+  const target = readTestDatabaseTarget(environment);
+  return {
+    ...environment,
+    DATABASE_HOST: target.host,
+    DATABASE_PORT: String(target.port),
+    DATABASE_USER: target.user,
+    DATABASE_PASSWORD: target.password,
+    DATABASE_NAME: target.database,
+    DATABASE_SSLMODE: target.sslmode,
+    DATABASE_URL: createTestDatabaseUrl(target),
+  };
 }
 
 function runUnitProof() {
@@ -68,7 +86,7 @@ function runOptionalRiskProof() {
     run("pnpm", ["security:dependencies"]);
   }
   if (parseBoolean(process.env.RUN_BUILD, "RUN_BUILD")) {
-    run("pnpm", ["build"]);
+    run("pnpm", ["build"], createRiskBuildEnvironment(process.env));
   }
 }
 

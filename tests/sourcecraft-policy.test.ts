@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { classifyRisk } from "../scripts/ci/classify-risk.mjs";
-import { parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
+import { createRiskBuildEnvironment, parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
 import { scanText } from "../scripts/ci/scan-secrets.mjs";
 import { verifyExactHead } from "../scripts/ci/verify-exact-head.mjs";
 import { validateSourcecraftPolicy } from "../scripts/ci/verify-sourcecraft-policy.mjs";
@@ -59,6 +59,25 @@ describe("SourceCraft gate policy", () => {
       .toThrow(/invalid/u);
     expect(parseBoolean("true", "RUN_BUILD")).toBe(true);
     expect(() => parseBoolean("1", "RUN_BUILD")).toThrow(/true or false/u);
+  });
+
+  it("builds under the same guarded test database identity used by CI", () => {
+    const environment = createRiskBuildEnvironment({
+      APP_ENV: "test",
+      LOCAL_POSTGRES_USER: "ams_data_hub_local",
+      DATABASE_USER: "ams_data_hub_local",
+      DATABASE_NAME: "ams_data_hub_dev",
+      TEST_DATABASE_HOST: "127.0.0.1",
+      TEST_DATABASE_PORT: "5432",
+      TEST_DATABASE_USER: "ams_data_hub_test",
+      TEST_DATABASE_PASSWORD: "ci-only-password",
+      TEST_DATABASE_NAME: "ams_data_hub_ci_test",
+      TEST_DATABASE_SSLMODE: "disable",
+    });
+
+    expect(environment.DATABASE_USER).toBe("ams_data_hub_test");
+    expect(environment.DATABASE_NAME).toBe("ams_data_hub_ci_test");
+    expect(environment.DATABASE_URL).toContain("/ams_data_hub_ci_test");
   });
 
   it("treats classifier output as a conservative attention hint", () => {
