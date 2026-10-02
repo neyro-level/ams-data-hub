@@ -98,11 +98,11 @@ workflows:
           TEST_DATABASE_SSLMODE: disable
           DATABASE_HOST: 127.0.0.1
           DATABASE_PORT: "5432"
-          DATABASE_USER: ams_data_hub_test
-          DATABASE_PASSWORD: ams_data_hub_test
-          DATABASE_NAME: ams_data_hub_ci_test
+          DATABASE_USER: ams_data_hub_local
+          DATABASE_PASSWORD: ams_data_hub_local
+          DATABASE_NAME: ams_data_hub_dev
           DATABASE_SSLMODE: disable
-          DATABASE_URL: postgresql://ams_data_hub_test:ams_data_hub_test@127.0.0.1:5432/ams_data_hub_ci_test?sslmode=disable
+          DATABASE_URL: postgresql://ams_data_hub_local:ams_data_hub_local@127.0.0.1:5432/ams_data_hub_dev?sslmode=disable
           BETTER_AUTH_SECRET: ci-only-secret-not-for-production-1234567890
           BETTER_AUTH_URL: http://127.0.0.1:3100
         cubes:
