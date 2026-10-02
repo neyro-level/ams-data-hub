@@ -1,0 +1,11 @@
+{
+  "databaseMaxConnections": 100,
+  "reservedConnections": 20,
+  "allocations": {
+    "web": { "instances": 2, "maxPerInstance": 5 },
+    "worker": { "instances": 2, "maxPerInstance": 5 },
+    "pgBoss": { "instances": 2, "maxPerInstance": 3 },
+    "migrator": { "instances": 1, "maxPerInstance": 5 },
+    "maintenance": { "instances": 1, "maxPerInstance": 2 }
+  }
+}

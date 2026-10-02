@@ -1,0 +1,29 @@
+export { auth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
+export {
+  getCurrentCabinetRedirect,
+  getCurrentPrincipalState,
+  setCurrentActiveOrganization,
+} from "../../platform/auth/principal-session.ts";
+export {
+  createJobPrincipal,
+  getPrincipalStateByUserId,
+  requirePlatformAdmin,
+  requirePlatformStaff,
+  requireTenantUser,
+} from "../../platform/authorization/principal-factories.ts";
+export {
+  createMembership,
+  createOrganization,
+  createUser,
+  completeAccountSetup,
+  completePlatformRecovery,
+  getIdentityAdminFormOptions,
+  listMemberships,
+  listOrganizations,
+  listUsers,
+  resetUserPassword,
+  setUserEnabled,
+  removeMembership,
+  updateMembership,
+  updateOrganization,
+} from "./infrastructure/identity-admin-runtime.ts";

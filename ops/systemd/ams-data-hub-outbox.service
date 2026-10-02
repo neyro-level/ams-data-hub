@@ -1,0 +1,13 @@
+[Unit]
+Description=AMS Start outbox retention
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ams-data-hub/current
+Environment=COMPOSE_PROJECT_NAME=ams-data-hub
+EnvironmentFile=-/opt/ams-data-hub/shared/release.env
+ExecStart=/usr/bin/docker compose -f /opt/ams-data-hub/current/docker-compose.production.yml run --rm --no-deps maintenance outbox-retention
+TimeoutStartSec=20min

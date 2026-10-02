@@ -1,0 +1,18 @@
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ams_data_hub_web') THEN
+    CREATE ROLE ams_data_hub_web LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ams_data_hub_worker') THEN
+    CREATE ROLE ams_data_hub_worker LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ams_data_hub_migrator') THEN
+    CREATE ROLE ams_data_hub_migrator LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER NOBYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ams_data_hub_backup') THEN
+    CREATE ROLE ams_data_hub_backup LOGIN NOINHERIT NOCREATEDB NOCREATEROLE NOSUPERUSER NOBYPASSRLS;
+  END IF;
+END $$;
+
+GRANT ams_data_hub_web, ams_data_hub_worker TO :"test_role";
+ALTER ROLE :"test_role" BYPASSRLS;

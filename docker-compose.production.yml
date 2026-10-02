@@ -1,0 +1,81 @@
+x-runtime-hardening: &runtime-hardening
+  read_only: true
+  init: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  web:
+    <<: *runtime-hardening
+    image: ${AMS_DATA_HUB_WEB_IMAGE:?Set AMS_DATA_HUB_WEB_IMAGE}
+    restart: always
+    network_mode: host
+    env_file:
+      - path: /etc/ams-data-hub/web.env
+        required: false
+      - path: /opt/ams-data-hub/shared/release.env
+        required: false
+    environment:
+      APP_ENV: production
+      HOSTNAME: 127.0.0.1
+      PORT: 3000
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  worker:
+    <<: *runtime-hardening
+    image: ${AMS_DATA_HUB_WORKER_IMAGE:?Set AMS_DATA_HUB_WORKER_IMAGE}
+    restart: always
+    network_mode: host
+    env_file:
+      - path: /etc/ams-data-hub/worker.env
+        required: false
+      - path: /opt/ams-data-hub/shared/release.env
+        required: false
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  migrate:
+    <<: *runtime-hardening
+    image: ${AMS_DATA_HUB_MIGRATOR_IMAGE:?Set AMS_DATA_HUB_MIGRATOR_IMAGE}
+    restart: "no"
+    network_mode: host
+    profiles: ["manual"]
+    env_file:
+      - path: /etc/ams-data-hub/migrator.env
+        required: false
+      - path: /opt/ams-data-hub/shared/release.env
+        required: false
+    environment:
+      APP_ENV: production
+      NODE_ENV: production
+
+  maintenance:
+    <<: *runtime-hardening
+    image: ${AMS_DATA_HUB_WORKER_IMAGE:?Set AMS_DATA_HUB_WORKER_IMAGE}
+    command: ["outbox-retention"]
+    restart: "no"
+    network_mode: host
+    profiles: ["manual"]
+    env_file:
+      - path: /etc/ams-data-hub/worker.env
+        required: false
+      - path: /opt/ams-data-hub/shared/release.env
+        required: false
+    environment:
+      APP_ENV: production
+      NODE_ENV: production

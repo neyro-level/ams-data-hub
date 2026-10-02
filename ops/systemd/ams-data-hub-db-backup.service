@@ -1,0 +1,22 @@
+[Unit]
+Description=AMS Start PostgreSQL backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+Environment=DB_NAME=ams_data_hub_prod
+Environment=BACKUP_ROOT=/var/backups/ams-data-hub-postgres
+Environment=KEEP_DAILY=7
+Environment=KEEP_WEEKLY=8
+Environment=KEEP_MONTHLY=6
+Environment=S3_REGION=ru-1
+EnvironmentFile=/etc/ams-data-hub/backup.env
+ExecStart=/usr/bin/env REQUIRE_OFFSITE=true /usr/local/bin/ams-data-hub-db-backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/ams-data-hub-postgres

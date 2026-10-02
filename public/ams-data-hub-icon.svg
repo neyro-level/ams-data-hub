@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AMS Data Hub">
+  <rect width="512" height="512" fill="#0c1117"/>
+  <rect x="48" y="48" width="416" height="416" fill="#111a23" stroke="#58d0b3" stroke-width="16"/>
+  <text x="256" y="238" text-anchor="middle" font-family="Arial, sans-serif" font-size="92" font-weight="800" fill="#f6fbff">АМС</text>
+  <text x="256" y="326" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#58d0b3">СТАРТ</text>
+</svg>
