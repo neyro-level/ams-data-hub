@@ -1,0 +1,54 @@
+rules:
+  - id: ams.dynamic-code-execution
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Dynamic code execution requires manual security review.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: ams.child-process-shell
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: shell=true can turn process arguments into command injection.
+    pattern-either:
+      - pattern: '$CP.spawn($CMD, $ARGS, { ..., shell: true, ... })'
+      - pattern: '$CP.spawnSync($CMD, $ARGS, { ..., shell: true, ... })'
+
+  - id: ams.child-process-exec
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Shell command execution requires explicit manual review.
+    pattern-either:
+      - pattern: exec(...)
+      - pattern: execSync(...)
+
+  - id: ams.prisma-unsafe-raw
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Unsafe Prisma raw SQL is prohibited without an explicit reviewed boundary.
+    pattern-either:
+      - pattern: $DB.$queryRawUnsafe(...)
+      - pattern: $DB.$executeRawUnsafe(...)
+
+  - id: ams.tls-verification-disabled
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: TLS certificate verification must not be disabled.
+    pattern: '{ ..., rejectUnauthorized: false, ... }'
+
+  - id: ams.environment-url-fetch
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Environment-controlled outbound URLs require exact origin allowlisting.
+    pattern-either:
+      - pattern: fetch(process.env.$URL, ...)
+      - pattern: fetch($ENV.$URL, ...)
+
+  - id: ams.hardcoded-secret
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Possible hardcoded credential or token.
+    patterns:
+      - pattern-regex: '(?i)(secret|password|passwd|token|api[_-]?key|private[_-]?key)\\s*[:=]\\s*["''][^"'']{12,}["'']'
+      - pattern-not-regex: '(?i)(example|placeholder|test-only|not-for-production|process\\.env|field|schema|message|name)'

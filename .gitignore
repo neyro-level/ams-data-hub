@@ -1,0 +1,35 @@
+# dependencies
+/node_modules
+/.pnpm-store
+
+# next
+/.next
+/out
+
+# collector
+/dist-collector
+/.local
+/.release-artifacts
+/.runtime
+/src/generated/prisma
+/graphify-out
+
+
+# tests
+/coverage
+/playwright-report
+/test-results
+
+# misc
+.DS_Store
+*.log
+*.tsbuildinfo
+
+# env
+.env*
+!.env.example
+
+# operator configuration is private; only synthetic examples belong to Git
+/config/*
+!/config/examples/
+!/config/examples/**

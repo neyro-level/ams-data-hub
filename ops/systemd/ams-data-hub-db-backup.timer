@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AMS Start PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:10:00
+Persistent=true
+Unit=ams-data-hub-db-backup.service
+
+[Install]
+WantedBy=timers.target

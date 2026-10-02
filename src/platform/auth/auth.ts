@@ -1,0 +1,82 @@
+import "server-only";
+
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { betterAuth } from "better-auth";
+import { twoFactor, username } from "better-auth/plugins";
+import {
+  hasDatabaseConfiguration,
+  readAuthEnvironment,
+} from "../config/server-environment.ts";
+import { getPrismaClient } from "../database/prisma/client.ts";
+import {
+  createAuthIpAddressConfig,
+  createAuthRateLimitConfig,
+  isTotpVerificationPath,
+} from "./security-config.ts";
+
+const authEnvironment = readAuthEnvironment();
+const isProductionRuntime = process.env.APP_ENV === "production";
+
+export function hasAuthConfiguration() {
+  return authEnvironment !== null && hasDatabaseConfiguration();
+}
+
+export const auth =
+  hasAuthConfiguration() && authEnvironment
+      ? betterAuth({
+        secret: authEnvironment.secret,
+        baseURL: authEnvironment.baseUrl,
+        appName: "AMS Data Hub",
+        session: {
+          additionalFields: {
+            twoFactorVerifiedAt: {
+              type: "date",
+              required: false,
+              input: false,
+            },
+          },
+        },
+        trustedOrigins: [
+          authEnvironment.baseUrl,
+          ...(process.env.NODE_ENV === "production"
+            ? []
+            : ["http://127.0.0.1:3000", "http://localhost:3000"]),
+        ],
+        database: prismaAdapter(getPrismaClient(), {
+          provider: "postgresql",
+        }),
+        emailAndPassword: {
+          enabled: true,
+          disableSignUp: true,
+          minPasswordLength: 8,
+          maxPasswordLength: 128,
+        },
+        rateLimit: createAuthRateLimitConfig(),
+        advanced: {
+          ipAddress: createAuthIpAddressConfig({
+            trustedProxyCidrs: authEnvironment.trustedProxyCidrs,
+            isProduction: isProductionRuntime,
+          }),
+          useSecureCookies: isProductionRuntime,
+        },
+        databaseHooks: {
+          session: {
+            create: {
+              before: async (session, context) => {
+                if (!isTotpVerificationPath(context?.path)) return;
+                return { data: { ...session, twoFactorVerifiedAt: new Date() } };
+              },
+            },
+          },
+        },
+        plugins: [
+          twoFactor(),
+          username({
+            displayUsername: false,
+            immutableUsername: true,
+            minUsernameLength: 3,
+            maxUsernameLength: 30,
+          }),
+        ],
+      })
+    : null;

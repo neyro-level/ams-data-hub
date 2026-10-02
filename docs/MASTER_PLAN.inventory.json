@@ -1,0 +1,2944 @@
+{
+  "schema_version": 2,
+  "beads_prefix": "ams",
+  "source": {
+    "plan_id": "AMS-MICROSAAS-HARDENING-2026-01",
+    "path": "docs/MASTER_PLAN.md",
+    "version": "v4",
+    "status": "APPROVED",
+    "approved_by": "owner",
+    "approved_at": "2026-09-25T00:00:00+03:00",
+    "sha256": "bb3d7ff0d05d7732ba2fa9735434b12cb5dbc276ce05b857dae83912f7395fc8",
+    "epic_anchors": [
+      "### E00 — Canon And Profile Alignment",
+      "### E00A — Safe PostgreSQL Test Foundation",
+      "### E01 — Neutral Foundation And Derivation Contract",
+      "### E02 — Identity And Platform Admin Hardening",
+      "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "### E04 — Command, Repository And Atomic Mutation Contract",
+      "### E05 — Async, Outbox And Worker Reliability",
+      "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "### E07 — Risk-Based SourceCraft Quality Gates",
+      "### E08 — Hardened Runtime, Artifact And Release Template",
+      "### E09 — UI, PWA, Error And Observability Safety",
+      "### E10 — Clean-Room Product Derivation Proof",
+      "### E11 — Final Conformance And Handover Contract"
+    ]
+  },
+  "repositories": [
+    {
+      "key": "starter",
+      "remote": "https://git.sourcecraft.dev/integrator-p/ams-data-hub.git",
+      "default_branch": "main"
+    }
+  ],
+  "nodes": [
+    {
+      "key": "E00",
+      "title": "Canon and profile alignment",
+      "type": "epic",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "goal": "Достичь outcome эпика E00: Canon and profile alignment.",
+      "scope": [
+        "Выполнить только scope in эпика E00 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E00 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ]
+    },
+    {
+      "parent_key": "E00",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00 — Canon And Profile Alignment"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00-C",
+      "title": "E00: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E00 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00 — Canon And Profile Alignment"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00-I",
+      "title": "E00: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E00 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E00",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E00."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E00-C"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00 — Canon And Profile Alignment"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00-V",
+      "title": "E00: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E00 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E00 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E00-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00 — Canon And Profile Alignment"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00-D",
+      "title": "E00: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E00 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E00-C",
+        "E00-I",
+        "E00-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E00-M",
+      "title": "E00: owner merge gate",
+      "type": "decision",
+      "parent_key": "E00",
+      "source_anchor": "### E00 — Canon And Profile Alignment",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E00.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E00-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w0"
+      ]
+    },
+    {
+      "key": "E00A",
+      "title": "Safe PostgreSQL test foundation",
+      "type": "epic",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "goal": "Достичь outcome эпика E00A: Safe PostgreSQL test foundation.",
+      "scope": [
+        "Выполнить только scope in эпика E00A из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E00A доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ]
+    },
+    {
+      "parent_key": "E00A",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00A — Safe PostgreSQL Test Foundation"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00A-C",
+      "title": "E00A: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E00A без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E00-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00A",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00A — Safe PostgreSQL Test Foundation"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00A-I",
+      "title": "E00A: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E00A в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E00A",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E00A."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E00A-C"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00A",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00A — Safe PostgreSQL Test Foundation"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00A-V",
+      "title": "E00A: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E00A на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E00A has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E00A-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E00A",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E00A — Safe PostgreSQL Test Foundation"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E00A-D",
+      "title": "E00A: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E00A отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E00A-C",
+        "E00A-I",
+        "E00A-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E00A-M",
+      "title": "E00A: owner merge gate",
+      "type": "decision",
+      "parent_key": "E00A",
+      "source_anchor": "### E00A — Safe PostgreSQL Test Foundation",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E00A.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E00A-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w0"
+      ]
+    },
+    {
+      "key": "E01",
+      "title": "Neutral foundation and derivation contract",
+      "type": "epic",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "goal": "Достичь outcome эпика E01: Neutral foundation and derivation contract.",
+      "scope": [
+        "Выполнить только scope in эпика E01 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E01 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ]
+    },
+    {
+      "parent_key": "E01",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E01 — Neutral Foundation And Derivation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E01-C",
+      "title": "E01: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E01 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E00-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E01",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E01 — Neutral Foundation And Derivation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E01-I",
+      "title": "E01: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E01 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E01",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E01."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E01-C"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E01",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E01 — Neutral Foundation And Derivation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E01-V",
+      "title": "E01: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E01 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E01 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E01-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E01",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w0"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E01 — Neutral Foundation And Derivation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E01-D",
+      "title": "E01: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E01 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E01-C",
+        "E01-I",
+        "E01-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E01-M",
+      "title": "E01: owner merge gate",
+      "type": "decision",
+      "parent_key": "E01",
+      "source_anchor": "### E01 — Neutral Foundation And Derivation Contract",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E01.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E01-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w0"
+      ]
+    },
+    {
+      "key": "E02",
+      "title": "Identity and Platform Admin hardening",
+      "type": "epic",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "goal": "Достичь outcome эпика E02: Identity and Platform Admin hardening.",
+      "scope": [
+        "Выполнить только scope in эпика E02 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E02 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w1"
+      ]
+    },
+    {
+      "parent_key": "E02",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E02 — Identity And Platform Admin Hardening"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E02-C",
+      "title": "E02: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E02 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E00-C",
+        "E00A-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E02",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E02 — Identity And Platform Admin Hardening"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E02-I",
+      "title": "E02: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E02 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E02",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E02."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E02-C",
+        "E00A-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E02",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E02 — Identity And Platform Admin Hardening"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E02-V",
+      "title": "E02: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E02 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E02 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E02-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E02",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E02 — Identity And Platform Admin Hardening"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E02-D",
+      "title": "E02: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E02 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E02-C",
+        "E02-I",
+        "E02-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E02-M",
+      "title": "E02: owner merge gate",
+      "type": "decision",
+      "parent_key": "E02",
+      "source_anchor": "### E02 — Identity And Platform Admin Hardening",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E02.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E02-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w1"
+      ]
+    },
+    {
+      "key": "E03",
+      "title": "PostgreSQL tenant isolation and runtime identities",
+      "type": "epic",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "goal": "Достичь outcome эпика E03: PostgreSQL tenant isolation and runtime identities.",
+      "scope": [
+        "Выполнить только scope in эпика E03 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E03 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 0,
+      "labels": [
+        "wave:w1"
+      ]
+    },
+    {
+      "parent_key": "E03",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 0,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E03 — PostgreSQL Tenant Isolation And Runtime Identities"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E03-C",
+      "title": "E03: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E03 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E02-C",
+        "E00A-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E03",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 0,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E03 — PostgreSQL Tenant Isolation And Runtime Identities"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E03-I",
+      "title": "E03: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Восстановить E03 как полный runtime-safe RLS contract: все существующие защищённые пути работают только в transaction-local least-privilege principal context.",
+      "scope": [
+        "Wire platform-admin, identity-admin, project registry/tree, notifications, dashboard, readiness/health, outbox worker, heartbeat and retention paths to explicit authorized transactions",
+        "Add separate system-job principal that may operate only required operational rows and cannot access identity, membership or tenant data",
+        "Keep default-deny RLS, composite tenant constraints, NOBYPASSRLS runtime identities and regenerated pre-production baseline migration",
+        "Do not add production credentials, live database migration or product-specific vertical"
+      ],
+      "acceptance_criteria": [
+        "No reachable path accesses an E03 RLS-protected model outside an authorized transaction-local principal context.",
+        "Platform-admin, readiness/health and worker flows retain only their documented least-privilege capabilities.",
+        "System-job cannot impersonate user or platform-staff and cannot access identity or tenant-membership data."
+      ],
+      "required_checks": [
+        "Protected-model access guard and exhaustive runtime adoption map review",
+        "PostgreSQL 18 integration, migration and ACL proof"
+      ],
+      "depends_on": [
+        "E03-C",
+        "E02-M",
+        "E00A-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E03",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 0,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E03 — PostgreSQL Tenant Isolation And Runtime Identities"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E03-V",
+      "title": "E03: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать v4 E03 runtime adoption and default-deny RLS on exact task head.",
+      "scope": [
+        "Run PostgreSQL 18 integration, migration/ACL, RLS coverage and destructive-target guard proofs",
+        "Prove wired identity-admin, project, notification, dashboard, readiness/health, worker, heartbeat and retention flows under their principals",
+        "Record safe exact-head evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "PASS evidence covers missing-context and cross-tenant denial, worker denial for identity/membership data and cross-user NotificationRead denial.",
+        "PASS evidence proves every current reachable protected-model path is transaction-scoped."
+      ],
+      "required_checks": [
+        "PostgreSQL 18 integration suite, migration/ACL and RLS coverage checks",
+        "Static protected-model guard plus exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E03-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E03",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 0,
+      "labels": [
+        "wave:w1"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E03 — PostgreSQL Tenant Isolation And Runtime Identities"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E03-D",
+      "title": "E03: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить исправленный v4 E03 отдельным RISKY PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger and v4 runtime-adoption evidence"
+      ],
+      "acceptance_criteria": [
+        "One RISKY E03 PR exists with canonical target main, exact-head delivery evidence and no merge."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA and v4 E03 evidence attachment"
+      ],
+      "depends_on": [
+        "E03-C",
+        "E03-I",
+        "E03-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E03-M",
+      "title": "E03: owner merge gate",
+      "type": "decision",
+      "parent_key": "E03",
+      "source_anchor": "### E03 — PostgreSQL Tenant Isolation And Runtime Identities",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E03.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E03-D"
+      ],
+      "priority": 0,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w1"
+      ]
+    },
+    {
+      "key": "E04",
+      "title": "Command, repository and atomic mutation contract",
+      "type": "epic",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "goal": "Достичь outcome эпика E04: Command, repository and atomic mutation contract.",
+      "scope": [
+        "Выполнить только scope in эпика E04 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E04 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ]
+    },
+    {
+      "parent_key": "E04",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E04 — Command, Repository And Atomic Mutation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E04-C",
+      "title": "E04: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E04 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E03-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E04",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E04 — Command, Repository And Atomic Mutation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E04-I",
+      "title": "E04: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E04 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E04",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E04."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E04-C",
+        "E03-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E04",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E04 — Command, Repository And Atomic Mutation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E04-V",
+      "title": "E04: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E04 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E04 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E04-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E04",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E04 — Command, Repository And Atomic Mutation Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E04-D",
+      "title": "E04: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E04 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E04-C",
+        "E04-I",
+        "E04-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E04-M",
+      "title": "E04: owner merge gate",
+      "type": "decision",
+      "parent_key": "E04",
+      "source_anchor": "### E04 — Command, Repository And Atomic Mutation Contract",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E04.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E04-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w2"
+      ]
+    },
+    {
+      "key": "E05",
+      "title": "Async, outbox and worker reliability",
+      "type": "epic",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "goal": "Достичь outcome эпика E05: Async, outbox and worker reliability.",
+      "scope": [
+        "Выполнить только scope in эпика E05 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E05 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ]
+    },
+    {
+      "parent_key": "E05",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E05 — Async, Outbox And Worker Reliability"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E05-C",
+      "title": "E05: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E05 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E03-C",
+        "E04-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E05",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E05 — Async, Outbox And Worker Reliability"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E05-I",
+      "title": "E05: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E05 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E05",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E05."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E05-C",
+        "E03-M",
+        "E04-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E05",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E05 — Async, Outbox And Worker Reliability"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E05-V",
+      "title": "E05: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E05 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E05 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E05-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E05",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w2"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E05 — Async, Outbox And Worker Reliability"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E05-D",
+      "title": "E05: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E05 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E05-C",
+        "E05-I",
+        "E05-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E05-M",
+      "title": "E05: owner merge gate",
+      "type": "decision",
+      "parent_key": "E05",
+      "source_anchor": "### E05 — Async, Outbox And Worker Reliability",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E05.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E05-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w2"
+      ]
+    },
+    {
+      "key": "E06",
+      "title": "Cross-contract PostgreSQL security evidence",
+      "type": "epic",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "goal": "Достичь outcome эпика E06: Cross-contract PostgreSQL security evidence.",
+      "scope": [
+        "Выполнить только scope in эпика E06 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E06 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w3"
+      ]
+    },
+    {
+      "parent_key": "E06",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w3"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E06 — Cross-Contract PostgreSQL Security Evidence"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E06-C",
+      "title": "E06: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E06 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E00A-C",
+        "E02-C",
+        "E03-C",
+        "E04-C",
+        "E05-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E06",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w3"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E06 — Cross-Contract PostgreSQL Security Evidence"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E06-I",
+      "title": "E06: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E06 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E06",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E06."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E06-C",
+        "E00A-M",
+        "E02-M",
+        "E03-M",
+        "E04-M",
+        "E05-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E06",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w3"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E06 — Cross-Contract PostgreSQL Security Evidence"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E06-V",
+      "title": "E06: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E06 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E06 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E06-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E06",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w3"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E06 — Cross-Contract PostgreSQL Security Evidence"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E06-D",
+      "title": "E06: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E06 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E06-C",
+        "E06-I",
+        "E06-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E06-M",
+      "title": "E06: owner merge gate",
+      "type": "decision",
+      "parent_key": "E06",
+      "source_anchor": "### E06 — Cross-Contract PostgreSQL Security Evidence",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E06.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E06-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w3"
+      ]
+    },
+    {
+      "key": "E07",
+      "title": "Risk-based SourceCraft quality gates",
+      "type": "epic",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "goal": "Достичь outcome эпика E07: Risk-based SourceCraft quality gates.",
+      "scope": [
+        "Выполнить только scope in эпика E07 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E07 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ]
+    },
+    {
+      "parent_key": "E07",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E07 — Risk-Based SourceCraft Quality Gates"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E07-C",
+      "title": "E07: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E07 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E06-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E07",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E07 — Risk-Based SourceCraft Quality Gates"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E07-I",
+      "title": "E07: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E07 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E07",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E07."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E07-C",
+        "E06-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E07",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E07 — Risk-Based SourceCraft Quality Gates"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E07-V",
+      "title": "E07: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E07 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E07 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E07-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E07",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E07 — Risk-Based SourceCraft Quality Gates"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E07-D",
+      "title": "E07: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E07 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E07-C",
+        "E07-I",
+        "E07-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E07-M",
+      "title": "E07: owner merge gate",
+      "type": "decision",
+      "parent_key": "E07",
+      "source_anchor": "### E07 — Risk-Based SourceCraft Quality Gates",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E07.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E07-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w4"
+      ]
+    },
+    {
+      "key": "E08",
+      "title": "Hardened runtime, artifact and release template",
+      "type": "epic",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "goal": "Достичь outcome эпика E08: Hardened runtime, artifact and release template.",
+      "scope": [
+        "Выполнить только scope in эпика E08 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E08 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ]
+    },
+    {
+      "parent_key": "E08",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E08 — Hardened Runtime, Artifact And Release Template"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E08-C",
+      "title": "E08: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E08 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E03-C",
+        "E05-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E08",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E08 — Hardened Runtime, Artifact And Release Template"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E08-I",
+      "title": "E08: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E08 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E08",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E08."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E08-C",
+        "E03-M",
+        "E05-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E08",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E08 — Hardened Runtime, Artifact And Release Template"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E08-V",
+      "title": "E08: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E08 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E08 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E08-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E08",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E08 — Hardened Runtime, Artifact And Release Template"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E08-D",
+      "title": "E08: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E08 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E08-C",
+        "E08-I",
+        "E08-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E08-M",
+      "title": "E08: owner merge gate",
+      "type": "decision",
+      "parent_key": "E08",
+      "source_anchor": "### E08 — Hardened Runtime, Artifact And Release Template",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E08.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E08-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w4"
+      ]
+    },
+    {
+      "key": "E09",
+      "title": "UI, PWA, error and observability safety",
+      "type": "epic",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "goal": "Достичь outcome эпика E09: UI, PWA, error and observability safety.",
+      "scope": [
+        "Выполнить только scope in эпика E09 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E09 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 2,
+      "labels": [
+        "wave:w4"
+      ]
+    },
+    {
+      "parent_key": "E09",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 2,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E09 — UI, PWA, Error And Observability Safety"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E09-C",
+      "title": "E09: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E09 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E01-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E09",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 2,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E09 — UI, PWA, Error And Observability Safety"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E09-I",
+      "title": "E09: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E09 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E09",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E09."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E09-C",
+        "E01-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E09",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 2,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E09 — UI, PWA, Error And Observability Safety"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E09-V",
+      "title": "E09: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E09 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E09 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E09-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E09",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 2,
+      "labels": [
+        "wave:w4"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E09 — UI, PWA, Error And Observability Safety"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E09-D",
+      "title": "E09: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E09 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E09-C",
+        "E09-I",
+        "E09-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E09-M",
+      "title": "E09: owner merge gate",
+      "type": "decision",
+      "parent_key": "E09",
+      "source_anchor": "### E09 — UI, PWA, Error And Observability Safety",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E09.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E09-D"
+      ],
+      "priority": 2,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w4"
+      ]
+    },
+    {
+      "key": "E10",
+      "title": "Clean-room product derivation proof",
+      "type": "epic",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "goal": "Достичь outcome эпика E10: Clean-room product derivation proof.",
+      "scope": [
+        "Выполнить только scope in эпика E10 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E10 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ]
+    },
+    {
+      "parent_key": "E10",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E10 — Clean-Room Product Derivation Proof"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E10-C",
+      "title": "E10: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E10 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E01-C",
+        "E06-C",
+        "E07-C",
+        "E08-C",
+        "E09-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E10",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E10 — Clean-Room Product Derivation Proof"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E10-I",
+      "title": "E10: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E10 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E10",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E10."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E10-C",
+        "E01-M",
+        "E06-M",
+        "E07-M",
+        "E08-M",
+        "E09-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E10",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E10 — Clean-Room Product Derivation Proof"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E10-V",
+      "title": "E10: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E10 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E10 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E10-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E10",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E10 — Clean-Room Product Derivation Proof"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E10-D",
+      "title": "E10: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E10 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E10-C",
+        "E10-I",
+        "E10-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E10-M",
+      "title": "E10: owner merge gate",
+      "type": "decision",
+      "parent_key": "E10",
+      "source_anchor": "### E10 — Clean-Room Product Derivation Proof",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E10.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E10-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w5"
+      ]
+    },
+    {
+      "key": "E11",
+      "title": "Final conformance and handover contract",
+      "type": "epic",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "goal": "Достичь outcome эпика E11: Final conformance and handover contract.",
+      "scope": [
+        "Выполнить только scope in эпика E11 из утверждённого MASTER_PLAN."
+      ],
+      "acceptance_criteria": [
+        "Все acceptance criteria эпика E11 доказаны task evidence."
+      ],
+      "depends_on": [],
+      "delivery_mode": "PR_ONLY",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ]
+    },
+    {
+      "parent_key": "E11",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E11 — Final Conformance And Handover Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E11-C",
+      "title": "E11: contract freeze",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Зафиксировать исполнимый contract эпика E11 без выхода за approved scope.",
+      "scope": [
+        "Read applicable source of truth",
+        "Record exact implementation boundary and required evidence"
+      ],
+      "acceptance_criteria": [
+        "Contract maps every epic guarantee to an implementation and evidence task."
+      ],
+      "required_checks": [
+        "Source-of-truth and dependency review"
+      ],
+      "depends_on": [
+        "E00-C",
+        "E00A-C",
+        "E01-C",
+        "E02-C",
+        "E03-C",
+        "E04-C",
+        "E05-C",
+        "E06-C",
+        "E07-C",
+        "E08-C",
+        "E09-C",
+        "E10-C"
+      ],
+      "allowed_actions": [
+        "read-source-of-truth",
+        "edit-approved-docs",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E11",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E11 — Final Conformance And Handover Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E11-I",
+      "title": "E11: implementation",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Реализовать approved scope эпика E11 в task-owned worktree.",
+      "scope": [
+        "Implement scope in for E11",
+        "Do not add product-specific vertical or production state"
+      ],
+      "acceptance_criteria": [
+        "Implementation satisfies the explicit acceptance contract of E11."
+      ],
+      "required_checks": [
+        "Task-scope sanity check and relevant required proof"
+      ],
+      "depends_on": [
+        "E11-C",
+        "E00-M",
+        "E00A-M",
+        "E01-M",
+        "E02-M",
+        "E03-M",
+        "E04-M",
+        "E05-M",
+        "E06-M",
+        "E07-M",
+        "E08-M",
+        "E09-M",
+        "E10-M"
+      ],
+      "allowed_actions": [
+        "edit-code",
+        "edit-approved-docs",
+        "run-task-scope-checks",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E11",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E11 — Final Conformance And Handover Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E11-V",
+      "title": "E11: verification evidence",
+      "type": "task",
+      "work_kind": "implementation",
+      "goal": "Доказать acceptance эпика E11 на exact task head.",
+      "scope": [
+        "Run only the verification defined by the epic",
+        "Record safe evidence in EXECUTION_LEDGER_V1"
+      ],
+      "acceptance_criteria": [
+        "Every acceptance criterion of E11 has PASS evidence or an explicit allowed blocker."
+      ],
+      "required_checks": [
+        "Epic-specific verification from MASTER_PLAN",
+        "Exact diff-to-scope review"
+      ],
+      "depends_on": [
+        "E11-I"
+      ],
+      "allowed_actions": [
+        "run-task-scope-checks",
+        "edit-tests-or-docs-within-scope",
+        "commit",
+        "push"
+      ]
+    },
+    {
+      "parent_key": "E11",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "repository_key": "starter",
+      "role": "implementation",
+      "priority": 1,
+      "labels": [
+        "wave:w5"
+      ],
+      "required_context": [
+        "docs/MASTER_PLAN.md",
+        "### E11 — Final Conformance And Handover Contract"
+      ],
+      "stop_conditions": [
+        "production action",
+        "new secret or irreversible external action",
+        "conflict with approved source of truth"
+      ],
+      "key": "E11-D",
+      "title": "E11: PR-only delivery",
+      "type": "task",
+      "work_kind": "delivery",
+      "goal": "Доставить завершённый эпик E11 отдельным PR без merge.",
+      "scope": [
+        "Verify source branch, target main and exact head SHA",
+        "Create canonical SourceCraft PR",
+        "Record delivery ledger"
+      ],
+      "acceptance_criteria": [
+        "One epic PR exists with canonical target main and exact-head delivery evidence."
+      ],
+      "required_checks": [
+        "Verify PR source/target/head SHA"
+      ],
+      "depends_on": [
+        "E11-C",
+        "E11-I",
+        "E11-V"
+      ],
+      "allowed_actions": [
+        "commit",
+        "push",
+        "create-pr"
+      ]
+    },
+    {
+      "key": "E11-M",
+      "title": "E11: owner merge gate",
+      "type": "decision",
+      "parent_key": "E11",
+      "source_anchor": "### E11 — Final Conformance And Handover Contract",
+      "goal": "Дождаться отдельного решения владельца о review/gate/merge PR эпика E11.",
+      "scope": [
+        "Do not merge automatically",
+        "Represent the explicit PR_ONLY owner gate"
+      ],
+      "acceptance_criteria": [
+        "Owner merge decision and resulting canonical main state are recorded outside Developer autonomous work."
+      ],
+      "depends_on": [
+        "E11-D"
+      ],
+      "priority": 1,
+      "labels": [
+        "needs-owner",
+        "delivery:pr-only",
+        "wave:w5"
+      ]
+    }
+  ]
+}

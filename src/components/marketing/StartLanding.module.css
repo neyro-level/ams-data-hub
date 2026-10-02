@@ -1,0 +1,14 @@
+.grid {
+  background-image: var(--ch-grid-image);
+  background-size: 72px 72px;
+  mask-image: var(--ch-grid-mask);
+}
+
+.atmosphere { background: var(--ch-atmosphere); }
+.visual { box-shadow: var(--ch-visual-shadow); }
+.visual::before { position: absolute; inset: 0; z-index: 1; background: var(--ch-visual-overlay); content: ""; pointer-events: none; }
+
+@media (max-width: 1023px) {
+  .atmosphere { background: var(--ch-atmosphere-mobile); }
+  .visual { max-width: 680px; }
+}

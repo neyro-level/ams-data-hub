@@ -1,0 +1,402 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SystemRole {
+  PLATFORM_ADMIN
+  STAFF
+  MEMBER
+}
+
+enum MembershipRole {
+  ORG_OWNER
+  ORG_MEMBER
+  VIEWER
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  DEAD_LETTER
+}
+
+enum JobRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum RetentionRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PLANNED
+  DISABLED
+}
+
+enum NotificationCategory {
+  SYSTEM
+  PROJECT
+  ACCESS
+  QUEUE
+}
+
+enum NotificationSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+enum NotificationVisibility {
+  PLATFORM_TEAM
+  PLATFORM_ADMIN_ONLY
+}
+
+model User {
+  id                String             @id
+  name              String
+  username          String?            @unique
+  email             String             @unique
+  emailVerified     Boolean            @default(false)
+  image             String?
+  twoFactorEnabled  Boolean            @default(false)
+  setupCompletedAt  DateTime?
+  systemRole        SystemRole         @default(MEMBER)
+  disabledAt        DateTime?          @db.Timestamptz(3)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  sessions          Session[]
+  accounts          Account[]
+  members           Member[]
+  notificationReads NotificationRead[]
+  twoFactors        TwoFactor[]
+  setupTokens       AccountSetupToken[]
+  recoveryTokens    PlatformRecoveryToken[]
+}
+
+model TwoFactor {
+  id                      String    @id
+  secret                  String
+  backupCodes             String
+  userId                  String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([secret])
+  @@index([userId])
+}
+
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
+
+model AccountSetupToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PlatformRecoveryToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime @db.Timestamptz(3)
+  consumedAt  DateTime? @db.Timestamptz(3)
+  revokedAt   DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Session {
+  id           String   @id
+  userId       String
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  activeTeamId String?
+  activeOrganizationId String?
+  twoFactorVerifiedAt DateTime?
+  setupCompletedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([activeOrganizationId])
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  issuer                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([issuer, accountId])
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model Organization {
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  logo            String?
+  metadata        Json?
+  version         Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  members         Member[]
+  projects        Project[]
+  auditEvents     AuditEvent[]
+  idempotencyKeys IdempotencyKey[]
+  outboxEvents    OutboxEvent[]
+  jobRuns         JobRun[]
+  notifications   Notification[]
+}
+
+model Member {
+  id             String         @id @default(cuid())
+  userId         String
+  organizationId String
+  tenantRole     MembershipRole @default(VIEWER)
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  organizationId String
+  slug           String
+  name           String
+  description    String?
+  status         ProjectStatus @default(ACTIVE)
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  notifications  Notification[]
+
+  @@unique([organizationId, slug])
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([status, updatedAt])
+}
+
+model Notification {
+  id             String                 @id @default(cuid())
+  organizationId String?
+  projectId      String?
+  category       NotificationCategory
+  severity       NotificationSeverity
+  visibility     NotificationVisibility @default(PLATFORM_TEAM)
+  title          String
+  message        String
+  route          String?
+  sourceType     String
+  sourceId       String?
+  dedupKey       String                 @unique
+  occurredAt     DateTime               @db.Timestamptz(3)
+  createdAt      DateTime               @default(now())
+  organization   Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  project        Project?               @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  reads          NotificationRead[]
+
+  @@index([visibility, occurredAt])
+  @@index([organizationId, occurredAt])
+  @@index([projectId, occurredAt])
+}
+
+model NotificationRead {
+  notificationId String
+  userId         String
+  readAt         DateTime     @db.Timestamptz(3)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([notificationId, userId])
+  @@index([userId, readAt])
+}
+
+model AuditEvent {
+  id             String         @id @default(cuid())
+  organizationId String?
+  actorType      AuditActorType
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String?
+  beforeMarker   Json?
+  afterMarker    Json?
+  source         String
+  correlationId  String
+  createdAt      DateTime       @default(now())
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([correlationId])
+}
+
+model IdempotencyKey {
+  id                String            @id @default(cuid())
+  organizationScope String
+  organizationId    String?
+  scope             String
+  key               String
+  requestHash       String
+  status            IdempotencyStatus
+  response          Json?
+  errorCode         String?
+  outboxEventId     String?           @unique
+  expiresAt         DateTime          @db.Timestamptz(3)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  organization      Organization?     @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outboxEvent       OutboxEvent?      @relation(fields: [outboxEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([scope, organizationScope, key])
+  @@index([status, expiresAt])
+  @@index([organizationId, createdAt])
+}
+
+model OutboxEvent {
+  id             String          @id @default(cuid())
+  organizationId String?
+  topic          String
+  payload        Json
+  schemaVersion  Int             @default(1)
+  occurredAt     DateTime        @default(now())
+  status         OutboxStatus    @default(PENDING)
+  attempts       Int             @default(0)
+  availableAt    DateTime        @default(now())
+  lockedAt       DateTime?       @db.Timestamptz(3)
+  lockedBy       String?
+  lastErrorCode  String?
+  correlationId  String
+  processedAt    DateTime?       @db.Timestamptz(3)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  idempotencyKey IdempotencyKey?
+  jobRuns        JobRun[]
+
+  @@index([status, availableAt])
+  @@index([lockedAt])
+  @@index([organizationId, topic, createdAt])
+}
+
+model JobRun {
+  id             String        @id @default(cuid())
+  organizationId String?
+  outboxEventId  String
+  jobType        String
+  status         JobRunStatus
+  attempt        Int
+  workerId       String
+  startedAt      DateTime      @db.Timestamptz(3)
+  finishedAt     DateTime?     @db.Timestamptz(3)
+  safeErrorCode  String?
+  correlationId  String
+  createdAt      DateTime      @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outboxEvent    OutboxEvent   @relation(fields: [outboxEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([outboxEventId, attempt])
+  @@index([status, startedAt])
+  @@index([organizationId, jobType, startedAt])
+}
+
+model RuntimeHeartbeat {
+  id          String   @id @default(cuid())
+  runtime     String
+  workerId    String
+  startedAt   DateTime @db.Timestamptz(3)
+  heartbeatAt DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([runtime, workerId])
+  @@index([runtime, heartbeatAt])
+}
+
+model RetentionRun {
+  id                  String             @id @default(cuid())
+  status              RetentionRunStatus
+  startedAt           DateTime           @db.Timestamptz(3)
+  finishedAt          DateTime?          @db.Timestamptz(3)
+  deletedOutboxEvents Int                @default(0)
+  deletedJobRuns      Int                @default(0)
+  safeErrorCode       String?
+  createdAt           DateTime           @default(now())
+
+  @@index([status, startedAt])
+}

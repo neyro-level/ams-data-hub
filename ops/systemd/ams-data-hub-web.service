@@ -1,0 +1,17 @@
+[Unit]
+Description=AMS Start compose stack
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ams-data-hub/current
+Environment=COMPOSE_PROJECT_NAME=ams-data-hub
+EnvironmentFile=-/opt/ams-data-hub/shared/release.env
+ExecStart=/usr/bin/docker compose --env-file /opt/ams-data-hub/shared/release.env -f /opt/ams-data-hub/current/docker-compose.production.yml up -d web worker
+ExecReload=/usr/bin/docker compose --env-file /opt/ams-data-hub/shared/release.env -f /opt/ams-data-hub/current/docker-compose.production.yml up -d web worker
+ExecStop=/usr/bin/docker compose --env-file /opt/ams-data-hub/shared/release.env -f /opt/ams-data-hub/current/docker-compose.production.yml stop web worker
+TimeoutStartSec=10min
+TimeoutStopSec=5min
