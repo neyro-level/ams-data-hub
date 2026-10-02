@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-: "${SOURCECRAFT_TOKEN:?SOURCECRAFT_TOKEN is required}"
+: "${SOURCECRAFT_REGISTRY_PAT:?SOURCECRAFT_REGISTRY_PAT is required}"
 : "${RELEASE_COMMIT_SHA:?RELEASE_COMMIT_SHA is required}"
 : "${VERIFIED_GATE_COMMIT_SHA:?VERIFIED_GATE_COMMIT_SHA is required}"
 : "${VERIFIED_GATE_RUN_SLUG:?VERIFIED_GATE_RUN_SLUG is required}"
@@ -34,7 +34,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf '%s' "$SOURCECRAFT_TOKEN" | docker login --username iam --password-stdin "$REGISTRY_HOST" >/dev/null
+printf '%s' "$SOURCECRAFT_REGISTRY_PAT" | docker login --username iam --password-stdin "$REGISTRY_HOST" >/dev/null
 
 manifest=".release-artifacts/registry-manifest.json"
 printf '{\n  "schemaVersion": 1,\n  "commitSha": "%s",\n  "verifiedGateCommitSha": "%s",\n  "verifiedGateRunSlug": "%s",\n  "images": {\n' \

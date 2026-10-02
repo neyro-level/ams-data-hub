@@ -146,6 +146,7 @@ workflows:
           RELEASE_COMMIT_SHA: ${{ inputs.release_commit_sha }}
           VERIFIED_GATE_COMMIT_SHA: ${{ inputs.verified_gate_commit_sha }}
           VERIFIED_GATE_RUN_SLUG: ${{ inputs.verified_gate_run_slug }}
+          SOURCECRAFT_REGISTRY_PAT: ${{ secrets.SOURCECRAFT_REGISTRY_PAT }}
         cubes:
           - name: build-once-and-publish
             script:
