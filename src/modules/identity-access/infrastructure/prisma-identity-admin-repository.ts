@@ -1,6 +1,5 @@
 import { Prisma, type PrismaClient } from "../../../generated/prisma/client.ts";
 import { randomUUID } from "node:crypto";
-import { createLocalAccountIssuer } from "better-auth/db";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
 import {
@@ -272,7 +271,6 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
         data: {
           id: randomUUID(),
           userId: user.id,
-          issuer: createLocalAccountIssuer("credential"),
           accountId: user.id,
           providerId: "credential",
           password: input.passwordHash,

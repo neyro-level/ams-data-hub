@@ -27,7 +27,7 @@ describe("account setup token lifecycle", () => {
         name: "Setup user",
         username: "setup_user",
         email: "setup-user@example.test",
-        accounts: { create: { id: "setup-account", issuer: "credential", accountId: userId, providerId: "credential", password: "legacy" } },
+        accounts: { create: { id: "setup-account", accountId: userId, providerId: "credential", password: "legacy" } },
         sessions: { create: { id: "setup-session", token: "setup-session-token", expiresAt: new Date(Date.now() + 60_000) } },
         setupTokens: {
           create: [
@@ -61,7 +61,7 @@ describe("platform recovery token lifecycle", () => {
     await prisma.user.create({
       data: {
         id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", twoFactorEnabled: true,
-        accounts: { create: { id: "recovery-account", issuer: "credential", accountId: userId, providerId: "credential", password: "legacy" } },
+        accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "legacy" } },
         sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000), twoFactorVerifiedAt: new Date() } },
         twoFactors: { create: { id: "recovery-factor", secret: "secret", backupCodes: "[]" } },
         recoveryTokens: { create: { tokenHash, expiresAt: new Date(Date.now() + 60_000) } },

@@ -3,7 +3,6 @@ import { createPrismaContext } from "../src/platform/database/prisma/context.ts"
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hashPassword } from "better-auth/crypto";
-import { createLocalAccountIssuer } from "better-auth/db";
 import { parseSystemRole } from "../src/modules/identity-access/index.ts";
 
 type AuthAdminCommand =
@@ -112,8 +111,6 @@ async function createUser() {
 
   const userId = randomUUID();
   const passwordHash = await hashPassword(password);
-  const issuer = createLocalAccountIssuer("credential");
-
   await prisma.$transaction([
     prisma.user.create({
       data: {
@@ -130,7 +127,6 @@ async function createUser() {
         id: randomUUID(),
         userId,
         providerId: "credential",
-        issuer,
         accountId: userId,
         password: passwordHash,
       },
@@ -148,15 +144,14 @@ async function resetPassword() {
   const credential = {
     userId: user.id,
     providerId: "credential",
-    issuer: createLocalAccountIssuer("credential"),
     accountId: user.id,
   };
 
   await prisma.$transaction(async (transaction) => {
     await transaction.account.upsert({
       where: {
-        issuer_accountId: {
-          issuer: credential.issuer,
+        providerId_accountId: {
+          providerId: credential.providerId,
           accountId: credential.accountId,
         },
       },

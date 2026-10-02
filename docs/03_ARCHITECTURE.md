@@ -88,26 +88,32 @@ contract, not legal advice.
 | Area | Installed exact version | Decision |
 | --- | --- | --- |
 | Node.js | 24.20.0 | Node 24 line; project exact version is pinned |
-| Next.js | 16.3.6 | App Router 16.x; patched against GHSA-vcvr-r3jv-pc5j |
-| React | 19.2.8 | compatible project line |
+| Next.js | 16.3.8 | App Router 16.x; current security-patched stable release |
+| React | 19.3.0 | current stable React 19 line; supported by Next.js 16.3.8 |
 | Prisma / adapter | 7.10.0 / `@prisma/adapter-pg` 7.10.0 | supported PostgreSQL adapter pattern |
 | PostgreSQL target | 18 | target line; local/integration proof is introduced by E00A |
-| Better Auth | 1.7.2 | 2FA plugin supports TOTP and recovery codes; E02 owns enforcement |
+| Better Auth | 1.7.7 | current patched 1.7 line; includes the Magic Link security fix |
 | pg-boss | 12.30.0 | PostgreSQL queue; schema migration/runtime privileges stay separate |
 | TypeScript | 6.0.3 | explicit project exception to Core 3.4's 5.9.x hold; no upgrade is implied |
 
-Official compatibility checked on 2026-09-24:
+Official compatibility checked on 2026-10-02:
 
 - Next.js 16 upgrade/proxy guidance: <https://nextjs.org/docs/app/guides/upgrading/version-16>;
+- Next.js 16.3.8 security release: <https://github.com/vercel/next.js/releases/tag/v16.3.8>;
+- React 19.3 stable release: <https://react.dev/blog/2026/09/09/react-19-3>;
 - Prisma 7 PostgreSQL adapter: <https://www.prisma.io/docs/orm/v7/core-concepts/supported-databases/postgresql>;
+- Prisma 7/8 release status: <https://www.prisma.io/docs/orm/release-status>;
 - Better Auth two-factor plugin: <https://better-auth.com/docs/plugins/2fa>;
+- Better Auth 1.7.7 security release: <https://github.com/better-auth/better-auth/releases/tag/v1.7.7>;
 - PostgreSQL 18 row security policies: <https://www.postgresql.org/docs/18/ddl-rowsecurity.html>;
 - pg-boss runtime and queue contract: <https://github.com/timgit/pg-boss>;
-- TypeScript 6 release notes: <https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html>.
+- TypeScript 6 release notes: <https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html>;
+- TypeScript 6.0.3 stable release: <https://github.com/microsoft/TypeScript/releases/tag/v6.0.3>.
 
 The TypeScript 6 exception is observational: it is retained because the exact
 project toolchain is already pinned and no incompatible API has been found in
-this scope. A downgrade or further major migration is a separate RISKY task,
+this scope. TypeScript 7 is a separate major migration and is intentionally not
+mixed into the Next.js security update. A downgrade or further major migration is a separate RISKY task,
 not an incidental hardening change.
 
 ## ADRs and revisit triggers

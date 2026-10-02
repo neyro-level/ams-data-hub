@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
-import { createLocalAccountIssuer } from "better-auth/db";
 import { getPrismaClient } from "../src/platform/database/prisma/client.ts";
 
 const E2E_PASSWORD = "E2e!2026";
@@ -22,7 +21,6 @@ async function main() {
 
   const prisma = getPrismaClient();
   try {
-    const issuer = createLocalAccountIssuer("credential");
     const passwordHash = await hashPassword(E2E_PASSWORD);
     const provisionUser = async (input: {
       username: string;
@@ -53,13 +51,12 @@ async function main() {
         },
       });
       await prisma.account.upsert({
-        where: { issuer_accountId: { issuer, accountId: userId } },
+        where: { providerId_accountId: { providerId: "credential", accountId: userId } },
         update: { userId, providerId: "credential", password: passwordHash },
         create: {
           id: randomUUID(),
           userId,
           providerId: "credential",
-          issuer,
           accountId: userId,
           password: passwordHash,
         },
