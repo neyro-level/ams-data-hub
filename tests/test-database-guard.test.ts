@@ -16,6 +16,8 @@ const safeEnvironment = {
   APP_ENV: "test",
   NODE_ENV: "test" as const,
   LOCAL_POSTGRES_USER: "ams_data_hub_local",
+  DATABASE_USER: "ams_data_hub_local",
+  DATABASE_NAME: "ams_data_hub_dev",
   TEST_DATABASE_HOST: "127.0.0.1",
   TEST_DATABASE_PORT: "5435",
   TEST_DATABASE_USER: "ams_data_hub_test",
