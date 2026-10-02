@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { readTestDatabaseTarget } from "../scripts/verify-test-database-env.mjs";
+import { createPsqlInvocation } from "../scripts/prepare-rls-test-identities.mjs";
 
 const guard = path.resolve("scripts/verify-test-database-env.mjs");
 
@@ -70,5 +71,18 @@ describe("isolated PostgreSQL test target guard", () => {
         { allowApplicationTarget: true },
       ),
     ).toThrow("Test and development database names must differ.");
+  });
+
+  it("uses peer auth for a root Linux CI worker and explicit host auth on Windows", () => {
+    const target = readTestDatabaseTarget(safeEnvironment);
+    const linux = createPsqlInvocation(target, { platform: "linux", isRoot: true });
+    const windows = createPsqlInvocation(target, { platform: "win32", isRoot: false });
+
+    expect(linux.command).toBe("runuser");
+    expect(linux.args.slice(0, 4)).toEqual(["-u", "postgres", "--", "psql"]);
+    expect(linux.args).not.toContain("-h");
+    expect(windows.command).toBe("psql");
+    expect(windows.args).toContain("-h");
+    expect(windows.args).toContain("127.0.0.1");
   });
 });
