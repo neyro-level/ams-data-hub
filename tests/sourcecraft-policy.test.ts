@@ -18,6 +18,7 @@ describe("SourceCraft gate policy", () => {
     expect(ci).not.toMatch(/^\s*schedule\s*:/mu);
     expect(ci.match(/^  merge-(standard|risky):$/gmu)).toHaveLength(2);
     expect(ci).toContain("node scripts/ci/verify-exact-head.mjs");
+    expect(ci).toContain("LOCAL_POSTGRES_USER: ams_data_hub_local");
     expect(ci.match(/pnpm security:secrets/gmu)).toHaveLength(2);
     expect(ci).toContain("bash scripts/ci/sourcecraft-publish-images.sh");
     expect(ci).toContain("VERIFIED_GATE_RUN_SLUG");

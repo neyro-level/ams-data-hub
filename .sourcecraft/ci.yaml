@@ -83,6 +83,7 @@ workflows:
       - name: exact-head-risky
         env:
           APP_ENV: test
+          LOCAL_POSTGRES_USER: ams_data_hub_local
           EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           UNIT_TEST_FILES: ${{ inputs.unit_test_files }}
           CHANGED_PATHS: ${{ inputs.changed_paths }}
