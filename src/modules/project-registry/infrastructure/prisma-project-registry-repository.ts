@@ -1,5 +1,6 @@
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import { collectDatabasePages } from "../../../platform/database/collect-pages.ts";
 import type {
   CreateProjectInput,
   ProjectFormOptions,
@@ -104,25 +105,29 @@ export class PrismaProjectRegistryRepository implements ProjectRegistryRepositor
   }
 
   async listFormOptions(): Promise<ProjectFormOptions> {
-    const organizations = await this.transaction.organization.findMany({
-      orderBy: { name: "asc" },
-      take: 100,
-      select: { id: true, name: true },
-    });
+    const organizations = await collectDatabasePages(({ skip, take }) =>
+      this.transaction.organization.findMany({
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip,
+        take,
+        select: { id: true, name: true },
+      }));
     return { organizations };
   }
 
   listProjectTrees(): Promise<ProjectTreeItem[]> {
-    return this.transaction.project.findMany({
-      orderBy: [{ organization: { name: "asc" } }, { name: "asc" }],
-      take: 100,
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        organization: { select: { slug: true, name: true } },
-      },
-    });
+    return collectDatabasePages(({ skip, take }) =>
+      this.transaction.project.findMany({
+        orderBy: [{ organization: { name: "asc" } }, { name: "asc" }, { id: "asc" }],
+        skip,
+        take,
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          organization: { select: { slug: true, name: true } },
+        },
+      }));
   }
 
   async createProject(input: CreateProjectInput) {
@@ -146,9 +151,9 @@ export class PrismaProjectRegistryRepository implements ProjectRegistryRepositor
     }
   }
 
-  findProjectForAction(projectId: string) {
-    return this.transaction.project.findUnique({
-      where: { id: projectId },
+  findProjectForAction(input: { organizationId: string; projectId: string }) {
+    return this.transaction.project.findFirst({
+      where: { id: input.projectId, organizationId: input.organizationId },
       select: {
         id: true,
         organizationId: true,

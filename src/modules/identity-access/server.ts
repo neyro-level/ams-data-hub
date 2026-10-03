@@ -1,11 +1,13 @@
 export { getAuth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
 export {
   getCurrentCabinetRedirect,
+  getCurrentOrganizationSelection,
   getCurrentPrincipalState,
   setCurrentActiveOrganization,
 } from "../../platform/auth/principal-session.ts";
 export {
   createJobPrincipal,
+  getPrincipalResolutionByUserId,
   getPrincipalStateByUserId,
   requirePlatformAdmin,
   requireTenantUser,

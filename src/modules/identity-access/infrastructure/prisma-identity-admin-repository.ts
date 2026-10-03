@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from "../../../generated/prisma/client.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { getPrismaClient } from "../../../platform/database/prisma/client.ts";
+import { collectDatabasePages } from "../../../platform/database/collect-pages.ts";
 import {
   IdentityAdminError,
   type CreateMembershipInput,
@@ -200,17 +201,19 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
 
   async listFormOptions(): Promise<IdentityAdminFormOptions> {
     const [organizations, users] = await Promise.all([
-      this.prisma.organization.findMany({
-        orderBy: { name: "asc" },
-        take: 100,
+      collectDatabasePages(({ skip, take }) => this.prisma.organization.findMany({
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip,
+        take,
         select: { id: true, name: true },
-      }),
-      this.prisma.user.findMany({
+      })),
+      collectDatabasePages(({ skip, take }) => this.prisma.user.findMany({
         where: { disabledAt: null },
-        orderBy: { name: "asc" },
-        take: 100,
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip,
+        take,
         select: { id: true, name: true, email: true },
-      }),
+      })),
     ]);
 
     return {

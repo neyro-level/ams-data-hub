@@ -6,11 +6,12 @@ import {
   runInAuthorizedDatabaseTransaction,
 } from "../database/transaction.ts";
 import {
-  getPrincipalStateByUserId,
+  getPrincipalResolutionByUserId,
   type PrincipalState,
 } from "../authorization/principal-factories.ts";
 import { getAuth } from "./auth.ts";
 import { readAuthEnvironment } from "../config/server-environment.ts";
+import { createCorrelationId } from "../http/correlation.ts";
 
 export type CabinetPrincipalErrorCode =
   | "AUTHENTICATION_REQUIRED"
@@ -26,6 +27,7 @@ export class CabinetPrincipalError extends Error {
 async function getFreshPrincipalState(): Promise<{
   state: PrincipalState | null;
   disabled: boolean;
+  organizationChoices: Array<{ id: string; name: string }>;
 } | null> {
   const auth = getAuth();
   if (!auth) return null;
@@ -36,7 +38,7 @@ async function getFreshPrincipalState(): Promise<{
   });
   if (!session) return null;
 
-  const correlationId = `identity-session-${session.session.id}`;
+  const correlationId = createCorrelationId();
   const persistedSession = await runInAuthorizedDatabaseTransaction(
     createIdentityDatabaseAuthorizationContext({ userId: session.user.id, correlationId }),
     (transaction) => transaction.session.findUnique({
@@ -59,13 +61,30 @@ async function getFreshPrincipalState(): Promise<{
   }
 
   const authEnvironment = readAuthEnvironment();
-  const state = await getPrincipalStateByUserId(session.user.id, {
+  const resolution = await getPrincipalResolutionByUserId(session.user.id, {
+    correlationId,
     selectedOrganizationId: persistedSession.activeOrganizationId,
     platformAdminMfaVerified: authEnvironment?.adminTotpRequired
       ? persistedSession.twoFactorVerifiedAt !== null
       : true,
   });
-  return { state, disabled: persistedSession.user.disabledAt !== null };
+  if (
+    resolution.autoSelectedOrganizationId
+    && resolution.autoSelectedOrganizationId !== persistedSession.activeOrganizationId
+  ) {
+    await runInAuthorizedDatabaseTransaction(
+      createIdentityDatabaseAuthorizationContext({ userId: session.user.id, correlationId }),
+      (transaction) => transaction.session.updateMany({
+        where: { id: session.session.id, userId: session.user.id },
+        data: { activeOrganizationId: resolution.autoSelectedOrganizationId },
+      }),
+    );
+  }
+  return {
+    state: resolution.state,
+    disabled: persistedSession.user.disabledAt !== null,
+    organizationChoices: resolution.organizationChoices,
+  };
 }
 
 export async function getCurrentPrincipalState(): Promise<PrincipalState | null> {
@@ -83,7 +102,7 @@ export async function setCurrentActiveOrganization(organizationId: string): Prom
   await runInAuthorizedDatabaseTransaction(
     createIdentityDatabaseAuthorizationContext({
       userId: session.user.id,
-      correlationId: `identity-organization-${session.session.id}`,
+      correlationId: createCorrelationId(),
     }),
     async (transaction) => {
       const [persistedSession, membership] = await Promise.all([
@@ -98,6 +117,16 @@ export async function setCurrentActiveOrganization(organizationId: string): Prom
   );
 }
 
+export async function getCurrentOrganizationSelection() {
+  const result = await getFreshPrincipalState();
+  if (!result) return null;
+  return {
+    disabled: result.disabled,
+    hasPrincipal: result.state !== null,
+    organizations: result.organizationChoices,
+  };
+}
+
 export function requireCabinetPrincipalFromState(state: PrincipalState) {
   return state.principal;
 }
@@ -110,7 +139,9 @@ export async function requireCurrentCabinetPrincipal() {
 }
 
 export async function getCurrentCabinetRedirect(): Promise<string | null> {
-  const state = await getCurrentPrincipalState();
-  if (!state) return "/?login=1";
+  const result = await getFreshPrincipalState();
+  if (!result || result.disabled) return "/?login=1";
+  if (!result.state && result.organizationChoices.length > 1) return "/organization/";
+  if (!result.state) return "/?login=1";
   return null;
 }

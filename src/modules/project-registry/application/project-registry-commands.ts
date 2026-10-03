@@ -54,7 +54,10 @@ export function createProjectRegistryCommands(
     execute: async ({ principal, input, transaction }) => {
       const actor = requireProjectRegistryAdmin(principal);
       const repository = dependencies.createRepository(transaction);
-      const project = await repository.findProjectForAction(input.projectId);
+      const project = await repository.findProjectForAction({
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+      });
       if (
         !project
         || project.version !== input.version

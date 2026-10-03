@@ -46,7 +46,10 @@ export interface ProjectRegistryRepository {
   listFormOptions(): Promise<ProjectFormOptions>;
   listProjectTrees(): Promise<ProjectTreeItem[]>;
   createProject(input: CreateProjectInput): Promise<{ id: string; version: number }>;
-  findProjectForAction(projectId: string): Promise<ProjectActionRecord | null>;
+  findProjectForAction(input: {
+    organizationId: string;
+    projectId: string;
+  }): Promise<ProjectActionRecord | null>;
   updateProject(input: UpdateProjectInput): Promise<boolean>;
   appendAudit(input: ProjectAuditInput): Promise<void>;
 }

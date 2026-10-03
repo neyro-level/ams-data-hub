@@ -21,6 +21,12 @@ export interface PrincipalState {
   displayName: string;
 }
 
+export interface PrincipalResolution {
+  state: PrincipalState | null;
+  organizationChoices: Array<{ id: string; name: string }>;
+  autoSelectedOrganizationId: string | null;
+}
+
 function parseTenantRole(value: string): TenantRole {
   if (value === "ORG_ADMIN" || value === "ORG_EDITOR" || value === "ORG_VIEWER") {
     return value;
@@ -28,10 +34,22 @@ function parseTenantRole(value: string): TenantRole {
   throw new Error(`Unsupported tenant role: ${value}`);
 }
 
-export async function getPrincipalStateByUserId(
+export function resolveTenantMembership<T extends { organizationId: string }>(
+  memberships: readonly T[],
+  selectedOrganizationId?: string | null,
+): T | null {
+  if (selectedOrganizationId) {
+    const selected = memberships.find((membership) =>
+      membership.organizationId === selectedOrganizationId);
+    if (selected) return selected;
+  }
+  return memberships.length === 1 ? memberships[0] : null;
+}
+
+export async function getPrincipalResolutionByUserId(
   userId: string,
   options: PrincipalFactoryOptions = {},
-): Promise<PrincipalState | null> {
+): Promise<PrincipalResolution> {
   const now = new Date();
   const correlationId = options.correlationId ?? createCorrelationId();
   const user = await runInAuthorizedDatabaseTransaction(
@@ -50,7 +68,12 @@ export async function getPrincipalStateByUserId(
         },
         members: {
           orderBy: { organizationId: "asc" },
-          select: { id: true, organizationId: true, tenantRole: true },
+          select: {
+            id: true,
+            organizationId: true,
+            tenantRole: true,
+            organization: { select: { name: true } },
+          },
         },
         projectMembers: {
           select: { organizationId: true, projectId: true },
@@ -58,21 +81,40 @@ export async function getPrincipalStateByUserId(
       },
     }),
   );
-  if (!user || user.disabledAt || user.setupTokens.length > 0) return null;
+  if (!user || user.disabledAt || user.setupTokens.length > 0) {
+    return { state: null, organizationChoices: [], autoSelectedOrganizationId: null };
+  }
+
+  const organizationChoices = user.members.map((membership) => ({
+    id: membership.organizationId,
+    name: membership.organization.name,
+  }));
 
   let principal: PrincipalContext;
+  let autoSelectedOrganizationId: string | null = null;
   if (user.systemRole === "PLATFORM_ADMIN") {
-    if (!options.platformAdminMfaVerified) return null;
+    if (!options.platformAdminMfaVerified) {
+      return { state: null, organizationChoices: [], autoSelectedOrganizationId: null };
+    }
     principal = {
       kind: "platform-admin",
       userId: user.id,
       correlationId,
     } satisfies PlatformAdminPrincipal;
   } else {
-    const selectedMembership = options.selectedOrganizationId
-      ? user.members.find((membership) => membership.organizationId === options.selectedOrganizationId)
-      : user.members.length === 1 ? user.members[0] : null;
-    if (!selectedMembership) return null;
+    const selectedMembership = resolveTenantMembership(
+      user.members,
+      options.selectedOrganizationId,
+    );
+    if (!selectedMembership) {
+      return { state: null, organizationChoices, autoSelectedOrganizationId: null };
+    }
+    if (
+      user.members.length === 1
+      && selectedMembership.organizationId !== options.selectedOrganizationId
+    ) {
+      autoSelectedOrganizationId = selectedMembership.organizationId;
+    }
     principal = {
       kind: "tenant-user",
       userId: user.id,
@@ -89,9 +131,20 @@ export async function getPrincipalStateByUserId(
   }
 
   return {
-    principal,
-    displayName: user.name,
+    state: {
+      principal,
+      displayName: user.name,
+    },
+    organizationChoices,
+    autoSelectedOrganizationId,
   };
+}
+
+export async function getPrincipalStateByUserId(
+  userId: string,
+  options: PrincipalFactoryOptions = {},
+): Promise<PrincipalState | null> {
+  return (await getPrincipalResolutionByUserId(userId, options)).state;
 }
 
 export function createJobPrincipal(input: {
