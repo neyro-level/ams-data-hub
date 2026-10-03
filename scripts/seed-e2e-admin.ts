@@ -26,7 +26,7 @@ async function main() {
       username: string;
       email: string;
       name: string;
-      systemRole: "PLATFORM_ADMIN" | "MEMBER";
+      systemRole: "PLATFORM_ADMIN" | "USER";
     }) => {
       const existing = await prisma.user.findUnique({
         where: { email: input.email },
@@ -80,17 +80,17 @@ async function main() {
         username,
         email: `${username}@example.invalid`,
         name: `E2E ${username}`,
-        systemRole: "MEMBER",
+        systemRole: "USER",
       });
       await prisma.member.upsert({
         where: {
           organizationId_userId: { organizationId: organization.id, userId },
         },
-        update: { tenantRole: "VIEWER" },
+        update: { tenantRole: "ORG_VIEWER" },
         create: {
           organizationId: organization.id,
           userId,
-          tenantRole: "VIEWER",
+          tenantRole: "ORG_VIEWER",
         },
       });
     }

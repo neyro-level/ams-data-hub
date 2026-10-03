@@ -26,11 +26,11 @@ async function seedTestDatabase() {
           userId: user.id,
         },
       },
-      update: { tenantRole: "ORG_OWNER" },
+      update: { tenantRole: "ORG_ADMIN" },
       create: {
         organizationId: organization.id,
         userId: user.id,
-        tenantRole: "ORG_OWNER",
+        tenantRole: "ORG_ADMIN",
       },
     });
     process.stdout.write("test_database_seed=complete\n");

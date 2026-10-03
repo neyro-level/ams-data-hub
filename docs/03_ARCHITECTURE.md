@@ -82,6 +82,19 @@ disabled-by-deployment worker foundation; a derived product enables it only
 after adding an owned async consumer contract. Outbox payloads are minimal,
 versioned and secret/PII-safe; external delivery is after commit.
 
+## Authentication and provisioning
+
+The supported system roles are `PLATFORM_ADMIN` and `USER`. A `USER` requires
+organization membership and an enabled client-access flag. Platform Admin
+authority requires verified TOTP for every authority-bearing session, and a
+user with several memberships must explicitly select the active organization.
+
+The only bootstrap command is `pnpm admin:provision`. It accepts the password
+through stdin, creates or resets a `PLATFORM_ADMIN`, revokes existing sessions
+and requires TOTP enrollment before production authority is granted. Offline
+recovery uses the existing one-time platform recovery flow. Legacy role and
+bootstrap commands are transitional only.
+
 ## PII lifecycle
 
 | Concern | Starter policy | Derived product obligation |

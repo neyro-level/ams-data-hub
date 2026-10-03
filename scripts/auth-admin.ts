@@ -8,6 +8,7 @@ import { parseSystemRole } from "../src/modules/identity-access/index.ts";
 type AuthAdminCommand =
   | "create"
   | "disable"
+  | "provision"
   | "reset-password"
   | "set-system-role"
   | "add-to-organization"
@@ -72,8 +73,8 @@ function readPasswordFromStdin() {
     throw new Error("--password is forbidden; provide the password through stdin");
   }
   const password = readFileSync(0, "utf8").replace(/\r?\n$/, "");
-  if (!/^[\x21-\x7e]{8}$/.test(password)) {
-    throw new Error("Password from stdin must contain exactly 8 printable characters without spaces");
+  if (password.length < 12 || password.length > 128) {
+    throw new Error("Password from stdin must contain 12-128 characters");
   }
   return password;
 }
@@ -87,10 +88,10 @@ async function findUserByUsername(username: string) {
 }
 
 function parseTenantRole(value: string | undefined): MembershipRole {
-  if (!value || value === "VIEWER") return MembershipRole.VIEWER;
-  if (value === "ORG_OWNER") return MembershipRole.ORG_OWNER;
-  if (value === "ORG_MEMBER") return MembershipRole.ORG_MEMBER;
-  throw new Error("--tenant-role must be ORG_OWNER, ORG_MEMBER or VIEWER");
+  if (!value || value === "ORG_VIEWER") return MembershipRole.ORG_VIEWER;
+  if (value === "ORG_ADMIN") return MembershipRole.ORG_ADMIN;
+  if (value === "ORG_EDITOR") return MembershipRole.ORG_EDITOR;
+  throw new Error("--tenant-role must be ORG_ADMIN, ORG_EDITOR or ORG_VIEWER");
 }
 
 async function createUser() {
@@ -98,7 +99,7 @@ async function createUser() {
   const email = (options.email ?? `${username}@users.ams-data-hub.invalid`).toLowerCase();
   const name = requireOption("name");
   const password = readPasswordFromStdin();
-  const systemRole = parseSystemRole(options["system-role"] ?? SystemRole.MEMBER);
+  const systemRole = parseSystemRole(options["system-role"] ?? SystemRole.USER);
   const existingUser = await prisma.user.findFirst({
     where: {
       OR: [{ username }, { email }],
@@ -134,6 +135,36 @@ async function createUser() {
   ]);
 
   console.log(`created_user=${username}`);
+}
+
+async function provisionPlatformAdmin() {
+  const username = requireUsername();
+  const name = requireOption("name");
+  const email = (options.email ?? `${username}@users.ams-data-hub.invalid`).toLowerCase();
+  const passwordHash = await hashPassword(readPasswordFromStdin());
+
+  await prisma.$transaction(async (transaction) => {
+    const existing = await transaction.user.findFirst({
+      where: { OR: [{ username }, { email }] },
+      select: { id: true },
+    });
+    const user = existing
+      ? await transaction.user.update({
+        where: { id: existing.id },
+        data: { username, name, email, systemRole: SystemRole.PLATFORM_ADMIN, disabledAt: null },
+      })
+      : await transaction.user.create({
+        data: { id: randomUUID(), username, name, email, emailVerified: false, systemRole: SystemRole.PLATFORM_ADMIN },
+      });
+    await transaction.account.upsert({
+      where: { providerId_accountId: { providerId: "credential", accountId: user.id } },
+      update: { userId: user.id, password: passwordHash },
+      create: { id: randomUUID(), userId: user.id, providerId: "credential", accountId: user.id, password: passwordHash },
+    });
+    await transaction.session.deleteMany({ where: { userId: user.id } });
+  });
+
+  console.log(`platform_admin_provisioned=${username}`);
 }
 
 async function resetPassword() {
@@ -255,6 +286,9 @@ async function main() {
   switch (command) {
     case "create":
       await createUser();
+      return;
+    case "provision":
+      await provisionPlatformAdmin();
       return;
     case "disable":
       await disableUser();

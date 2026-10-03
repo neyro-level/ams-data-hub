@@ -88,6 +88,8 @@ model User {
   emailVerified     Boolean            @default(false)
   image             String?
   twoFactorEnabled  Boolean            @default(false)
+  failedLoginCount  Int                @default(0)
+  loginLockedUntil  DateTime?          @db.Timestamptz(3)
   setupCompletedAt  DateTime?
   systemRole        SystemRole         @default(USER)
   disabledAt        DateTime?          @db.Timestamptz(3)
@@ -101,6 +103,8 @@ model User {
   twoFactors        TwoFactor[]
   setupTokens       AccountSetupToken[]
   recoveryTokens    PlatformRecoveryToken[]
+
+  @@index([loginLockedUntil])
 }
 
 model TwoFactor {

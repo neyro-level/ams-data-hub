@@ -9,7 +9,8 @@ import {
   getPrincipalStateByUserId,
   type PrincipalState,
 } from "../authorization/principal-factories.ts";
-import { auth } from "./auth.ts";
+import { getAuth } from "./auth.ts";
+import { readAuthEnvironment } from "../config/server-environment.ts";
 
 export type CabinetPrincipalErrorCode =
   | "AUTHENTICATION_REQUIRED"
@@ -26,6 +27,7 @@ async function getFreshPrincipalState(): Promise<{
   state: PrincipalState | null;
   disabled: boolean;
 } | null> {
+  const auth = getAuth();
   if (!auth) return null;
   const requestHeaders = await headers();
   const session = await auth.api.getSession({
@@ -56,9 +58,12 @@ async function getFreshPrincipalState(): Promise<{
     return null;
   }
 
+  const authEnvironment = readAuthEnvironment();
   const state = await getPrincipalStateByUserId(session.user.id, {
     selectedOrganizationId: persistedSession.activeOrganizationId,
-    platformAdminMfaVerified: persistedSession.twoFactorVerifiedAt !== null,
+    platformAdminMfaVerified: authEnvironment?.adminTotpRequired
+      ? persistedSession.twoFactorVerifiedAt !== null
+      : true,
   });
   return { state, disabled: persistedSession.user.disabledAt !== null };
 }
@@ -68,6 +73,7 @@ export async function getCurrentPrincipalState(): Promise<PrincipalState | null>
 }
 
 export async function setCurrentActiveOrganization(organizationId: string): Promise<void> {
+  const auth = getAuth();
   if (!auth) throw new CabinetPrincipalError("AUTHENTICATION_REQUIRED");
   const normalizedOrganizationId = organizationId.trim();
   if (!normalizedOrganizationId) throw new CabinetPrincipalError("CABINET_USER_INACTIVE");

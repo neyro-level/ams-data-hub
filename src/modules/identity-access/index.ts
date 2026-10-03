@@ -8,7 +8,6 @@ export type {
   ApiClientPrincipal,
   JobPrincipal,
   PlatformAdminPrincipal,
-  PlatformStaffPrincipal,
   PrincipalContext,
   TenantRole,
   TenantUserPrincipal,

@@ -1,4 +1,4 @@
-export { auth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
+export { getAuth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
 export {
   getCurrentCabinetRedirect,
   getCurrentPrincipalState,
@@ -8,7 +8,6 @@ export {
   createJobPrincipal,
   getPrincipalStateByUserId,
   requirePlatformAdmin,
-  requirePlatformStaff,
   requireTenantUser,
 } from "../../platform/authorization/principal-factories.ts";
 export {

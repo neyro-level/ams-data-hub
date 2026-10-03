@@ -24,6 +24,8 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
   const [open, setOpen] = useState(initialOpen);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [requiresTotp, setRequiresTotp] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const loginSucceededRef = useRef(false);
   const [pending, setPending] = useState(false);
@@ -37,6 +39,8 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
         window.history.replaceState(null, "", "/");
       }
       loginSucceededRef.current = false;
+      setRequiresTotp(false);
+      setTotpCode("");
     }
   }
 
@@ -51,12 +55,38 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
         setErrorMessage("Не удалось войти. Проверьте логин и пароль.");
         return;
       }
+      const twoFactorResult = result.data as (typeof result.data & { twoFactorRedirect?: boolean }) | null;
+      if (twoFactorResult?.twoFactorRedirect) {
+        setPassword("");
+        setRequiresTotp(true);
+        return;
+      }
 
       loginSucceededRef.current = true;
       setOpen(false);
       router.replace("/dashboard/");
     } catch {
       setErrorMessage("Не удалось войти. Повторите попытку позже.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleTotpSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setErrorMessage(null);
+    try {
+      const result = await authClient.twoFactor.verifyTotp({ code: totpCode, trustDevice: false });
+      if (result.error) {
+        setErrorMessage("Код подтверждения не принят.");
+        return;
+      }
+      loginSucceededRef.current = true;
+      setOpen(false);
+      router.replace("/dashboard/");
+    } catch {
+      setErrorMessage("Не удалось подтвердить вход. Повторите попытку позже.");
     } finally {
       setPending(false);
     }
@@ -90,6 +120,19 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
             </DialogTitle>
           </DialogHeader>
 
+          {requiresTotp ? (
+            <form className="mt-9 border-t border-[var(--ch-border-subtle)] pt-8" onSubmit={handleTotpSubmit}>
+              <p className="text-sm leading-5 text-[var(--ch-label-ondark)]">Введите одноразовый код из приложения-аутентификатора.</p>
+              <label className="mt-6 block">
+                <span className="mb-3 block text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--ch-label-ondark)]">Код подтверждения</span>
+                <Input type="text" inputMode="numeric" autoComplete="one-time-code" value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\s/g, ""))} className="min-h-14 rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-dark)]/72 px-4 text-base font-medium text-[var(--ch-white)] focus-visible:border-[var(--ch-accent)] focus-visible:ring-[var(--ch-focus-soft)]" maxLength={8} required autoFocus />
+              </label>
+              {errorMessage ? <p className="mt-6 border border-[var(--ch-error-border)] bg-[var(--ch-error-soft)] px-4 py-3 text-sm leading-5 text-[var(--ch-error)]" role="alert">{errorMessage}</p> : null}
+              <MarketingButton type="submit" size="lg" disabled={pending} className="mt-7 min-h-14 w-full focus-visible:ring-[var(--ch-white)] focus-visible:ring-offset-[var(--ch-bg-deeper)]">
+                {pending ? "Подтверждаем…" : "Подтвердить вход"}
+              </MarketingButton>
+            </form>
+          ) : (
           <form className="mt-9 border-t border-[var(--ch-border-subtle)] pt-8" onSubmit={handleSubmit}>
             <div className="space-y-6">
               <label className="block">
@@ -142,6 +185,7 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
               {!pending ? <LogIn strokeWidth={1.7} aria-hidden /> : null}
             </MarketingButton>
           </form>
+          )}
         </DialogContent>
       </Dialog>
     </>

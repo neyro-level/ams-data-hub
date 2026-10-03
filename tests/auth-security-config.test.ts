@@ -33,4 +33,22 @@ describe("auth network and MFA configuration", () => {
     expect(isTotpVerificationPath("/two-factor/verify-backup-code")).toBe(false);
     expect(isTotpVerificationPath("/sign-in/username")).toBe(false);
   });
+
+  it("requires admin TOTP in production and keeps client access opt-in", () => {
+    expect(() => readAuthEnvironment({
+      ...authEnvironment,
+      APP_ENV: "production",
+      ADMIN_TOTP_REQUIRED: "false",
+    })).toThrow("ADMIN_TOTP_REQUIRED");
+    expect(readAuthEnvironment({
+      ...authEnvironment,
+      APP_ENV: "production",
+      ADMIN_TOTP_REQUIRED: "true",
+      CLIENT_ACCESS_ENABLED: "true",
+    })).toMatchObject({ adminTotpRequired: true, clientAccessEnabled: true });
+    expect(readAuthEnvironment(authEnvironment)).toMatchObject({
+      adminTotpRequired: false,
+      clientAccessEnabled: false,
+    });
+  });
 });

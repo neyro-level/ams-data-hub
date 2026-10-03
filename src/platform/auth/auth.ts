@@ -15,16 +15,19 @@ import {
   isTotpVerificationPath,
 } from "./security-config.ts";
 
-const authEnvironment = readAuthEnvironment();
-const isProductionRuntime = process.env.APP_ENV === "production";
-
 export function hasAuthConfiguration() {
-  return authEnvironment !== null && hasDatabaseConfiguration();
+  return readAuthEnvironment() !== null && hasDatabaseConfiguration();
 }
 
-export const auth =
-  hasAuthConfiguration() && authEnvironment
-      ? betterAuth({
+let initializedAuth: ReturnType<typeof betterAuth> | null | undefined;
+
+export function getAuth() {
+  if (initializedAuth !== undefined) return initializedAuth;
+
+  const authEnvironment = readAuthEnvironment();
+  const isProductionRuntime = process.env.APP_ENV === "production";
+  initializedAuth = hasDatabaseConfiguration() && authEnvironment
+    ? betterAuth({
         secret: authEnvironment.secret,
         baseURL: authEnvironment.baseUrl,
         appName: productIdentity.appName,
@@ -49,7 +52,7 @@ export const auth =
         emailAndPassword: {
           enabled: true,
           disableSignUp: true,
-          minPasswordLength: 8,
+          minPasswordLength: 12,
           maxPasswordLength: 128,
         },
         rateLimit: createAuthRateLimitConfig(),
@@ -71,7 +74,14 @@ export const auth =
           },
         },
         plugins: [
-          twoFactor(),
+          twoFactor({
+            issuer: "AMS Data Hub",
+            accountLockout: {
+              enabled: true,
+              maxFailedAttempts: 10,
+              durationSeconds: 15 * 60,
+            },
+          }),
           username({
             displayUsername: false,
             immutableUsername: true,
@@ -79,5 +89,7 @@ export const auth =
             maxUsernameLength: 30,
           }),
         ],
-      })
+      }) as unknown as ReturnType<typeof betterAuth>
     : null;
+  return initializedAuth;
+}
