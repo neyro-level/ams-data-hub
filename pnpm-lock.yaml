@@ -13,6 +13,12 @@ importers:
 
   .:
     dependencies:
+      '@ams-data-hub/data-contracts':
+        specifier: workspace:*
+        version: link:packages/data-contracts
+      '@ams-data-hub/realty-contracts':
+        specifier: workspace:*
+        version: link:packages/realty-contracts
       '@base-ui/react':
         specifier: 1.8.0
         version: 1.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -131,6 +137,21 @@ importers:
       vitest:
         specifier: 4.1.11
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13))
+
+  packages/data-contracts:
+    dependencies:
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+
+  packages/realty-contracts:
+    dependencies:
+      '@ams-data-hub/data-contracts':
+        specifier: workspace:*
+        version: link:../data-contracts
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
 
 packages:
 

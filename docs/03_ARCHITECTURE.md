@@ -82,6 +82,18 @@ only to the consuming adapter. Browser/UI projections contain no reference name
 or value. Structured logs additionally redact sensitive keys and complete feed
 URLs, including values embedded in message text.
 
+Internal IDs of project-owned tables are Prisma `cuid()` values. Shared entity
+`uid` values are immutable uppercase ULIDs. A `publicUrlId` is a 16-character
+lowercase Crockford Base32 value reserved per project; reservation rows are
+immutable and retained, so an identifier cannot be reused. Better Auth-owned
+identity tables keep provider-generated IDs.
+
+`packages/data-contracts` and `packages/realty-contracts` are private,
+project-owned workspace packages. They provide strict Zod schemas,
+`schemaMajor/schemaMinor`, deterministic canonical JSON and a runtime-branded
+public DTO mapper. Downstream delivery uses pinned vendored schema/release
+artifacts; package registry publication requires a separate ADR.
+
 ## Data, tenancy and async direction
 
 The selected profile is intentional: a shared deployment can serve independent

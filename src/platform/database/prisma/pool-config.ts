@@ -1,8 +1,8 @@
 import type { PoolConfig } from "pg";
 import {
-  readDatabaseEnvironment,
+  parseDatabaseEnvironment,
   type DatabaseEnvironment,
-} from "../../config/server-environment.ts";
+} from "../../config/database-environment.ts";
 import { inspectDatabaseTarget } from "../../config/database-target.ts";
 
 export function createPgPoolConfig(databaseUrl: string): PoolConfig {
@@ -20,7 +20,7 @@ export function createPgPoolConfig(databaseUrl: string): PoolConfig {
 }
 
 export function createPgPoolConfigFromEnvironment(env: DatabaseEnvironment): PoolConfig {
-  const parsedEnvironment = readDatabaseEnvironment(env);
+  const parsedEnvironment = parseDatabaseEnvironment(env);
   inspectDatabaseTarget(env);
   if (
     parsedEnvironment.DATABASE_HOST &&

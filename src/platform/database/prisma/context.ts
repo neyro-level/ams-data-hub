@@ -2,7 +2,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../../generated/prisma/client.ts";
 import { Pool } from "pg";
 import { createPgPoolConfigFromEnvironment } from "./pool-config.ts";
-import type { DatabaseEnvironment } from "../../config/server-environment.ts";
+import type { DatabaseEnvironment } from "../../config/database-environment.ts";
 
 export interface PrismaContext {
   adapter: PrismaPg;

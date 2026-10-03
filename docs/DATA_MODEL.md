@@ -5,6 +5,20 @@ runtime source of truth; this file is their neutral model map.
 
 Prisma schema is the runtime source of truth.
 
+## Identity and transfer contracts
+
+- Project-owned persistence IDs use Prisma `cuid()`; Better Auth tables retain
+  provider-generated identifiers.
+- Shared cross-project identity uses immutable uppercase ULID `uid` values.
+- Public routes reference a 16-character lowercase Crockford Base32
+  `publicUrlId`. `PublicUrlIdReservation` binds it to organization, project,
+  subject type and subject UID. Rows cannot be updated or deleted, preventing
+  reuse after retire/tombstone flows.
+- Public transfer objects are created only through the whitelist mapper from
+  `packages/data-contracts`; raw Prisma rows are not serializable as public DTOs.
+- Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
+  JSON with recursively sorted object keys.
+
 ## Neutral Foundation
 
 - `User`, `Session`, `Account`, `Verification` — identity and Better Auth tables;

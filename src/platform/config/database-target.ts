@@ -1,5 +1,7 @@
-import type { DatabaseEnvironment } from "./server-environment.ts";
-import { readDatabaseEnvironment } from "./server-environment.ts";
+import {
+  parseDatabaseEnvironment,
+  type DatabaseEnvironment,
+} from "./database-environment.ts";
 
 type EnvironmentSource = DatabaseEnvironment & {
   APP_ENV?: string;
@@ -57,7 +59,7 @@ function resolveEnvironment(
 }
 
 export function inspectDatabaseTarget(env: EnvironmentSource): DatabaseTargetSummary {
-  const parsed = readDatabaseEnvironment(env);
+  const parsed = parseDatabaseEnvironment(env);
   const urlTarget = parsed.DATABASE_URL ? parseUrlTarget(parsed.DATABASE_URL) : null;
   const componentTarget =
     parsed.DATABASE_HOST && parsed.DATABASE_USER && parsed.DATABASE_PASSWORD && parsed.DATABASE_NAME
