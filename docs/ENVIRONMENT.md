@@ -13,16 +13,17 @@ Use `.env.example` as the value-free project template.
 | `DATABASE_URL` or `DATABASE_*` | server | PostgreSQL connection |
 | `BETTER_AUTH_SECRET` | server | secret, production-only value |
 | `BETTER_AUTH_URL` | server/public origin | exact app URL |
+| `RELEASE_SHA` | all production runtimes | exact deployed commit; required in production |
+| `OUTBOX_WORKER_ID` | production worker | stable identity of the single permanent worker |
+| `PGBOSS_SCHEMA` | worker/migrator | explicit queue schema |
+| `PGBOSS_RUNTIME_ROLE` | migrator | role receiving pg-boss runtime privileges |
 
 ## Optional
 
 | Variable | Scope | Notes |
 | --- | --- | --- |
-| `OUTBOX_WORKER_ID` | worker | unique identity per running worker replica |
 | `OUTBOX_POLL_DELAY_MS` | worker | idle poll delay; defaults to `1000` ms |
 | `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | maximum graceful drain wait for the active handler; defaults to `30000` ms |
-| `PGBOSS_SCHEMA` | worker | defaults to `pgboss` in scripts |
-| `RELEASE_SHA` | server | exact deployed commit |
 | `LOG_LEVEL` | server/worker | pino level |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
@@ -55,3 +56,10 @@ Web, worker, migrator and backup use separate environment files. The migrator
 alone receives the DDL-capable role; web and worker retain the non-owner roles
 defined by E03. Backup credentials live only in the systemd backup environment.
 The template contains names and interfaces, never provider credentials.
+
+The one-shot role bootstrap has its own root-owned `bootstrap.env` containing
+`DB_BOOTSTRAP_ADMIN_DATABASE_URL`, exact `DB_BOOTSTRAP_EXPECTED_DATABASE` and
+the three `AMS_DATA_HUB_*_DB_PASSWORD` values. Those variables are forbidden in
+web, worker and migrator env files. Every production Compose env file is
+mandatory, and the container entrypoint rejects an incomplete role-specific
+configuration before starting application code.

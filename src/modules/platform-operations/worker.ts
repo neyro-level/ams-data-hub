@@ -16,6 +16,9 @@ import {
   OUTBOX_WORKER_RUNTIME,
   recordRuntimeHeartbeat,
 } from "./infrastructure/runtime-heartbeat.ts";
+import { acquirePermanentOutboxWorkerGuard } from "./infrastructure/permanent-worker-guard.ts";
+import { assertOutboxWorkerHeartbeatHealthy } from "./infrastructure/readiness-runtime.ts";
+import { getPrismaPool } from "../../platform/database/prisma/client.ts";
 
 type ReliabilityWorker = Pick<
   ReturnType<typeof getWorkerReliabilityService>,
@@ -313,6 +316,14 @@ export async function runOutboxWorker(
   } finally {
     await stopPgBoss();
   }
+}
+
+export function acquireOutboxWorkerGuard() {
+  return acquirePermanentOutboxWorkerGuard(getPrismaPool());
+}
+
+export function checkOutboxWorkerHealth() {
+  return assertOutboxWorkerHeartbeatHealthy();
 }
 
 export { runReliabilityRetention };

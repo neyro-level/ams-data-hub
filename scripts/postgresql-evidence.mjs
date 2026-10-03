@@ -38,12 +38,14 @@ export const postgresqlEvidenceManifest = Object.freeze({
     E05: {
       suites: [
         "tests/integration/outbox-reliability.integration.test.ts",
+        "tests/integration/worker-runtime-health.integration.test.ts",
         "tests/outbox-worker.test.ts",
       ],
       scenarios: [
         "lease fencing prevents competing or stale completion",
         "idempotency conflicts and bounded dead-letter delivery are deterministic",
         "shutdown finishes active work or records a recoverable classified failure",
+        "worker health reads a fresh database heartbeat and a second permanent worker is denied",
       ],
     },
   },

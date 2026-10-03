@@ -7,6 +7,8 @@ WORKDIR /app
 
 FROM build-base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/data-contracts/package.json ./packages/data-contracts/package.json
+COPY packages/realty-contracts/package.json ./packages/realty-contracts/package.json
 RUN --mount=type=cache,id=ams-data-hub-pnpm,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
   && pnpm config set fetch-timeout 300000 \
@@ -15,6 +17,8 @@ RUN --mount=type=cache,id=ams-data-hub-pnpm,target=/pnpm/store \
 
 FROM build-base AS runtime-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/data-contracts/package.json ./packages/data-contracts/package.json
+COPY packages/realty-contracts/package.json ./packages/realty-contracts/package.json
 RUN --mount=type=cache,id=ams-data-hub-pnpm,target=/pnpm/store \
   pnpm config set store-dir /pnpm/store \
   && pnpm config set fetch-timeout 300000 \
@@ -27,7 +31,7 @@ RUN pnpm build && pnpm worker:build
 
 FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS runtime-base
 ENV NODE_ENV=production
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/* \
   && rm -rf /usr/local/lib/node_modules/npm \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/pnpm /usr/local/bin/pnpx
 WORKDIR /app
@@ -37,13 +41,17 @@ FROM runtime-base AS runtime-web
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 COPY --chown=node:node --from=build /app/.next/standalone ./
-ENTRYPOINT ["node", "server.js"]
+COPY --chown=node:node scripts/runtime-environment.mjs ./scripts/runtime-environment.mjs
+COPY --chown=node:node scripts/runtime-entrypoint.mjs ./scripts/runtime-entrypoint.mjs
+ENTRYPOINT ["node", "scripts/runtime-entrypoint.mjs", "web", "server.js"]
 
 FROM runtime-base AS runtime-worker
 COPY --chown=node:node --from=runtime-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/.runtime/worker ./.runtime/worker
 COPY --chown=node:node package.json ./package.json
-ENTRYPOINT ["node", ".runtime/worker/worker/main.js"]
+COPY --chown=node:node scripts/runtime-environment.mjs ./scripts/runtime-environment.mjs
+COPY --chown=node:node scripts/runtime-entrypoint.mjs ./scripts/runtime-entrypoint.mjs
+ENTRYPOINT ["node", "--conditions=react-server", "scripts/runtime-entrypoint.mjs", "worker", ".runtime/worker/worker/main.js"]
 CMD ["outbox-worker"]
 
 # The migrator is deliberately separate from both runtime images. It carries
@@ -53,8 +61,11 @@ COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/prisma ./prisma
 COPY --chown=node:node --from=build /app/prisma.config.ts ./prisma.config.ts
 COPY --chown=node:node --from=build /app/scripts/pgboss-migrate.mjs ./scripts/pgboss-migrate.mjs
+COPY --chown=node:node scripts/db-bootstrap-roles.mjs ./scripts/db-bootstrap-roles.mjs
 COPY --chown=node:node scripts/migrator-entrypoint.mjs ./scripts/migrator-entrypoint.mjs
+COPY --chown=node:node scripts/runtime-environment.mjs ./scripts/runtime-environment.mjs
+COPY --chown=node:node scripts/runtime-entrypoint.mjs ./scripts/runtime-entrypoint.mjs
 COPY --chown=node:node package.json ./package.json
-ENTRYPOINT ["node", "scripts/migrator-entrypoint.mjs"]
+ENTRYPOINT ["node", "scripts/runtime-entrypoint.mjs", "migrator", "scripts/migrator-entrypoint.mjs"]
 
 FROM runtime-web AS runtime

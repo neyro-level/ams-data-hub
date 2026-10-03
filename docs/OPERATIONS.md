@@ -32,8 +32,51 @@ root `/opt/ams-data-hub`, configuration root `/etc/ams-data-hub`.
 6. Deploy from a clean checkout of the same SHA; the host only pulls images.
 7. Run live/readiness/browser smoke and record proof.
 
-Root-owned mode `0600` runtime env files are separated by web, worker, migrator
-and registry concerns. Registry credentials never enter application containers.
+Root-owned mode `0600` runtime env files are separated by web, worker, migrator,
+bootstrap and registry concerns. All Compose `env_file` entries are mandatory;
+the container entrypoint validates the exact release SHA, database target and
+role-specific required variables before starting the process. Registry
+credentials never enter application containers.
+
+### Database role bootstrap and migration
+
+Role bootstrap is a controlled one-shot step before the first migration against
+a new PostgreSQL cluster and whenever a runtime password is rotated. It creates
+or normalizes only `ams_data_hub_web`, `ams_data_hub_worker` and
+`ams_data_hub_backup`; all stay `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`,
+`NOREPLICATION` and `NOBYPASSRLS`.
+
+1. Resolve the dedicated bootstrap admin URL and three role passwords from the
+   project Secret Master scope into `/etc/ams-data-hub/bootstrap.env` with mode
+   `0600`. Set `DB_BOOTSTRAP_EXPECTED_DATABASE` to the exact target database.
+2. Run the one-shot service:
+
+   ```bash
+   docker compose --env-file /opt/ams-data-hub/shared/release.env \
+     -f /opt/ams-data-hub/current/docker-compose.production.yml \
+     --profile manual run --rm --no-deps db-bootstrap
+   ```
+
+3. Confirm the output lists only the three role names; no password or URL may
+   appear. Remove the bootstrap admin URL from process memory after the step.
+4. Run the `migrate` service with the separate migrator identity. Runtime web
+   and worker credentials never receive DDL capability.
+
+For an operator-run Node invocation, the same script accepts all three password
+variables through the environment or a JSON object on stdin. Passwords are
+bound through session settings and are never added to argv or printed.
+
+### Runtime lifecycle and worker health
+
+Docker Compose is the canonical runtime. `ams-data-hub-web.service` is only a
+host-level wrapper around `web` and the single permanent `worker` service. The
+retention timer invokes the one-shot `maintenance outbox-retention` command and
+must not start another permanent worker.
+
+The worker holds a PostgreSQL advisory lock for its whole process lifetime, so a
+second permanent outbox worker fails fast. Its container healthcheck reads the
+latest `RuntimeHeartbeat`; healthy means no older than two configured heartbeat
+write intervals. PID existence is not accepted as health evidence.
 
 ## Recovery and restore
 

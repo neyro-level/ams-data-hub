@@ -12,9 +12,14 @@ function run(command, args) {
   });
 }
 
-if (process.argv.length > 2) {
-  throw new Error("The migrator image accepts no arbitrary command.");
+const command = process.argv[2] ?? "migrate";
+if (!["migrate", "bootstrap-roles"].includes(command) || process.argv.length > 3) {
+  throw new Error("The migrator image accepts only migrate or bootstrap-roles.");
 }
 
-await run(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"]);
-await run(process.execPath, ["scripts/pgboss-migrate.mjs"]);
+if (command === "bootstrap-roles") {
+  await run(process.execPath, ["scripts/db-bootstrap-roles.mjs"]);
+} else {
+  await run(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"]);
+  await run(process.execPath, ["scripts/pgboss-migrate.mjs"]);
+}

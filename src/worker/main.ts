@@ -1,4 +1,6 @@
 import {
+  acquireOutboxWorkerGuard,
+  checkOutboxWorkerHealth,
   drainOutbox,
   runOutboxWorker,
   runReliabilityRetention,
@@ -12,6 +14,11 @@ const logger = getLogger({ runtime: "worker", entrypoint: "main" });
 async function main() {
   if (command === "module-smoke") {
     logger.info({ event: "worker_module_smoke_ok" }, "worker module smoke passed");
+    return;
+  }
+
+  if (command === "healthcheck") {
+    await checkOutboxWorkerHealth();
     return;
   }
 
@@ -29,9 +36,10 @@ async function main() {
     const stop = () => controller.abort();
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
+    const releaseWorkerGuard = await acquireOutboxWorkerGuard();
     try {
       const result = await runOutboxWorker({
-        workerId: argument ?? `ams-data-hub-worker-${process.pid}`,
+        workerId: argument ?? process.env.OUTBOX_WORKER_ID ?? `ams-data-hub-worker-${process.pid}`,
         pollIntervalMs: Number(process.env.OUTBOX_POLL_DELAY_MS ?? 1_000),
         shutdownDrainTimeoutMs: Number(
           process.env.OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS ?? 30_000,
@@ -43,6 +51,7 @@ async function main() {
       // not worker-process failures. A resolved lifecycle therefore exits cleanly;
       // infrastructure/runtime failures still reject and reach the fatal catch below.
     } finally {
+      await releaseWorkerGuard();
       process.removeListener("SIGINT", stop);
       process.removeListener("SIGTERM", stop);
     }
@@ -57,7 +66,7 @@ async function main() {
 
   if (command !== "maintenance-smoke") {
     throw new Error(
-      "Usage: worker module-smoke | maintenance-smoke | outbox-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
+      "Usage: worker module-smoke | healthcheck | maintenance-smoke | outbox-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
     );
   }
   logger.info({ event: "worker_maintenance_smoke_ok" }, "maintenance smoke passed");
