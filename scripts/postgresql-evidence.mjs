@@ -48,10 +48,18 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "worker health reads a fresh database heartbeat and a second permanent worker is denied",
       ],
     },
+    DH03: {
+      suites: ["tests/integration/shared-catalog-geo.integration.test.ts"],
+      scenarios: [
+        "required shared regions and cities are seeded with normalized names and aliases",
+        "tenant principals can read shared geography but cannot mutate it",
+        "platform operators can maintain districts while shared entity UIDs remain immutable",
+      ],
+    },
   },
 });
 
-const requiredContracts = ["E02", "E03", "E04", "E05"];
+const requiredContracts = ["E02", "E03", "E04", "E05", "DH03"];
 const forbiddenEvidenceKeys = /(database|dsn|host|password|payload|token|url|user(name)?)/i;
 
 export function requiredPostgresqlEvidenceSuites(manifest = postgresqlEvidenceManifest) {

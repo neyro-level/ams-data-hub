@@ -19,6 +19,20 @@ Prisma schema is the runtime source of truth.
 - Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
   JSON with recursively sorted object keys.
 
+## Shared catalog geography
+
+`Region → City → District` is the global, reusable geography tree owned by the
+`shared-catalog` module. Shared entities use immutable uppercase ULID `uid`
+values, normalized Russian names, explicit alias rows and lifecycle
+`ACTIVE | INACTIVE | ARCHIVED`. Region codes use ISO 3166-2-style values.
+
+The foundation migration seeds `RU-KDA → Краснодар`, `RU-CR`, `RU-SEV →
+Севастополь` and `RU-ROS → Ростов-на-Дону`. Districts are intentionally not
+seeded: an operator adds them through the future Catalog Admin slice. Runtime
+roles can read the shared tree; only an authorized platform principal can
+insert or update it, and runtime roles have no hard-delete grant. Tenant
+authentication therefore never implies shared-catalog mutation rights.
+
 ## Neutral Foundation
 
 - `User`, `Session`, `Account`, `Verification` — identity and Better Auth tables;

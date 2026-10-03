@@ -80,6 +80,12 @@ enum NotificationVisibility {
   PLATFORM_ADMIN_ONLY
 }
 
+enum CatalogLifecycleStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 model User {
   id                String             @id
   name              String
@@ -453,4 +459,79 @@ model PublicUrlIdReservation {
   @@unique([projectId, publicUrlId])
   @@index([organizationId, reservedAt])
   @@index([subjectUid])
+}
+
+model Region {
+  uid            String                 @id @db.VarChar(26)
+  code           String                 @unique @db.VarChar(12)
+  name           String                 @db.VarChar(160)
+  normalizedName String                 @unique @db.VarChar(160)
+  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  aliases        RegionAlias[]
+  cities         City[]
+
+  @@index([lifecycle, normalizedName])
+}
+
+model RegionAlias {
+  regionUid       String @db.VarChar(26)
+  value           String @db.VarChar(160)
+  normalizedValue String @db.VarChar(160)
+  region          Region @relation(fields: [regionUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([regionUid, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model City {
+  uid            String                 @id @db.VarChar(26)
+  regionUid      String                 @db.VarChar(26)
+  name           String                 @db.VarChar(160)
+  normalizedName String                 @db.VarChar(160)
+  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  region         Region                 @relation(fields: [regionUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  aliases        CityAlias[]
+  districts      District[]
+
+  @@unique([regionUid, normalizedName])
+  @@index([lifecycle, normalizedName])
+}
+
+model CityAlias {
+  cityUid         String @db.VarChar(26)
+  value           String @db.VarChar(160)
+  normalizedValue String @db.VarChar(160)
+  city            City   @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([cityUid, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model District {
+  uid            String                 @id @db.VarChar(26)
+  cityUid        String                 @db.VarChar(26)
+  name           String                 @db.VarChar(160)
+  normalizedName String                 @db.VarChar(160)
+  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  city           City                   @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  aliases        DistrictAlias[]
+
+  @@unique([cityUid, normalizedName])
+  @@index([lifecycle, normalizedName])
+}
+
+model DistrictAlias {
+  districtUid     String   @db.VarChar(26)
+  value           String   @db.VarChar(160)
+  normalizedValue String   @db.VarChar(160)
+  district        District @relation(fields: [districtUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([districtUid, normalizedValue])
+  @@index([normalizedValue])
 }

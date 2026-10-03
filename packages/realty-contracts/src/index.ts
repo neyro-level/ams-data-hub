@@ -17,3 +17,5 @@ export const realtyEntityReferenceSchema = z.object({
 }).strict();
 
 export type RealtyEntityReference = z.infer<typeof realtyEntityReferenceSchema>;
+
+export * from "./catalog-geo.ts";

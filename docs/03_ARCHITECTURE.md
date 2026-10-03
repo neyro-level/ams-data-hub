@@ -52,7 +52,7 @@ this table is a boundary decision, not permission to add an empty scaffold.
 | `platform-operations` | active | audit, idempotency, outbox, jobs and readiness | `contracts.ts`, `server.ts`, `worker.ts`, `index.ts` |
 | `notifications` | active; retained for DH-08 alerts | in-app notification delivery, feed and read state | `actions.ts`, `server.ts`, `index.ts` |
 | `platform-admin` | active | platform-wide resource views, summaries and admin queries | `contracts.ts`, `server.ts`, `index.ts` |
-| `shared-catalog` | future; DH-03 | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | contracts plus server facade created with the first catalog slice |
+| `shared-catalog` | active; DH-03.1 geography foundation | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | `contracts.ts`, `server.ts`, `index.ts` |
 | `project-state` | future; DH-04 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
 | `media-assets` | future; DH-03 after DH-02 media port | media metadata, intake state, hashes, object references and ownership rules | media contracts; storage remains a platform port |
 | `snapshot-delivery` | future; DH-05 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | snapshot contracts, server/worker facade; verifier lives in `packages/snapshot-verifier` |
