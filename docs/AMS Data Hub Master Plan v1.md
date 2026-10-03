@@ -3,14 +3,15 @@
 ```text
 Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01
 Architect version: v1
-Status: READY_FOR_OWNER_APPROVAL
-Phase: FINAL_AUDIT_COMPLETE
+Status: APPROVED
+Phase: APPROVAL_HANDOFF
 Baseline repository SHA: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
 Revision input: OWNER-2026-10-03-01 + FINAL-AUDIT-2026-10-03-01
 Canonical working file: docs/AMS Data Hub Master Plan v1.md
 Architecture input: docs/00_CONSTITUTION.MD.md (v3.1.2 provided basis)
-Task Manager import: NOT ALLOWED
-Developer handoff: NOT ALLOWED
+Approved by: owner, explicit command «План утверждён», 2026-10-03
+Task Manager import: AUTHORIZED AFTER VALIDATE
+Developer handoff: AUTHORIZED AFTER CLEAN RECONCILE
 Production: NOT AUTHORIZED
 ```
 
@@ -19,6 +20,8 @@ Production: NOT AUTHORIZED
 > Раздел «Стартовая инструкция для Codex» не разрешает реализацию, пока exact
 > version не прошла финальный audit, не получила статус
 > `READY_FOR_OWNER_APPROVAL` и владелец явно не сказал «План утверждён».
+> Exact `v1` прошла этот gate и утверждена; Beads остаётся единственным
+> execution state, а production требует отдельной release-команды.
 
 **Текущий canonical working file:** `docs/AMS Data Hub Master Plan v1.md`; target
 после approved DH-00 mapping: `docs/04_IMPLEMENTATION_PLAN.md`
@@ -725,6 +728,18 @@ scaffolds, B4/B7/B15 as confirmed bugs and DH-10 in first completion boundary.
 owner decision register, promise/evidence tiers and four-pass audit scorecard.
 **Task Manager:** import remains forbidden until exact owner phrase
 «План утверждён» or «План утвержден».
+
+#### **v1 — APPROVED — 2026-10-03**
+
+**Approver:** owner.
+**Approval command:** `План утверждён`.
+**Approved scope:** exact `v1` с Plan ID
+`AMS-DATA-HUB-IMPLEMENTATION-2026-01`; DH-00…DH-09, `PR_ONLY`, без DH-10 и
+без production.
+**Authorized next step:** build immutable inventory schema v2, then
+`Validate → Init → Import → Reconcile`; Developer goal starts only on `CLEAN`.
+**Not authorized:** release, production deployment, new secret creation,
+real PII/feed execution or merge to `main` without its separate owner command.
 
 ---
 
