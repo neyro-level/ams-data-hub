@@ -118,7 +118,10 @@ not an incidental hardening change.
 
 ## ADRs and revisit triggers
 
-- ADR-001 fixes the application-platform profile.
-- ADR-002 fixes the neutral hardening boundary and traceability.
-- Revisit tenancy/RLS after E03 proof; revisit queue deployment after E05;
-  revisit TypeScript only through a separately approved version task.
+- [`adr/README.md`](adr/README.md) is the stable ID and status map.
+- ADR-001 fixes the application-platform profile; ADR-005–ADR-011 and ADR-014
+  retain the active security/runtime decisions.
+- ADR-002, ADR-004 and ADR-013 are explicitly superseded and their IDs are not
+  reused.
+- Revisit PWA-specific ADR-012 scope in DH-00.5; revisit TypeScript only through
+  a separately approved version task.

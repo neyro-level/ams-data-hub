@@ -1,6 +1,6 @@
 # ADR-004: Neutral identity and copy-source derivation contract
 
-**Status:** accepted
+**Status:** Superseded by product identity ownership in `../03_ARCHITECTURE.md`
 
 ## Decision
 

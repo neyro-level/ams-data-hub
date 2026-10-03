@@ -22,6 +22,7 @@ const canonical = [
   "docs/OPERATIONS.md",
   "docs/AMS Data Hub Master Plan v1.md",
   "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
+  "docs/adr/README.md",
 ];
 
 for (const file of canonical) {
@@ -97,4 +98,8 @@ for (const section of [
 }
 
 requireText("docs/DH-00_CANON_MAPPING.md", "## DH-00.2 transfer proof");
+for (const id of ["ADR-001", "ADR-002", "ADR-013", "ADR-014"]) {
+  requireText("docs/adr/README.md", id);
+}
+requireText("docs/adr/README.md", "Superseded");
 console.log("docs_canon=PASS");

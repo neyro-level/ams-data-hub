@@ -1,6 +1,6 @@
 # ADR-013: Clean-Room Product Derivation Proof
 
-**Status:** accepted and locally verified for E10
+**Status:** Superseded; clean-room starter derivation is outside Data Hub product lifecycle
 
 A derived product starts as a disposable copy of the starter, never by mutating the starter repository. The clean-room procedure creates a new Git identity, applies one sample neutral product identity, replaces every required placeholder through the E01 manifest, and verifies that no starter or legacy-product token, source remote, domain, runtime/service or migration identity remains outside deliberately excluded source history/documentation.
 

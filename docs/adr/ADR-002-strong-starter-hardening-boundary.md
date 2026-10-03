@@ -1,6 +1,6 @@
 # ADR-002: Strong starter hardening boundary
 
-**Status:** accepted
+**Status:** Superseded by the product-owned boundary in `../03_ARCHITECTURE.md`
 
 ## Context
 
