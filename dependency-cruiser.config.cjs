@@ -75,6 +75,18 @@ module.exports = {
       },
     },
     {
+      name: "safe-outbound-internals-are-private",
+      severity: "error",
+      from: { pathNot: "^src/platform/http/" },
+      to: { path: "^src/platform/http/safe-outbound-core\\.ts$" },
+    },
+    {
+      name: "remote-http-goes-through-safe-outbound",
+      severity: "error",
+      from: { pathNot: "^src/platform/http/safe-outbound(?:-core)?\\.ts$" },
+      to: { path: "^(?:node:(?:dns|http|https|net|tls)|axios|got|undici)(?:/|$)" },
+    },
+    {
       name: "presentation-does-not-import-database-internals",
       severity: "error",
       from: { path: "^src/(app|components)/|^src/modules/[^/]+/(presentation/|presentation\\.ts$|client\\.ts$)" },

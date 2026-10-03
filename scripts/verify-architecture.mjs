@@ -46,6 +46,8 @@ for (const relativePath of [
   "src/platform/database/tenant-owned-models.ts",
   "src/platform/commands/define-command.ts",
   "src/platform/actions/define-action.ts",
+  "src/platform/http/safe-outbound.ts",
+  "src/platform/http/safe-outbound-core.ts",
 ]) {
   try {
     await readFile(path.join(rootDir, relativePath));
@@ -121,6 +123,17 @@ for (const filePath of await collectFiles(sourceDir)) {
   }
   if (source.includes("ActorContext")) {
     failures.push(`Legacy authorization context: ${relativePath}`);
+  }
+  if (
+    !/^src\/platform\/http\/safe-outbound(?:-core)?\.ts$/.test(relativePath)
+    && (
+      /\bfetch\s*\(/.test(source)
+      || /from\s+["']node:(?:dns|http|https|tls)["']/.test(source)
+      || (relativePath !== "src/platform/config/server-environment.ts" && /from\s+["']node:net["']/.test(source))
+      || /from\s+["'](?:axios|got|undici)(?:\/|["'])/.test(source)
+    )
+  ) {
+    failures.push(`Remote HTTP bypasses Safe Outbound: ${relativePath}`);
   }
   if (
     source.includes("defineCommand({")

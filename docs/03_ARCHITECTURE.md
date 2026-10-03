@@ -68,6 +68,13 @@ outbound, object storage and secret resolution remain platform adapters rather
 than business modules. External side effects stay outside a business
 transaction.
 
+Remote feed and media HTTP is allowed only through
+`platform/http/safe-outbound.ts`. The gateway pins the socket to a twice-checked
+public DNS result, repeats the same policy after every redirect, bounds total
+time and response bytes, and accepts only caller-declared content types. Direct
+`fetch`, Node HTTP/TLS clients and alternative HTTP packages in `src` are
+rejected by the architecture guard and Dependency Cruiser.
+
 ## Data, tenancy and async direction
 
 The selected profile is intentional: a shared deployment can serve independent
