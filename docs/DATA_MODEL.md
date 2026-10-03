@@ -28,10 +28,27 @@ values, normalized Russian names, explicit alias rows and lifecycle
 
 The foundation migration seeds `RU-KDA → Краснодар`, `RU-CR`, `RU-SEV →
 Севастополь` and `RU-ROS → Ростов-на-Дону`. Districts are intentionally not
-seeded: an operator adds them through the future Catalog Admin slice. Runtime
+seeded: an operator adds them through the Catalog Admin boundary. Runtime
 roles can read the shared tree; only an authorized platform principal can
 insert or update it, and runtime roles have no hard-delete grant. Tenant
 authentication therefore never implies shared-catalog mutation rights.
+
+## Shared development catalog
+
+`Developer → Development → Building` is the reusable, project-independent
+realty hierarchy. `Development` belongs to a `City` and may reference a
+`District` only inside that same city. `Building` records the corpus/litera,
+floor count, commissioning year and quarter, construction status, material and
+housing class. Every entity has an immutable uppercase ULID, explicit aliases,
+lifecycle, optimistic `version` and an optional `mergedIntoUid` tombstone.
+
+Create, update, relink and merge operations are available only to a
+`platform-admin`. A command changes business rows and appends its
+`AuditEvent(source=shared-catalog)` inside one PostgreSQL transaction, so an
+audit failure rolls the whole operation back. Merge preserves the old UID as
+`ARCHIVED`, relinks dependants to the canonical target and never hard-deletes
+catalog history. Database RLS remains a second boundary: tenant principals are
+read-only and runtime roles receive no delete grant.
 
 ## Neutral Foundation
 

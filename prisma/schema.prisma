@@ -86,6 +86,13 @@ enum CatalogLifecycleStatus {
   ARCHIVED
 }
 
+enum ConstructionStatus {
+  PLANNED
+  UNDER_CONSTRUCTION
+  COMPLETED
+  SUSPENDED
+}
+
 model User {
   id                String             @id
   name              String
@@ -496,6 +503,7 @@ model City {
   region         Region                 @relation(fields: [regionUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
   aliases        CityAlias[]
   districts      District[]
+  developments   Development[]
 
   @@unique([regionUid, normalizedName])
   @@index([lifecycle, normalizedName])
@@ -521,8 +529,10 @@ model District {
   updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
   city           City                   @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
   aliases        DistrictAlias[]
+  developments   Development[]
 
   @@unique([cityUid, normalizedName])
+  @@unique([cityUid, uid])
   @@index([lifecycle, normalizedName])
 }
 
@@ -533,5 +543,105 @@ model DistrictAlias {
   district        District @relation(fields: [districtUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
 
   @@id([districtUid, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model Developer {
+  uid            String                 @id @db.VarChar(26)
+  name           String                 @db.VarChar(200)
+  normalizedName String                 @unique @db.VarChar(200)
+  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
+  version        Int                    @default(1)
+  mergedIntoUid  String?                @db.VarChar(26)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  mergedInto     Developer?             @relation("DeveloperMerge", fields: [mergedIntoUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedFrom     Developer[]            @relation("DeveloperMerge")
+  aliases        DeveloperAlias[]
+  developments   Development[]
+
+  @@index([lifecycle, normalizedName])
+  @@index([mergedIntoUid])
+}
+
+model DeveloperAlias {
+  developerUid    String    @db.VarChar(26)
+  value           String    @db.VarChar(200)
+  normalizedValue String    @db.VarChar(200)
+  developer       Developer @relation(fields: [developerUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([developerUid, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model Development {
+  uid            String                 @id @db.VarChar(26)
+  developerUid   String                 @db.VarChar(26)
+  cityUid        String                 @db.VarChar(26)
+  districtUid    String?                @db.VarChar(26)
+  name           String                 @db.VarChar(200)
+  normalizedName String                 @db.VarChar(200)
+  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
+  version        Int                    @default(1)
+  mergedIntoUid  String?                @db.VarChar(26)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+  developer      Developer              @relation(fields: [developerUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  city           City                   @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  district       District?              @relation(fields: [cityUid, districtUid], references: [cityUid, uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedInto     Development?           @relation("DevelopmentMerge", fields: [mergedIntoUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedFrom     Development[]          @relation("DevelopmentMerge")
+  aliases        DevelopmentAlias[]
+  buildings      Building[]
+
+  @@unique([cityUid, normalizedName])
+  @@index([developerUid, lifecycle])
+  @@index([districtUid])
+  @@index([mergedIntoUid])
+}
+
+model DevelopmentAlias {
+  developmentUid String      @db.VarChar(26)
+  value           String      @db.VarChar(200)
+  normalizedValue String      @db.VarChar(200)
+  development     Development @relation(fields: [developmentUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([developmentUid, normalizedValue])
+  @@index([normalizedValue])
+}
+
+model Building {
+  uid                  String                 @id @db.VarChar(26)
+  developmentUid       String                 @db.VarChar(26)
+  label                String                 @db.VarChar(160)
+  normalizedLabel      String                 @db.VarChar(160)
+  floors               Int?
+  commissioningYear    Int?
+  commissioningQuarter Int?
+  constructionStatus   ConstructionStatus     @default(PLANNED)
+  material             String?                @db.VarChar(120)
+  housingClass         String?                @db.VarChar(80)
+  lifecycle            CatalogLifecycleStatus @default(ACTIVE)
+  version              Int                    @default(1)
+  mergedIntoUid        String?                @db.VarChar(26)
+  createdAt            DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime               @updatedAt @db.Timestamptz(3)
+  development          Development            @relation(fields: [developmentUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedInto           Building?              @relation("BuildingMerge", fields: [mergedIntoUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedFrom           Building[]             @relation("BuildingMerge")
+  aliases              BuildingAlias[]
+
+  @@unique([developmentUid, normalizedLabel])
+  @@index([constructionStatus, lifecycle])
+  @@index([mergedIntoUid])
+}
+
+model BuildingAlias {
+  buildingUid     String   @db.VarChar(26)
+  value           String   @db.VarChar(160)
+  normalizedValue String   @db.VarChar(160)
+  building        Building @relation(fields: [buildingUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([buildingUid, normalizedValue])
   @@index([normalizedValue])
 }
