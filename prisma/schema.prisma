@@ -107,6 +107,11 @@ model User {
   @@index([loginLockedUntil])
 }
 
+enum ProjectServiceState {
+  ACTIVE
+  SUSPENDED
+}
+
 model TwoFactor {
   id                      String    @id
   secret                  String
@@ -249,6 +254,10 @@ model Project {
   name           String
   description    String?
   status         ProjectStatus @default(ACTIVE)
+  serviceState   ProjectServiceState @default(ACTIVE)
+  siteBaseUrl    String?
+  publicUrlPolicyVersion String?
+  notes          String?
   version        Int           @default(1)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

@@ -4,6 +4,7 @@ import type {
   ProjectListQuery,
   ProjectListResult,
   ProjectStatus,
+  ProjectServiceState,
   UpdateProjectInput,
 } from "../../contracts.ts";
 
@@ -16,6 +17,10 @@ export interface ProjectActionRecord {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  serviceState: ProjectServiceState;
+  siteBaseUrl: string | null;
+  publicUrlPolicyVersion: string | null;
+  notes: string | null;
   version: number;
 }
 

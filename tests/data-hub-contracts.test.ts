@@ -14,7 +14,16 @@ describe("Data Hub admin contracts", () => {
       organizationId: "org-1",
       slug: "data-hub",
       name: "Data Hub",
-    }).status).toBe("ACTIVE");
+    })).toMatchObject({ status: "ACTIVE", serviceState: "ACTIVE", siteBaseUrl: "", publicUrlPolicyVersion: "", notes: "" });
+    expect(createProjectInputSchema.parse({
+      organizationId: "org-1",
+      slug: "suspended-site",
+      name: "Приостановленный проект",
+      serviceState: "SUSPENDED",
+      siteBaseUrl: "https://example.test",
+      publicUrlPolicyVersion: "v1",
+      notes: "Owner-managed notes",
+    })).toMatchObject({ serviceState: "SUSPENDED", siteBaseUrl: "https://example.test", publicUrlPolicyVersion: "v1" });
 
     expect(createUserInputSchema.parse({
       username: "member_1",

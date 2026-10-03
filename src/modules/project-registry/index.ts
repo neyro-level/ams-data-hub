@@ -10,6 +10,7 @@ export type {
   ProjectListItem,
   ProjectListQuery,
   ProjectListResult,
+  ProjectServiceState,
   ProjectStatus,
   UpdateProjectInput,
 } from "./contracts.ts";
