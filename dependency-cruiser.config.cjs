@@ -81,6 +81,12 @@ module.exports = {
       to: { path: "^src/platform/http/safe-outbound-core\\.ts$" },
     },
     {
+      name: "secret-redaction-internals-are-server-only",
+      severity: "error",
+      from: { path: "^src/(?:components/|modules/.+/(?:client|presentation))" },
+      to: { path: "^src/platform/security/(?:secret-ref|sensitive-redaction)\\.ts$" },
+    },
+    {
       name: "remote-http-goes-through-safe-outbound",
       severity: "error",
       from: { pathNot: "^src/platform/http/safe-outbound(?:-core)?\\.ts$" },

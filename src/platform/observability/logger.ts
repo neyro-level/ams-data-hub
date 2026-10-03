@@ -1,5 +1,6 @@
 import pino from "pino";
 import type { DestinationStream, Logger, LoggerOptions } from "pino";
+import { REDACTED_VALUE, sanitizeLogValue } from "../security/sensitive-redaction.ts";
 
 const REDACTION_PATHS = [
   "password",
@@ -66,6 +67,16 @@ const REDACTION_PATHS = [
   "rawBody",
   "pii.email",
   "pii.phone",
+  "secretRef",
+  "feedUrl",
+  "sourceUrl",
+  "remoteUrl",
+  "endpointUrl",
+  "payload.secretRef",
+  "payload.feedUrl",
+  "payload.sourceUrl",
+  "payload.remoteUrl",
+  "payload.endpointUrl",
 ] as const;
 
 function createOptions(): LoggerOptions {
@@ -81,7 +92,15 @@ function createOptions(): LoggerOptions {
     },
     redact: {
       paths: [...REDACTION_PATHS],
-      censor: "[REDACTED]",
+      censor: REDACTED_VALUE,
+    },
+    hooks: {
+      logMethod(args, method) {
+        for (let index = 0; index < args.length; index += 1) {
+          args[index] = sanitizeLogValue(args[index]);
+        }
+        return method.apply(this, args);
+      },
     },
   };
 }
@@ -93,9 +112,9 @@ export function createLogger(
   destination?: DestinationStream,
 ): Logger {
   const logger = destination ? pino(createOptions(), destination) : rootLogger;
-  return bindings ? logger.child(bindings) : logger;
+  return bindings ? logger.child(sanitizeLogValue(bindings) as typeof bindings) : logger;
 }
 
 export function getLogger(bindings?: Record<string, string | number | boolean | null>): Logger {
-  return bindings ? rootLogger.child(bindings) : rootLogger;
+  return bindings ? rootLogger.child(sanitizeLogValue(bindings) as typeof bindings) : rootLogger;
 }

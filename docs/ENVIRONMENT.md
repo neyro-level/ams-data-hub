@@ -32,6 +32,11 @@ those values.
 
 Provider credentials are intentionally absent. Add project-specific credentials only through an approved scope.
 
+Secret-bearing consumers accept a `SecretRef`, which contains only an approved
+environment variable name. The server-only resolver reads the corresponding
+value from the process environment delivered by Secret Master. Application
+contracts, browser payloads and operator UI never receive that value; UI status
+is limited to `configured` plus a redacted display marker.
 ## PostgreSQL Evidence Transition
 
 E06 uses only the E00A guarded `*_test` PostgreSQL 18 lifecycle. A successful integration pass emits a secret-free coverage summary for E02–E05; it is local starter evidence, never production attestation. See [`ADR-009`](adr/ADR-009-postgresql-security-evidence.md).

@@ -1,7 +1,16 @@
 import { z } from "zod";
 import { isIP } from "node:net";
+import {
+  defineSecretRef,
+  resolveSecretRef,
+  type SecretValue,
+} from "../security/secret-ref.ts";
 
 type EnvironmentSource = Record<string, string | undefined>;
+
+const databaseUrlSecretRef = defineSecretRef("DATABASE_URL");
+const databasePasswordSecretRef = defineSecretRef("DATABASE_PASSWORD");
+const betterAuthSecretRef = defineSecretRef("BETTER_AUTH_SECRET");
 
 const optionalEnvironmentValue = z.preprocess(
   (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
@@ -72,6 +81,12 @@ export function readDatabaseEnvironment(
   if (!parsed.success) {
     throw new Error("Database environment is invalid or incomplete");
   }
+  if (parsed.data.DATABASE_URL) {
+    resolveSecretRef(databaseUrlSecretRef, { DATABASE_URL: parsed.data.DATABASE_URL });
+  }
+  if (parsed.data.DATABASE_PASSWORD) {
+    resolveSecretRef(databasePasswordSecretRef, { DATABASE_PASSWORD: parsed.data.DATABASE_PASSWORD });
+  }
   return parsed.data;
 }
 
@@ -84,7 +99,7 @@ const authEnvironmentSchema = z.object({
 });
 
 export interface AuthEnvironment {
-  secret: string;
+  secret: SecretValue;
   baseUrl: string;
   trustedProxyCidrs: string[];
   adminTotpRequired: boolean;
@@ -151,7 +166,9 @@ export function readAuthEnvironment(
   }
 
   return {
-    secret: parsed.data.BETTER_AUTH_SECRET,
+    secret: resolveSecretRef(betterAuthSecretRef, {
+      BETTER_AUTH_SECRET: parsed.data.BETTER_AUTH_SECRET,
+    }),
     baseUrl: url.origin,
     trustedProxyCidrs: parseTrustedProxyCidrs(parsed.data.BETTER_AUTH_TRUSTED_PROXY_CIDRS),
     adminTotpRequired,

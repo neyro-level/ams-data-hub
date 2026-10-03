@@ -32,6 +32,12 @@ E09 formalizes route-aware cache/error/log safeguards in [`ADR-012`](adr/ADR-012
 ## Secrets
 
 Secrets must stay in environment/secret manager, never in Git, docs, browser code, argv or logs.
+Application code passes `SecretRef` objects, not secret values, across internal
+configuration boundaries. Resolution is server-only. Resolved values are
+registered with the structured logger redaction layer; sensitive keys, embedded
+values and remote feed URLs are removed from both structured fields and message
+text. UI projections expose only configured/not-configured state and redacted
+markers. Feed URLs are never rendered in full.
 
 ## Login, roles and provisioning
 

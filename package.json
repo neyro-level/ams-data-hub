@@ -23,6 +23,7 @@
     "test:unit": "vitest run",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:safe-outbound": "vitest run tests/safe-outbound.test.ts",
+    "test:secret-redaction": "vitest run tests/secret-redaction.test.ts",
     "verify:rls-coverage": "node scripts/verify-rls-coverage.mjs",
     "test:security": "vitest run tests/principal.test.ts tests/data-hub-contracts.test.ts",
     "test:e2e": "pnpm build && node scripts/run-e2e-tests.mjs",

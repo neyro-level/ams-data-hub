@@ -48,6 +48,8 @@ for (const relativePath of [
   "src/platform/actions/define-action.ts",
   "src/platform/http/safe-outbound.ts",
   "src/platform/http/safe-outbound-core.ts",
+  "src/platform/security/secret-ref.ts",
+  "src/platform/security/sensitive-redaction.ts",
 ]) {
   try {
     await readFile(path.join(rootDir, relativePath));
@@ -123,6 +125,12 @@ for (const filePath of await collectFiles(sourceDir)) {
   }
   if (source.includes("ActorContext")) {
     failures.push(`Legacy authorization context: ${relativePath}`);
+  }
+  if (
+    /^\s*["']use client["'];/m.test(source)
+    && /(?:platform\/security|security\/secret-ref|security\/sensitive-redaction)/.test(source)
+  ) {
+    failures.push(`Client boundary imports server-only secret code: ${relativePath}`);
   }
   if (
     !/^src\/platform\/http\/safe-outbound(?:-core)?\.ts$/.test(relativePath)

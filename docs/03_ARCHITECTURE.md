@@ -75,6 +75,13 @@ time and response bytes, and accepts only caller-declared content types. Direct
 `fetch`, Node HTTP/TLS clients and alternative HTTP packages in `src` are
 rejected by the architecture guard and Dependency Cruiser.
 
+Secret-bearing configuration crosses application boundaries only as a
+`SecretRef`. Its server-only resolver reads the value from the environment,
+registers it for value-based log redaction and returns a branded server value
+only to the consuming adapter. Browser/UI projections contain no reference name
+or value. Structured logs additionally redact sensitive keys and complete feed
+URLs, including values embedded in message text.
+
 ## Data, tenancy and async direction
 
 The selected profile is intentional: a shared deployment can serve independent
