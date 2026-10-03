@@ -32,7 +32,6 @@ export function createProjectRegistryQueries(
     listProjectTreesForUser(principal: PrincipalContext) {
       if (
         principal.kind !== "platform-admin"
-        && principal.kind !== "platform-staff"
         && principal.kind !== "tenant-user"
       ) {
         return Promise.resolve([]);

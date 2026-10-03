@@ -21,13 +21,12 @@ import { applyFieldErrors, feedbackFrom, FormField, SectionCard, SelectInput, Su
 
 const systemRoleLabels = {
   PLATFORM_ADMIN: "Супер админ",
-  STAFF: "Сотрудник платформы",
-  MEMBER: "Участник организации",
+  USER: "Пользователь",
 } as const;
 const tenantRoleLabels = {
-  ORG_OWNER: "Владелец организации",
-  ORG_MEMBER: "Сотрудник организации",
-  VIEWER: "Только просмотр",
+  ORG_ADMIN: "Владелец организации",
+  ORG_EDITOR: "Сотрудник организации",
+  ORG_VIEWER: "Только просмотр",
 } as const;
 
 const systemRoleOptions = systemRoleSchema.options.map((value) => ({ value, label: systemRoleLabels[value] }));
@@ -104,9 +103,9 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
       name: "",
       username: "",
       email: "",
-      systemRole: "MEMBER",
+      systemRole: "USER",
       organizationId: "",
-      tenantRole: "VIEWER",
+      tenantRole: "ORG_VIEWER",
     },
   });
   const submit = form.handleSubmit(async (values) => {
@@ -116,7 +115,7 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
       setFeedback(feedbackFrom(result));
       return;
     }
-    form.reset({ name: "", username: "", email: "", systemRole: "MEMBER", organizationId: "", tenantRole: "VIEWER" });
+    form.reset({ name: "", username: "", email: "", systemRole: "USER", organizationId: "", tenantRole: "ORG_VIEWER" });
     setFeedback({ kind: "success", message: `Пользователь создан. Передайте setup-материал один раз через защищённый канал: ${result.data.setupToken}` });
     router.refresh();
   });

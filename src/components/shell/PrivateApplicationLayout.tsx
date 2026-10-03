@@ -7,11 +7,10 @@ import { AppShell } from "./AppShell.tsx";
 
 function getRoleLabel(state: NonNullable<Awaited<ReturnType<typeof getCurrentPrincipalState>>>) {
   if (state.principal.kind === "platform-admin") return "Супер админ";
-  if (state.principal.kind === "platform-staff") return "Сотрудник платформы";
   if (state.principal.kind === "tenant-user") {
-    return state.principal.role === "ORG_OWNER"
+    return state.principal.role === "ORG_ADMIN"
       ? "Владелец организации"
-      : state.principal.role === "ORG_MEMBER"
+      : state.principal.role === "ORG_EDITOR"
         ? "Участник организации"
         : "Наблюдатель";
   }
@@ -22,7 +21,7 @@ export async function PrivateApplicationLayout({ children }: { children: ReactNo
   const state = await getCurrentPrincipalState();
   if (!state) redirect("/?login=1");
   const sections = await buildNavigation("/", state.principal);
-  const notificationSummary = state.principal.kind === "platform-admin" || state.principal.kind === "platform-staff"
+  const notificationSummary = state.principal.kind === "platform-admin"
     ? await getNotificationSummary(state.principal)
     : null;
   return <AppShell sections={sections} accountLabel={getRoleLabel(state)} notificationSummary={notificationSummary}>{children}</AppShell>;

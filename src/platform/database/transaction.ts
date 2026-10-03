@@ -28,7 +28,6 @@ export function createDatabaseAuthorizationContext(
         correlationId: principal.correlationId,
       };
     case "platform-admin":
-    case "platform-staff":
       return {
         principalKind: principal.kind,
         actorId: principal.userId,

@@ -15,8 +15,8 @@ const organizationNameSchema = z
   .min(2, "Укажите название организации")
   .max(160);
 
-export const tenantRoleSchema = z.enum(["ORG_OWNER", "ORG_MEMBER", "VIEWER"]);
-export const systemRoleSchema = z.enum(["PLATFORM_ADMIN", "STAFF", "MEMBER"]);
+export const tenantRoleSchema = z.enum(["ORG_ADMIN", "ORG_EDITOR", "ORG_VIEWER"]);
+export const systemRoleSchema = z.enum(["PLATFORM_ADMIN", "USER", "USER"]);
 
 export const usernameSchema = z
   .string()
@@ -32,9 +32,9 @@ export const createUserInputSchema = z.object({
   name: z.string().trim().min(2, "Укажите имя пользователя").max(160),
   username: usernameSchema,
   email: z.email("Укажите корректный email").optional().or(z.literal("")).default(""),
-  systemRole: systemRoleSchema.default("MEMBER"),
+  systemRole: systemRoleSchema.default("USER"),
   organizationId: identifierSchema.optional().or(z.literal("")).default(""),
-  tenantRole: tenantRoleSchema.default("VIEWER"),
+  tenantRole: tenantRoleSchema.default("ORG_VIEWER"),
 });
 
 export const resetUserPasswordInputSchema = z.object({
@@ -117,7 +117,7 @@ export interface IdentityAdminUserListItem {
   name: string;
   username: string;
   email: string;
-  systemRole: "PLATFORM_ADMIN" | "STAFF" | "MEMBER";
+  systemRole: "PLATFORM_ADMIN" | "USER" | "USER";
   disabled: boolean;
   memberships: Array<{ id: string; organizationName: string; tenantRole: TenantRole }>;
 }

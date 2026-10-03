@@ -31,6 +31,6 @@ describe("PostgreSQL test foundation", () => {
     });
 
     expect(user).toMatchObject({ systemRole: "PLATFORM_ADMIN", disabledAt: null });
-    expect(membership.tenantRole).toBe("ORG_OWNER");
+    expect(membership.tenantRole).toBe("ORG_ADMIN");
   });
 });

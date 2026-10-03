@@ -17,14 +17,17 @@ describe("principal permissions", () => {
     expect(hasPermission(principal, "project:manage:any")).toBe(true);
   });
 
-  it("keeps staff read-oriented", () => {
+  it("keeps organization editor scoped to organization reads", () => {
     const principal: PrincipalContext = {
-      kind: "platform-staff",
+      kind: "tenant-user",
       userId: "user-2",
+      organizationId: "org-1",
+      membershipId: "member-2",
+      role: "ORG_EDITOR",
       correlationId: "corr-2",
     };
 
-    expect(getPrincipalPermissions(principal)).toContain("project:read:any");
+    expect(getPrincipalPermissions(principal)).toContain("project:read:organization");
     expect(hasPermission(principal, "platform:manage")).toBe(false);
   });
 
@@ -34,7 +37,7 @@ describe("principal permissions", () => {
       userId: "user-3",
       organizationId: "org-1",
       membershipId: "member-1",
-      role: "VIEWER",
+      role: "ORG_VIEWER",
       correlationId: "corr-3",
     };
 

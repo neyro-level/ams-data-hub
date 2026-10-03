@@ -54,9 +54,9 @@ const defaultSortOptions: Array<{ field: PlatformAdminSortField; label: string }
 ];
 
 const accessLevelLabels: Record<string, string> = {
-  ORG_OWNER: "Владелец организации",
-  ORG_MEMBER: "Сотрудник организации",
-  VIEWER: "Только просмотр",
+  ORG_ADMIN: "Владелец организации",
+  ORG_EDITOR: "Сотрудник организации",
+  ORG_VIEWER: "Только просмотр",
 };
 
 const projectStatusLabels: Record<string, string> = {

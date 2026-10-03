@@ -56,7 +56,7 @@ export async function buildNavigation(
               },
             ]
           : []),
-        ...(user.kind === "platform-admin" || user.kind === "platform-staff"
+        ...(user.kind === "platform-admin"
           ? [{ href: "/notifications/", label: "Уведомления", active: currentPath.startsWith("/notifications/") }]
           : []),
       ],

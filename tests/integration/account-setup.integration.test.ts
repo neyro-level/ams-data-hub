@@ -115,11 +115,11 @@ describe("fresh principal enforcement", () => {
     await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
     await prisma.user.update({ where: { id: userId }, data: { disabledAt: null } });
 
-    await prisma.user.update({ where: { id: userId }, data: { systemRole: "MEMBER" } });
+    await prisma.user.update({ where: { id: userId }, data: { systemRole: "USER" } });
     await prisma.member.createMany({
       data: [
-        { organizationId: firstOrganization.id, userId, tenantRole: "VIEWER" },
-        { organizationId: secondOrganization.id, userId, tenantRole: "ORG_MEMBER" },
+        { organizationId: firstOrganization.id, userId, tenantRole: "ORG_VIEWER" },
+        { organizationId: secondOrganization.id, userId, tenantRole: "ORG_EDITOR" },
       ],
     });
     await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();

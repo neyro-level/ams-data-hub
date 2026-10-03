@@ -18,7 +18,6 @@ export interface NotificationRepository {
 
 function audienceFor(principal: PrincipalContext): NotificationAudience {
   if (principal.kind === "platform-admin") return { userId: principal.userId, includeAdminOnly: true };
-  if (principal.kind === "platform-staff") return { userId: principal.userId, includeAdminOnly: false };
   throw new NotificationAccessError("NOTIFICATION_ACCESS_DENIED");
 }
 

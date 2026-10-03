@@ -5,7 +5,6 @@ import {
 } from "../database/transaction.ts";
 import type {
   PlatformAdminPrincipal,
-  PlatformStaffPrincipal,
   PrincipalContext,
   TenantRole,
   TenantUserPrincipal,
@@ -23,7 +22,7 @@ export interface PrincipalState {
 }
 
 function parseTenantRole(value: string): TenantRole {
-  if (value === "ORG_OWNER" || value === "ORG_MEMBER" || value === "VIEWER") {
+  if (value === "ORG_ADMIN" || value === "ORG_EDITOR" || value === "ORG_VIEWER") {
     return value;
   }
   throw new Error(`Unsupported tenant role: ${value}`);
@@ -66,8 +65,6 @@ export async function getPrincipalStateByUserId(
       userId: user.id,
       correlationId,
     } satisfies PlatformAdminPrincipal;
-  } else if (user.systemRole === "STAFF") {
-    principal = { kind: "platform-staff", userId: user.id, correlationId } satisfies PlatformStaffPrincipal;
   } else {
     const selectedMembership = options.selectedOrganizationId
       ? user.members.find((membership) => membership.organizationId === options.selectedOrganizationId)
@@ -105,13 +102,6 @@ export function createJobPrincipal(input: {
 export function requirePlatformAdmin(principal: PrincipalContext): PlatformAdminPrincipal {
   if (principal.kind !== "platform-admin") {
     throw new Error("PLATFORM_ADMIN_REQUIRED");
-  }
-  return principal;
-}
-
-export function requirePlatformStaff(principal: PrincipalContext): PlatformStaffPrincipal {
-  if (principal.kind !== "platform-staff") {
-    throw new Error("PLATFORM_STAFF_REQUIRED");
   }
   return principal;
 }

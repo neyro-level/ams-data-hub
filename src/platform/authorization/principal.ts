@@ -1,3 +1,5 @@
+import { CAPABILITIES, type Capability, type OrganizationRole, ROLE_CAPABILITIES } from "./capabilities.ts";
+
 export const PERMISSIONS = [
   "platform:manage",
   "membership:manage:any",
@@ -8,7 +10,8 @@ export const PERMISSIONS = [
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
-export type TenantRole = "ORG_OWNER" | "ORG_MEMBER" | "VIEWER";
+
+export type TenantRole = OrganizationRole;
 
 export interface TenantUserPrincipal {
   kind: "tenant-user";
@@ -25,11 +28,6 @@ export interface PlatformAdminPrincipal {
   correlationId: string;
 }
 
-export interface PlatformStaffPrincipal {
-  kind: "platform-staff";
-  userId: string;
-  correlationId: string;
-}
 
 export interface ApiClientPrincipal {
   kind: "api-client";
@@ -48,30 +46,23 @@ export interface JobPrincipal {
 export type PrincipalContext =
   | TenantUserPrincipal
   | PlatformAdminPrincipal
-  | PlatformStaffPrincipal
   | ApiClientPrincipal
   | JobPrincipal;
 
 const PLATFORM_ADMIN_PERMISSIONS: readonly Permission[] = PERMISSIONS;
-const PLATFORM_STAFF_PERMISSIONS: readonly Permission[] = [
-  "project:read:any",
-  "operations:read:any",
-];
 const TENANT_PERMISSIONS: Record<TenantRole, readonly Permission[]> = {
-  ORG_OWNER: [
+  ORG_ADMIN: [
     "project:read:organization",
     "project:manage:any",
   ],
-  ORG_MEMBER: ["project:read:organization"],
-  VIEWER: ["project:read:organization"],
+  ORG_EDITOR: ["project:read:organization"],
+  ORG_VIEWER: ["project:read:organization"],
 };
 
 export function getPrincipalPermissions(principal: PrincipalContext): readonly Permission[] {
   switch (principal.kind) {
     case "platform-admin":
       return PLATFORM_ADMIN_PERMISSIONS;
-    case "platform-staff":
-      return PLATFORM_STAFF_PERMISSIONS;
     case "tenant-user":
       return TENANT_PERMISSIONS[principal.role];
     case "api-client":
@@ -79,6 +70,8 @@ export function getPrincipalPermissions(principal: PrincipalContext): readonly P
       return [];
   }
 }
+
+export { CAPABILITIES, type Capability, ROLE_CAPABILITIES };
 
 export function hasPermission(principal: PrincipalContext, permission: Permission): boolean {
   return getPrincipalPermissions(principal).includes(permission);

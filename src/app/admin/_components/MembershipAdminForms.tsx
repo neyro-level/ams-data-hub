@@ -9,9 +9,9 @@ import { createMembershipAction, removeMembershipAction, updateMembershipAction 
 import { applyFieldErrors, feedbackFrom, FormField, SectionCard, SelectInput, SubmitRow, type Feedback } from "./platform-admin-form-primitives.tsx";
 
 const tenantRoleLabels = {
-  ORG_OWNER: "Владелец организации",
-  ORG_MEMBER: "Сотрудник организации",
-  VIEWER: "Только просмотр",
+  ORG_ADMIN: "Владелец организации",
+  ORG_EDITOR: "Сотрудник организации",
+  ORG_VIEWER: "Только просмотр",
 } as const;
 const tenantRoleOptions = tenantRoleSchema.options.map((value) => ({ value, label: tenantRoleLabels[value] }));
 
@@ -28,7 +28,7 @@ function MembershipEditCard({ item }: { item: MembershipListItem }) {
 
 export function MembershipsAdminForms({ items, options }: { items: MembershipListItem[]; options: IdentityAdminFormOptions }) {
   const router = useRouter(); const [feedback, setFeedback] = useState<Feedback>(null);
-  const form = useForm<CreateMembershipInput>({ resolver: zodResolver(createMembershipInputSchema) as Resolver<CreateMembershipInput>, defaultValues: { organizationId: options.organizations[0]?.id ?? "", userId: options.users[0]?.id ?? "", tenantRole: "ORG_MEMBER" } });
-  const submit = form.handleSubmit(async (values) => { const result = await createMembershipAction(values); if (!result.ok) { applyFieldErrors(result.fieldErrors, form.setError); setFeedback(feedbackFrom(result)); return; } form.reset({ organizationId: options.organizations[0]?.id ?? "", userId: options.users[0]?.id ?? "", tenantRole: "ORG_MEMBER" }); setFeedback({ kind: "success", message: "Доступ создан" }); router.refresh(); });
+  const form = useForm<CreateMembershipInput>({ resolver: zodResolver(createMembershipInputSchema) as Resolver<CreateMembershipInput>, defaultValues: { organizationId: options.organizations[0]?.id ?? "", userId: options.users[0]?.id ?? "", tenantRole: "ORG_EDITOR" } });
+  const submit = form.handleSubmit(async (values) => { const result = await createMembershipAction(values); if (!result.ok) { applyFieldErrors(result.fieldErrors, form.setError); setFeedback(feedbackFrom(result)); return; } form.reset({ organizationId: options.organizations[0]?.id ?? "", userId: options.users[0]?.id ?? "", tenantRole: "ORG_EDITOR" }); setFeedback({ kind: "success", message: "Доступ создан" }); router.refresh(); });
   return <div className="space-y-4"><SectionCard title="Добавить доступ" description="Выберите организацию, пользователя и разрешённый уровень работы."><form className="grid gap-4 sm:grid-cols-3" onSubmit={submit}><FormField error={form.formState.errors.organizationId?.message} label="Организация" required><SelectInput options={options.organizations.map((option) => ({ value: option.id, label: option.name }))} {...form.register("organizationId")} /></FormField><FormField error={form.formState.errors.userId?.message} label="Пользователь" required><SelectInput options={options.users.map((option) => ({ value: option.id, label: option.label }))} {...form.register("userId")} /></FormField><FormField error={form.formState.errors.tenantRole?.message} label="Уровень доступа" required><SelectInput options={tenantRoleOptions} {...form.register("tenantRole")} /></FormField><div className="sm:col-span-3"><SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Добавить доступ" onRefresh={() => router.refresh()} pendingLabel="Сохраняем…" /></div></form></SectionCard><div className="grid gap-4 xl:grid-cols-2">{items.map((item) => <MembershipEditCard item={item} key={item.id} />)}</div></div>;
 }

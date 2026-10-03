@@ -6,7 +6,7 @@ import { requestMaintenanceInputSchema } from "../src/modules/platform-operation
 
 describe("Data Hub admin contracts", () => {
   it("uses the supported system roles", () => {
-    expect(systemRoleSchema.options).toEqual(["PLATFORM_ADMIN", "STAFF", "MEMBER"]);
+    expect(systemRoleSchema.options).toEqual(["PLATFORM_ADMIN", "USER"]);
   });
 
   it("validates project and user inputs", () => {
@@ -19,8 +19,8 @@ describe("Data Hub admin contracts", () => {
     expect(createUserInputSchema.parse({
       username: "member_1",
       name: "Member",
-      systemRole: "MEMBER",
-    }).systemRole).toBe("MEMBER");
+      systemRole: "USER",
+    }).systemRole).toBe("USER");
   });
 
   it("keeps maintenance outbox input domain-agnostic", () => {

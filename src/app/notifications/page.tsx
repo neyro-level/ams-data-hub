@@ -22,7 +22,7 @@ function href(search: Record<string, string>, page: number) { const params = new
 
 export default async function NotificationsPage({ searchParams }: { searchParams: Search }) {
   const state = await getCurrentPrincipalState(); if (!state) redirect("/?login=1");
-  if (state.principal.kind !== "platform-admin" && state.principal.kind !== "platform-staff") notFound();
+  if (state.principal.kind !== "platform-admin") notFound();
   const raw = await searchParams; const page = Math.max(1, Number(first(raw.page) ?? 1) || 1); const stateFilter = first(raw.state); const category = notificationCategorySchema.safeParse(first(raw.category));
   const notificationState: "all" | "unread" | "attention" = stateFilter === "unread" || stateFilter === "attention" ? stateFilter : "all";
   const query = { page, pageSize: 20, state: notificationState, organizationId: first(raw.organizationId) || undefined, projectId: first(raw.projectId) || undefined, category: category.success ? category.data : undefined };

@@ -164,9 +164,9 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     const normalizedSearch = query.search.trim();
     const where = membershipWhere(normalizedSearch);
     const tenantRole =
-      normalizedSearch.toUpperCase() === "ORG_OWNER" ||
-      normalizedSearch.toUpperCase() === "ORG_MEMBER" ||
-      normalizedSearch.toUpperCase() === "VIEWER"
+      normalizedSearch.toUpperCase() === "ORG_ADMIN" ||
+      normalizedSearch.toUpperCase() === "ORG_EDITOR" ||
+      normalizedSearch.toUpperCase() === "ORG_VIEWER"
         ? normalizedSearch.toUpperCase()
         : null;
     const scopedWhere: Prisma.MemberWhereInput = tenantRole
