@@ -4,7 +4,7 @@ import path from "node:path";
 const rootDir = path.resolve(import.meta.dirname, "..");
 const schema = await readFile(path.join(rootDir, "prisma", "schema.prisma"), "utf8");
 const inventory = await readFile(path.join(rootDir, "src", "platform", "database", "tenant-owned-models.ts"), "utf8");
-const migration = await readFile(path.join(rootDir, "prisma", "migrations", "20260924140000_tenant_rls_runtime_identities", "migration.sql"), "utf8");
+const migration = await readFile(path.join(rootDir, "prisma", "migrations", "20261003162000_rls_v2_project_scope", "migration.sql"), "utf8");
 
 const tenantModels = [...schema.matchAll(/^model\s+(\w+)\s+\{([\s\S]*?)^\}/gm)]
   .filter(([, , body]) => /\borganizationId\s+String\??/.test(body))
@@ -34,6 +34,7 @@ async function collectSourceFiles(directory) {
 
 const globalClientAllowlist = new Set([
   "src/platform/auth/auth.ts",
+  "src/platform/auth/login-security.ts",
   "src/platform/database/prisma/client.ts",
   "src/platform/database/transaction.ts",
   "src/modules/identity-access/infrastructure/prisma-identity-admin-repository.ts",

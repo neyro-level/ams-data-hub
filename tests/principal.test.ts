@@ -23,7 +23,8 @@ describe("principal permissions", () => {
       userId: "user-2",
       organizationId: "org-1",
       membershipId: "member-2",
-      role: "ORG_EDITOR",
+    role: "ORG_EDITOR",
+    projectIds: ["project-1"],
       correlationId: "corr-2",
     };
 
@@ -37,7 +38,8 @@ describe("principal permissions", () => {
       userId: "user-3",
       organizationId: "org-1",
       membershipId: "member-1",
-      role: "ORG_VIEWER",
+    role: "ORG_VIEWER",
+    projectIds: [],
       correlationId: "corr-3",
     };
 

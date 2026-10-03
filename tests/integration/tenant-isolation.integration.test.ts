@@ -10,6 +10,7 @@ let workerClient: pg.Client;
 let organizationA: string;
 let organizationB: string;
 let projectA: string;
+let projectASecondary: string;
 let projectB: string;
 const notificationId = "e03-platform-notification";
 const actorA = "e03-platform-actor-a";
@@ -26,12 +27,13 @@ function createClient() {
   });
 }
 
-async function inTenantContext<T>(organizationId: string, execute: () => Promise<T>): Promise<T> {
+async function inTenantContext<T>(organizationId: string, projectIds: readonly string[] | "*", execute: () => Promise<T>): Promise<T> {
   await runtimeClient.query("begin");
   try {
     await runtimeClient.query("select set_config('app.principal_kind', $1, true)", ["tenant-user"]);
     await runtimeClient.query("select set_config('app.actor_id', $1, true)", ["tenant-test-user"]);
     await runtimeClient.query("select set_config('app.organization_id', $1, true)", [organizationId]);
+    await runtimeClient.query("select set_config('app.project_ids', $1, true)", [projectIds === "*" ? "*" : projectIds.join(",")]);
     await runtimeClient.query("select set_config('app.correlation_id', $1, true)", ["e03-tenant-isolation"]);
     const result = await execute();
     await runtimeClient.query("commit");
@@ -102,11 +104,16 @@ describe("PostgreSQL tenant isolation", () => {
       ),
       fixtureClient.query(
         "insert into \"Project\" (\"id\", \"organizationId\", \"slug\", \"name\", \"status\", \"updatedAt\") values ($1, $2, $3, $4, 'ACTIVE', now()) returning \"id\"",
+        ["e03-project-a-secondary", organizationA, "e03-project-a-secondary", "E03 Project A Secondary"],
+      ),
+      fixtureClient.query(
+        "insert into \"Project\" (\"id\", \"organizationId\", \"slug\", \"name\", \"status\", \"updatedAt\") values ($1, $2, $3, $4, 'ACTIVE', now()) returning \"id\"",
         ["e03-project-b", organizationB, "e03-project-b", "E03 Project B"],
       ),
     ]);
     projectA = projects[0].rows[0].id;
-    projectB = projects[1].rows[0].id;
+    projectASecondary = projects[1].rows[0].id;
+    projectB = projects[2].rows[0].id;
     await fixtureClient.query(
       "insert into \"User\" (\"id\", \"name\", \"email\", \"updatedAt\") values ($1, $2, $3, now()), ($4, $5, $6, now())",
       [actorA, "E03 Actor A", "e03-actor-a@example.test", actorB, "E03 Actor B", "e03-actor-b@example.test"],
@@ -133,7 +140,7 @@ describe("PostgreSQL tenant isolation", () => {
   });
 
   it("allows only the selected tenant and clears context on commit", async () => {
-    const result = await inTenantContext(organizationA, () =>
+    const result = await inTenantContext(organizationA, [projectA], () =>
       runtimeClient.query("select \"id\" from \"Project\" order by \"id\""),
     );
     expect(result.rows.map((row) => row.id)).toEqual([projectA]);
@@ -144,8 +151,19 @@ describe("PostgreSQL tenant isolation", () => {
   });
 
   it("silently rejects cross-tenant reads and writes under RLS", async () => {
-    const result = await inTenantContext(organizationA, () =>
+    const result = await inTenantContext(organizationA, [projectA], () =>
       runtimeClient.query("update \"Project\" set \"name\" = $1 where \"id\" = $2", ["must not write", projectB]),
+    );
+    expect(result.rowCount).toBe(0);
+  });
+
+  it("denies reads and writes to another project in the same organization", async () => {
+    const visibleProjects = await inTenantContext(organizationA, [projectA], () =>
+      runtimeClient.query("select \"id\" from \"Project\" order by \"id\""),
+    );
+    expect(visibleProjects.rows.map((row) => row.id)).toEqual([projectA]);
+    const result = await inTenantContext(organizationA, [projectA], () =>
+      runtimeClient.query("update \"Project\" set \"name\" = $1 where \"id\" = $2", ["must not write", projectASecondary]),
     );
     expect(result.rowCount).toBe(0);
   });

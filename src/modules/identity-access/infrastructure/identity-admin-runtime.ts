@@ -1,5 +1,5 @@
 import {
-  runInDatabaseTransaction,
+  runInIdentityBootstrapDatabaseTransaction,
   type DatabaseTransaction,
 } from "../../../platform/database/transaction.ts";
 import { createCompleteAccountSetup } from "../application/complete-account-setup.ts";
@@ -12,7 +12,7 @@ const identityCompletionDependencies = {
   withRepository<TResult>(
     execute: (repository: PrismaIdentityAdminRepository) => Promise<TResult>,
   ) {
-    return runInDatabaseTransaction((transaction) =>
+    return runInIdentityBootstrapDatabaseTransaction((transaction) =>
       execute(new PrismaIdentityAdminRepository(transaction)),
     );
   },

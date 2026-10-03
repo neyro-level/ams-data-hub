@@ -2,6 +2,7 @@ export const TENANT_OWNED_MODELS = [
   "Organization",
   "Member",
   "Project",
+  "ProjectMember",
   "Notification",
   "NotificationRead",
   "AuditEvent",

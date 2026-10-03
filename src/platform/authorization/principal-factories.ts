@@ -52,6 +52,9 @@ export async function getPrincipalStateByUserId(
           orderBy: { organizationId: "asc" },
           select: { id: true, organizationId: true, tenantRole: true },
         },
+        projectMembers: {
+          select: { organizationId: true, projectId: true },
+        },
       },
     }),
   );
@@ -76,6 +79,11 @@ export async function getPrincipalStateByUserId(
       organizationId: selectedMembership.organizationId,
       membershipId: selectedMembership.id,
       role: parseTenantRole(selectedMembership.tenantRole),
+      projectIds: selectedMembership.tenantRole === "ORG_ADMIN"
+        ? "*"
+        : user.projectMembers
+          .filter((membership) => membership.organizationId === selectedMembership.organizationId)
+          .map((membership) => membership.projectId),
       correlationId,
     } satisfies TenantUserPrincipal;
   }
@@ -89,12 +97,29 @@ export async function getPrincipalStateByUserId(
 export function createJobPrincipal(input: {
   jobName: string;
   organizationId?: string | null;
+  projectIds?: readonly string[] | "*";
   correlationId?: string;
 }): PrincipalContext {
   return {
     kind: "job",
     jobName: input.jobName,
     organizationId: input.organizationId ?? null,
+    projectIds: input.projectIds ?? "*",
+    correlationId: input.correlationId ?? createCorrelationId(),
+  };
+}
+
+export function createProjectJobPrincipal(input: {
+  jobName: string;
+  organizationId: string;
+  projectId: string;
+  correlationId?: string;
+}): PrincipalContext {
+  return {
+    kind: "project-job",
+    jobName: input.jobName,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
     correlationId: input.correlationId ?? createCorrelationId(),
   };
 }

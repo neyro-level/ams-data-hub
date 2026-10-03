@@ -13,6 +13,7 @@ export interface DatabaseAuthorizationContext {
   principalKind: DatabasePrincipalKind;
   actorId: string;
   organizationId: string | null;
+  projectIds: readonly string[] | "*";
   correlationId: string;
 }
 
@@ -24,28 +25,40 @@ export function createDatabaseAuthorizationContext(
       return {
         principalKind: principal.kind,
         actorId: principal.userId,
-        organizationId: principal.organizationId,
+      organizationId: principal.organizationId,
+        projectIds: principal.projectIds,
         correlationId: principal.correlationId,
       };
     case "platform-admin":
       return {
         principalKind: principal.kind,
         actorId: principal.userId,
-        organizationId: null,
+      organizationId: null,
+        projectIds: "*",
         correlationId: principal.correlationId,
       };
     case "api-client":
       return {
         principalKind: principal.kind,
         actorId: principal.apiClientId,
-        organizationId: principal.organizationId,
+      organizationId: principal.organizationId,
+        projectIds: principal.projectIds,
         correlationId: principal.correlationId,
       };
     case "job":
       return {
         principalKind: principal.kind,
         actorId: principal.jobName,
+      organizationId: principal.organizationId,
+        projectIds: principal.projectIds,
+        correlationId: principal.correlationId,
+      };
+    case "project-job":
+      return {
+        principalKind: principal.kind,
+        actorId: principal.jobName,
         organizationId: principal.organizationId,
+        projectIds: [principal.projectId],
         correlationId: principal.correlationId,
       };
   }
@@ -59,6 +72,7 @@ export function createIdentityDatabaseAuthorizationContext(input: {
     principalKind: "identity",
     actorId: input.userId,
     organizationId: null,
+    projectIds: [],
     correlationId: input.correlationId,
   };
 }
@@ -71,6 +85,7 @@ export function createSystemJobDatabaseAuthorizationContext(input: {
     principalKind: "system-job",
     actorId: input.jobName,
     organizationId: null,
+    projectIds: "*",
     correlationId: input.correlationId,
   };
 }
@@ -84,11 +99,12 @@ async function setTransactionContext(
       set_config('app.principal_kind', ${context.principalKind}, true),
       set_config('app.actor_id', ${context.actorId}, true),
       set_config('app.organization_id', ${context.organizationId ?? ""}, true),
+      set_config('app.project_ids', ${context.projectIds === "*" ? "*" : context.projectIds.join(",")}, true),
       set_config('app.correlation_id', ${context.correlationId}, true)
   `);
 }
 
-export async function runInDatabaseTransaction<TResult>(
+export async function runInIdentityBootstrapDatabaseTransaction<TResult>(
   execute: (transaction: DatabaseTransaction) => Promise<TResult>,
 ): Promise<TResult> {
   return getPrismaClient().$transaction(execute);

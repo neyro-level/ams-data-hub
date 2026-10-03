@@ -19,6 +19,7 @@ export interface TenantUserPrincipal {
   organizationId: string;
   membershipId: string;
   role: TenantRole;
+  projectIds: readonly string[] | "*";
   correlationId: string;
 }
 
@@ -33,6 +34,7 @@ export interface ApiClientPrincipal {
   kind: "api-client";
   apiClientId: string;
   organizationId: string;
+  projectIds: readonly string[] | "*";
   correlationId: string;
 }
 
@@ -40,6 +42,15 @@ export interface JobPrincipal {
   kind: "job";
   jobName: string;
   organizationId: string | null;
+  projectIds: readonly string[] | "*";
+  correlationId: string;
+}
+
+export interface ProjectJobPrincipal {
+  kind: "project-job";
+  jobName: string;
+  organizationId: string;
+  projectId: string;
   correlationId: string;
 }
 
@@ -47,7 +58,8 @@ export type PrincipalContext =
   | TenantUserPrincipal
   | PlatformAdminPrincipal
   | ApiClientPrincipal
-  | JobPrincipal;
+  | JobPrincipal
+  | ProjectJobPrincipal;
 
 const PLATFORM_ADMIN_PERMISSIONS: readonly Permission[] = PERMISSIONS;
 const TENANT_PERMISSIONS: Record<TenantRole, readonly Permission[]> = {
@@ -67,6 +79,7 @@ export function getPrincipalPermissions(principal: PrincipalContext): readonly P
       return TENANT_PERMISSIONS[principal.role];
     case "api-client":
     case "job":
+    case "project-job":
       return [];
   }
 }
@@ -79,6 +92,6 @@ export function hasPermission(principal: PrincipalContext, permission: Permissio
 
 export function isTenantPrincipal(
   principal: PrincipalContext,
-): principal is TenantUserPrincipal | ApiClientPrincipal {
-  return principal.kind === "tenant-user" || principal.kind === "api-client";
+): principal is TenantUserPrincipal | ApiClientPrincipal | ProjectJobPrincipal {
+  return principal.kind === "tenant-user" || principal.kind === "api-client" || principal.kind === "project-job";
 }

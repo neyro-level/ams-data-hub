@@ -31,7 +31,8 @@ describe("E04 command atomicity", () => {
       userId: `e04-tenant-${suffix}`,
       organizationId: `e04-org-${suffix}`,
       membershipId: `e04-membership-${suffix}`,
-      role: "ORG_ADMIN",
+    role: "ORG_ADMIN",
+    projectIds: "*",
       correlationId: randomUUID(),
     };
     const slug = `e04-unauthorized-${suffix}`;
