@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { ServiceWorkerRegistration } from "../components/pwa/ServiceWorkerRegistration.tsx";
 import { Toaster } from "../components/ui/sonner.tsx";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import "./globals.css";
@@ -12,7 +11,6 @@ export const metadata: Metadata = {
   },
   description: "Рабочая платформа AMS для CRM, аналитических кабинетов и внутренних веб-приложений.",
   applicationName: "AMS Data Hub",
-  manifest: "/manifest.webmanifest",
   keywords: ["CRM", "аналитический кабинет", "внутреннее веб-приложение", "Data Hub"],
   alternates: {
     canonical: "/",
@@ -27,27 +25,20 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "AMS Data Hub",
     title: "AMS Data Hub",
-    description: "Нейтральный foundation для кабинетов, CRM, аналитики и внутренних систем.",
+    description: "Закрытая рабочая платформа AMS для данных и внутренних систем.",
   },
   twitter: {
     card: "summary",
     title: "AMS Data Hub",
-    description: "Нейтральный foundation для кабинетов, CRM, аналитики и внутренних систем.",
-  },
-  appleWebApp: {
-    capable: true,
-    title: "AMS Data Hub",
-    statusBarStyle: "black-translucent",
+    description: "Закрытая рабочая платформа AMS для данных и внутренних систем.",
   },
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
+    nocache: true,
     googleBot: {
-      index: true,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
+      index: false,
+      follow: false,
     },
   },
 };
@@ -60,7 +51,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" className="h-full antialiased">
-      <body className="min-h-full"><NuqsAdapter>{children}</NuqsAdapter><ServiceWorkerRegistration /><Toaster /></body>
+      <body className="min-h-full"><NuqsAdapter>{children}</NuqsAdapter><Toaster /></body>
     </html>
   );
 }

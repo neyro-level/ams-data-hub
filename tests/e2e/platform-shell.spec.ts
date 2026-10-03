@@ -7,25 +7,25 @@ test("public Data Hub page has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBe(false);
 });
 
-test("legal pages stay available", async ({ page }) => {
-  for (const route of ["/politika/", "/soglasie/", "/cookies/", "/terms/"]) {
-    await page.goto(route);
-    await expect(page.locator("header").getByRole("link", { name: /AMS Data Hub/ })).toBeVisible();
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-    expect(overflow).toBe(false);
+test("the privacy policy stays available and visibly requires legal review", async ({ page }) => {
+  await page.goto("/politika/");
+  await expect(page.locator("header").getByRole("link", { name: /AMS Data Hub/ })).toBeVisible();
+  await expect(page.getByText("Требует юридической проверки владельцем")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  expect(overflow).toBe(false);
+});
+
+test("removed public routes return not found", async ({ page }) => {
+  for (const route of ["/soglasie/", "/cookies/", "/terms/", "/offline/", "/manifest.webmanifest", "/sitemap.xml", "/sw.js"]) {
+    const response = await page.goto(route);
+    expect(response?.status(), route).toBe(404);
   }
 });
 
-test("PWA manifest is available", async ({ page }) => {
-  const response = await page.goto("/manifest.webmanifest");
+test("robots disallows the complete site", async ({ page }) => {
+  const response = await page.goto("/robots.txt");
   expect(response?.ok()).toBe(true);
-  const payload = await page.evaluate(() => document.body.innerText);
-  expect(payload).toContain("AMS Data Hub");
-});
-
-test("offline page is available", async ({ page }) => {
-  await page.goto("/offline/");
-  await expect(page.getByRole("heading", { name: /Откройте страницу снова/ })).toBeVisible();
+  await expect(page.locator("body")).toContainText("Disallow: /");
 });
 
 test("API responses are not cacheable", async ({ page }) => {

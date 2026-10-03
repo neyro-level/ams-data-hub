@@ -16,7 +16,7 @@ reference foundation to the product-owned Data Hub application.
 | ADR-009 | Active | PostgreSQL security evidence |
 | ADR-010 | Active | Risk-based manual SourceCraft gates |
 | ADR-011 | Active | Immutable runtime artifact and release template |
-| ADR-012 | Active with revisit | Private-cache/error/observability guards stay active; PWA scope is revisited by DH-00.5 |
+| ADR-012 | Active, amended | Private-cache headers, error and observability guards stay active; PWA/contact clauses were retired by DH-00.5 |
 | ADR-013 | Superseded | Clean-room starter derivation is outside the product-owned Data Hub lifecycle |
 | ADR-014 | Active | Final conformance, handover and rollback evidence |
 

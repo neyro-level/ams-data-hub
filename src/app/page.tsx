@@ -1,6 +1,6 @@
-import { StartLanding } from "../components/marketing/StartLanding.tsx";
+import { PublicLoginPage } from "../components/marketing/PublicLoginPage.tsx";
 
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ login?: string | string[] }> }) {
   const params = await searchParams;
-  return <StartLanding loginRequested={params.login === "1"} />;
+  return <PublicLoginPage loginRequested={params.login === "1"} />;
 }

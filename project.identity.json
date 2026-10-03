@@ -16,7 +16,6 @@
   "deliveryProfile": "CRITICAL",
   "capabilities": {
     "outboxPlusQueue": "enabled",
-    "pwa": "enabled",
     "platformAdmin": "enabled"
   }
 }

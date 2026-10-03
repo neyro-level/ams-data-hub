@@ -79,7 +79,7 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
-          className="theme-public start-landing rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
+          className="theme-public public-surface rounded-none border-[var(--ch-border-control)] bg-[var(--ch-bg-deeper)] p-7 text-[var(--ch-white)] shadow-[var(--ch-overlay-shadow)] sm:p-10"
           showCloseButton={!pending}
         >
           <DialogHeader>

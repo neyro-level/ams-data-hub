@@ -4,18 +4,17 @@
 
 Repository является product-owned приложением с `PROJECT_CLASS = STANDARD` и `DELIVERY_PROFILE = CRITICAL`. Push и Pull Request не расходуют SourceCraft CI; один ручной exact-head Gate предшествует merge, а production выпускается отдельно из exact `main` через SourceCraft Registry.
 
-Внутри уже есть публичная главная страница, legal pages, login modal, приватный shell, Platform Admin, пользователи, организации, роли, проекты, audit trail, idempotency, outbox, worker, Docker/release templates и безопасный PWA-слой.
+Внутри уже есть закрытая страница входа, политика обработки данных, приватный shell, Platform Admin, пользователи, организации, роли, проекты, audit trail, idempotency, outbox, worker и Docker/release contracts.
 
 ## Что оставлено
 
-- публичный сайт: `/`, `/politika/`, `/soglasie/`, `/cookies/`, `/terms/`;
+- публичная поверхность: `/`, `/politika/`, `/api/health/*`; сайт закрыт от индексации;
 - приватная рабочая область: `/dashboard/`;
 - администрирование: `/admin/organizations/`, `/admin/memberships/`, `/admin/projects/`, `/admin/operations/`;
 - уведомления: `/notifications/`;
 - роли: `PLATFORM_ADMIN`, `STAFF`, `MEMBER`;
 - PostgreSQL + Prisma baseline;
 - Better Auth username/password;
-- PWA: manifest, standalone mode, offline page, service worker без кеширования приватных маршрутов.
 
 ## Что удалено
 
@@ -29,7 +28,7 @@ pnpm prisma:generate
 pnpm dev
 ```
 
-Для локальной базы используйте `.env.example` как шаблон. Перед production у производного продукта должны быть собственные домен, юридические реквизиты, секреты, database topology и release решение.
+Для локальной базы используйте `.env.example` как шаблон. Перед production должны быть подтверждены юридический текст, секреты, database topology и release решение.
 
 ## Проверки
 
@@ -41,7 +40,7 @@ pnpm test:unit
 pnpm verify:quick
 ```
 
-`verify:config` дополнительно проверяет, что старый product vertical не вернулся и PWA не кеширует приватные маршруты.
+`verify:config` дополнительно проверяет project identity, запрет индексации и минимальную публичную поверхность.
 
 ## Документы
 

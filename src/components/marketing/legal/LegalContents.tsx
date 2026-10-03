@@ -1,4 +1,4 @@
-import { consentHtml, cookiesHtml, privacyHtml, termsHtml } from "./legal-html.ts";
+import { privacyHtml } from "./legal-html.ts";
 import styles from "../LegalDocument.module.css";
 
 type StaticLegalContentProps = {
@@ -11,16 +11,4 @@ function StaticLegalContent({ html }: StaticLegalContentProps) {
 
 export function PrivacyContent() {
   return <StaticLegalContent html={privacyHtml} />;
-}
-
-export function ConsentContent() {
-  return <StaticLegalContent html={consentHtml} />;
-}
-
-export function CookiesContent() {
-  return <StaticLegalContent html={cookiesHtml} />;
-}
-
-export function TermsContent() {
-  return <StaticLegalContent html={termsHtml} />;
 }

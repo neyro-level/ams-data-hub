@@ -3,7 +3,7 @@
 **Status:** Active extension. This file is the value-free variable registry
 defined by `03_ARCHITECTURE.md`.
 
-Use `.env.example` as the neutral template.
+Use `.env.example` as the value-free project template.
 
 ## Required
 
@@ -18,9 +18,6 @@ Use `.env.example` as the neutral template.
 
 | Variable | Scope | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_CONTACT_API_URL` | browser | enables contact delivery |
-| `NEXT_PUBLIC_CONTACT_PROJECT_ID` | browser | public routing identifier |
-| `NEXT_PUBLIC_CONTACT_SITE_KEY` | browser | public site identifier |
 | `OUTBOX_WORKER_ID` | worker | unique identity per running worker replica |
 | `OUTBOX_POLL_DELAY_MS` | worker | idle poll delay; defaults to `1000` ms |
 | `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | maximum graceful drain wait for the active handler; defaults to `30000` ms |
@@ -33,7 +30,7 @@ The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
 the corresponding previous-release identities. Operators do not hand-edit
 those values.
 
-Provider credentials are intentionally absent. Add product-specific credentials only in a derived product.
+Provider credentials are intentionally absent. Add project-specific credentials only through an approved scope.
 
 ## PostgreSQL Evidence Transition
 

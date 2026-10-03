@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -59,24 +60,33 @@ for (const file of await collectFiles(root)) {
 
 const identityManifest = JSON.parse(await readFile(path.join(root, "project.identity.json"), "utf8"));
 const expectedProductName = identityManifest.identity?.productName;
-const appManifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
-if (
-  typeof expectedProductName !== "string"
-  || !expectedProductName.trim()
-  || !appManifest.includes(`name: ${JSON.stringify(expectedProductName)}`)
-  || !appManifest.includes('display: "standalone"')
-) {
-  violations.push("src/app/manifest.ts: PWA manifest must be installable and match project.identity.json");
+const rootLayout = await readFile(path.join(root, "src/app/layout.tsx"), "utf8");
+if (typeof expectedProductName !== "string" || !expectedProductName.trim() || !rootLayout.includes(`default: ${JSON.stringify(expectedProductName)}`)) {
+  violations.push("src/app/layout.tsx: metadata must match project.identity.json");
+}
+if (!rootLayout.includes("index: false") || !rootLayout.includes("follow: false")) {
+  violations.push("src/app/layout.tsx: every surface must inherit noindex, nofollow");
 }
 
-const serviceWorker = await readFile(path.join(root, "public/sw.js"), "utf8");
-for (const privatePath of ["/api/", "/admin/", "/dashboard/", "/notifications/"]) {
-  if (!serviceWorker.includes(`"${privatePath}"`)) {
-    violations.push(`public/sw.js: missing private cache exclusion ${privatePath}`);
-  }
+const robotsSource = await readFile(path.join(root, "src/app/robots.ts"), "utf8");
+if (!robotsSource.includes('disallow: "/"') || robotsSource.includes("sitemap")) {
+  violations.push("src/app/robots.ts: robots policy must disallow the complete site without a sitemap");
 }
-if (/cache\.put\(request/.test(serviceWorker) && !serviceWorker.includes("isPrivateRequest(url)")) {
-  violations.push("public/sw.js: cache policy must skip private requests");
+
+for (const removedPath of [
+  "src/app/soglasie/page.tsx",
+  "src/app/cookies/page.tsx",
+  "src/app/terms/page.tsx",
+  "src/app/offline/page.tsx",
+  "src/app/manifest.ts",
+  "src/app/sitemap.ts",
+  "public/sw.js",
+  "src/components/pwa/ServiceWorkerRegistration.tsx",
+  "src/components/marketing/LeadRequestDialog.tsx",
+  "src/shared/config/public-leads-environment.ts",
+  "src/shared/leads/send-lead.ts",
+]) {
+  if (existsSync(path.join(root, removedPath))) violations.push(`${removedPath}: removed public surface returned`);
 }
 
 if (violations.length > 0) {
@@ -84,4 +94,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log("Application config verified: product identity, removed vertical markers and safe PWA cache policy.");
+console.log("Application config verified: product identity, noindex policy and minimal public surface.");

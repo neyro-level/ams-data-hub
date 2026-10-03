@@ -1,7 +1,7 @@
 # Security
 
 **Status:** Active extension. `03_ARCHITECTURE.md` owns the cross-cutting
-policy; this file records the starter's detailed trust boundaries.
+policy; this file records the Data Hub trust boundaries.
 
 ## Trust Boundaries
 
@@ -17,15 +17,15 @@ policy; this file records the starter's detailed trust boundaries.
 
 ## PII
 
-The starter contains account data, memberships, notifications and audit events. Derived products must document any additional PII before production.
+Data Hub contains account data, memberships, notifications, audit events, agent contacts and client-feed data. New PII categories must be documented before production.
 
-## Public Contact Form
+## Public surface
 
-The visual form is kept, but delivery is disabled by default. It sends only when `NEXT_PUBLIC_CONTACT_API_URL`, `NEXT_PUBLIC_CONTACT_PROJECT_ID` and `NEXT_PUBLIC_CONTACT_SITE_KEY` are configured by the derived product.
+Only the login page, privacy policy and operational health endpoints are public. The site is excluded from indexing. Public contact collection, public signup, offline mode and service-worker caching are not present.
 
-## PWA Cache
+## Cache boundary
 
-Service worker skips `/api/*`, `/admin/*`, `/dashboard/*`, `/notifications/*`, auth/session routes and non-GET requests. It caches only public shell/static assets.
+Private, auth, API and operational routes use explicit non-cacheable response headers. There is no browser service worker.
 
 E09 formalizes route-aware cache/error/log safeguards in [`ADR-012`](adr/ADR-012-ui-pwa-error-observability-safety.md).
 
@@ -61,7 +61,7 @@ Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins are exact;
 CSRF/origin protection stays enabled. A production-derived product must define
 the exact reverse-proxy IP/CIDR boundary in `BETTER_AUTH_TRUSTED_PROXY_CIDRS`
 and restrict the origin so it is not directly reachable by clients. Without that
-value Better Auth refuses to start in production; the starter never trusts an
+value Better Auth refuses to start in production; Data Hub never trusts an
 unconfigured forwarded-IP header. Public errors and logs use safe codes and
 never reveal tokens, secrets or recovery material.
 

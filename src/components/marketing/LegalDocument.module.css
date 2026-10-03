@@ -2,6 +2,7 @@
   color: var(--ch-text-secondary);
   font-size: 16px;
   line-height: 1.72;
+  overflow-wrap: anywhere;
 }
 
 .prose section + section { margin-top: 56px; padding-top: 48px; border-top: 1px solid var(--ch-border-light); }

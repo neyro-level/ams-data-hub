@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
-import styles from "../components/marketing/StartLanding.module.css";
+import styles from "../components/marketing/PublicLoginPage.module.css";
 
 const quickLinks = [
   {
@@ -13,16 +13,11 @@ const quickLinks = [
     label: "Конфиденциальность",
     description: "Политика обработки персональных данных.",
   },
-  {
-    href: "/terms/",
-    label: "Условия",
-    description: "Общие условия сотрудничества с АМС.",
-  },
 ] as const;
 
 export default function NotFound() {
   return (
-    <main className="theme-public start-landing relative isolate flex min-h-dvh items-center overflow-hidden bg-[var(--ch-bg-deepest)] px-5 py-14 text-[var(--ch-white)] sm:px-6">
+    <main className="theme-public public-surface relative isolate flex min-h-dvh items-center overflow-hidden bg-[var(--ch-bg-deepest)] px-5 py-14 text-[var(--ch-white)] sm:px-6">
       <div className={`${styles.grid} absolute inset-0 -z-20 opacity-70`} aria-hidden />
       <div className="absolute left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2 select-none text-[clamp(170px,28vw,390px)] font-extrabold leading-none tracking-[-0.08em] text-[var(--ch-ghost-ondark)]" aria-hidden>
         404
@@ -32,7 +27,7 @@ export default function NotFound() {
       <div className="mx-auto w-full max-w-[980px] text-center">
         <Link href="/" className="mx-auto inline-flex items-center gap-3" aria-label="AMS Data Hub - на главную">
           <span className="grid size-12 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-xs font-extrabold">АМС</span>
-          <span className="text-sm font-extrabold">СТАРТ</span>
+          <span className="text-sm font-extrabold">DATA HUB</span>
         </Link>
 
         <p className="mt-10 flex items-center justify-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ch-accent)]">
@@ -52,7 +47,7 @@ export default function NotFound() {
           Вернуться на главную
         </Link>
 
-        <nav className="mt-12 grid gap-3 text-left sm:grid-cols-3" aria-label="Доступные разделы">
+        <nav className="mx-auto mt-12 grid max-w-2xl gap-3 text-left sm:grid-cols-2" aria-label="Доступные разделы">
           {quickLinks.map((item, index) => (
             <Link key={item.href} href={item.href} className="group min-h-36 border border-[var(--ch-border-subtle)] bg-[var(--ch-surface-faint)] p-5 transition hover:-translate-y-0.5 hover:border-[var(--ch-accent)]/65 hover:bg-[var(--ch-surface-faint-hover)]">
               <span className="text-[10px] font-bold tracking-[0.16em] text-[var(--ch-accent)]">{String(index + 1).padStart(2, "0")}</span>

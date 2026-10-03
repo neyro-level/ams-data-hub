@@ -22,13 +22,6 @@ const nextConfig: NextConfig = {
         source: "/notifications/:path*",
         headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0" }],
       },
-      {
-        source: "/sw.js",
-        headers: [
-          { key: "Cache-Control", value: "no-cache" },
-          { key: "Service-Worker-Allowed", value: "/" },
-        ],
-      },
     ];
   },
 };

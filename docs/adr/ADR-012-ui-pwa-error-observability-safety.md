@@ -1,19 +1,19 @@
-# ADR-012: UI, PWA, Error And Observability Safety
+# ADR-012: UI, Cache, Error And Observability Safety
 
-**Status:** accepted for E09 implementation
+**Status:** accepted and amended by DH-00.5
 
-Private, auth, API and operational routes are never service-worker cached. The PWA uses an explicit public static allowlist, versioned old-cache cleanup and skips non-GET requests. Route-aware headers prevent private/auth/API caching and keep public assets cacheable only where safe.
+Private, auth, API and operational routes use explicit non-cacheable response headers. DH-00.5 removed the PWA manifest, service worker and offline surface, so browser cache safety no longer depends on client-side caching code.
 
 Every application surface receives applicable `error`, `not-found` and loading states. Public errors use a stable safe code plus correlation ID; raw exception, SQL, provider, token and PII text stays server-side. Structured logs redact secrets, auth material, database URLs and PII-defined fields before output.
 
-The legal/public-contact starter state remains visible but fail-closed: missing product legal data blocks production readiness, not local preview; contact delivery is off without complete derived configuration. Verification covers static/unit route guards, Playwright login/logout/offline cache flows, headers, responsive screenshots at 375/768/1280/1440 and safe-log inspection.
+The public surface is limited to login, the privacy policy and operational health endpoints. The policy visibly remains pending owner legal review; no public contact form or signup exists. Verification covers static/unit route guards, removed-route 404 checks, headers, responsive screenshots at 375/768/1280/1440 and safe-log inspection.
 
 | Guarantee | Target evidence |
 | --- | --- |
-| private routes never cached | service-worker/static route tests and offline/logout Playwright flow |
+| private routes are not cacheable | route-header tests and authenticated-flow checks |
 | safe public errors | boundary/error-envelope tests with raw exception fixtures |
 | accessible responsive surfaces | 375/768/1280/1440 screenshot proof plus keyboard-safe states |
 | no unsafe logs | redaction contract unit tests and log fixture inspection |
-| fail-closed public placeholders | legal/contact config tests and readiness denial |
+| bounded public surface | route inventory, 404 checks and visible legal-review marker |
 
 E09 is `STANDARD` unless headers or runtime configuration change, when it is `RISKY`. It adds no product visual identity or commercial copy.

@@ -6,7 +6,7 @@
 
 | Surface | Routes / responsibility | Access |
 | --- | --- | --- |
-| Public shell | `/`, legal pages, footer, login modal | public; contact delivery disabled by default |
+| Public shell | `/`, `/politika/`, footer, login modal, `not-found`, `error` | public; complete site is `noindex, nofollow` |
 | Auth | `/api/auth/*` and login flow | Better Auth; public signup disabled |
 | Workspace | `/dashboard/`, `/notifications/` | authenticated tenant principal |
 | Platform Admin | `/admin/*` | explicit `PLATFORM_ADMIN` authority |

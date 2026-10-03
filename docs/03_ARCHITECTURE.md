@@ -123,5 +123,6 @@ not an incidental hardening change.
   retain the active security/runtime decisions.
 - ADR-002, ADR-004 and ADR-013 are explicitly superseded and their IDs are not
   reused.
-- Revisit PWA-specific ADR-012 scope in DH-00.5; revisit TypeScript only through
-  a separately approved version task.
+- ADR-012 retains cache-header, error and observability safeguards; its PWA and
+  public-contact clauses were retired by DH-00.5. Revisit TypeScript only
+  through a separately approved version task.
