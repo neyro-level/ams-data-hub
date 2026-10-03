@@ -2,11 +2,11 @@
 
 ```text
 Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01
-Architect version: v0
-Status: DRAFT
-Phase: ASSEMBLY
+Architect version: v1
+Status: READY_FOR_OWNER_APPROVAL
+Phase: FINAL_AUDIT_COMPLETE
 Baseline repository SHA: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
-Revision input: OWNER-2026-10-03-01
+Revision input: OWNER-2026-10-03-01 + FINAL-AUDIT-2026-10-03-01
 Canonical working file: docs/AMS Data Hub Master Plan v1.md
 Architecture input: docs/00_CONSTITUTION.MD.md (v3.1.2 provided basis)
 Task Manager import: NOT ALLOWED
@@ -14,16 +14,19 @@ Developer handoff: NOT ALLOWED
 Production: NOT AUTHORIZED
 ```
 
-> Architect guard: загруженная основа принята только как `v0 DRAFT`.
+> Architect guard: загруженная основа принята как `v0 DRAFT`, исправлена и
+> проверена как exact `v1`.
 > Раздел «Стартовая инструкция для Codex» не разрешает реализацию, пока exact
 > version не прошла финальный audit, не получила статус
 > `READY_FOR_OWNER_APPROVAL` и владелец явно не сказал «План утверждён».
 
-**Файл в репозитории:** `docs/04_IMPLEMENTATION_PLAN.md`  
- **Архитектурный канон:** `docs/00_CONSTITUTION.md` (AMS Data Hub Final Master Plan v3.1.2, копируется без изменений)  
+**Текущий canonical working file:** `docs/AMS Data Hub Master Plan v1.md`; target
+после approved DH-00 mapping: `docs/04_IMPLEMENTATION_PLAN.md`
+ **Архитектурный input:** `docs/00_CONSTITUTION.MD.md`; target после approved
+DH-00 mapping: `docs/00_CONSTITUTION.md` (v3.1.2, без смысловых изменений)
  **Продакшн:** `https://data-hab.ams24.ru`  
  **Канонический git:** SourceCraft (`integrator-p/ams-data-hub`)  
- **Инфраструктура:** сервер Timeweb Cloud, managed PostgreSQL Timeweb, S3 Timeweb, секреты в SecretMaster, образы в SourceCraft Registry  
+ **Инфраструктура:** сервер Timeweb Cloud, managed PostgreSQL Timeweb, S3 Timeweb, секреты в Secret Master, образы в SourceCraft Registry
  **Владелец и оператор ПДн Hub:** ИП Скрицкая Юлия Викторовна, ИНН 231295699557, ОГРНИП 323237500365055, integrator-p@yandex.ru  
  **Модель разработки:** solo owner \+ Codex
 
@@ -43,18 +46,30 @@ Production: NOT AUTHORIZED
 
 Подробности в навыках владельца и каноне SourceCraft. Codex перед стартом читает `AGENTS.md` и skills владельца по выводу в `main`. Кратко цикл выглядит так:
 
-1. Начать с актуального `main`: `git checkout main && git pull`.  
-2. Создать ветку `epic/dh-XX-<slug>`.  
-3. Задачи эпика делать отдельными коммитами `dh-XX.N: <описание>`. Промежуточных PR нет.  
-4. Перед PR прогнать локально `pnpm verify:risky` (для эпиков без изменений схемы и auth достаточно `pnpm verify:quick`) и записать фактические результаты в описание PR.  
-5. Открыть один Pull Request в SourceCraft и запустить один ручной exact-head RISKY gate.  
-6. После зелёного gate и одобрения владельца — merge в `main`.  
-7. Удалить удалённую ветку, затем локальную (`git branch -D epic/dh-XX-…`), выполнить `git checkout main && git pull`.  
-8. Обновить `docs/05_DELIVERY_STATE.md`: статус эпика, SHA merge, доказательства.  
-9. Продакшн-релиз выкатывается только по явной команде владельца: SourceCraft `release` для точного SHA `main`, deploy по `image@sha256`, live-проверка.  
-10. Только после этого открывается следующий эпик.
+1. Перед новым независимым потоком обновить `origin/main` и создать отдельную
+   ветку/worktree от exact `origin/main`; не переключать ветку в чужом dirty
+   worktree.
+2. Задачи эпика делать отдельными логическими checkpoint-коммитами
+   `dh-XX.N: <описание>` и после каждой закрытой задачи выполнять push.
+3. После организационного завершения эпика открыть один Pull Request в
+   SourceCraft с `delivery_mode=PR_ONLY`. Создание PR не запускает tests,
+   review, build, CI или Merge Gate; проверить только source/target/head SHA.
+4. Пока PR ждёт решения владельца, Developer продолжает только независимую
+   ready work из матрицы §8. Зависимая работа ждёт merge/freeze point, а не
+   production release.
+5. Команда владельца на вывод PR в `main` запускает review полного exact diff,
+   risk-specific local proof и один manual exact-head `RISKY` SourceCraft Gate.
+   Только green gate разрешает merge.
+6. После merge обновить canonical `main`, записать merge SHA и evidence в
+   `docs/DELIVERY_STATE.yaml`, затем удалить ветку безопасно (`git branch -d`)
+   только если она действительно merged. Force delete не является default.
+7. Production не входит в Developer ready-loop. По отдельной явной команде
+   владельца выполняется один exact-main release по `image@sha256` с live proof
+   и rollback contract.
 
-Эпики специально крупные, чтобы проверок было меньше. Внутри эпика без gate.
+Эпики являются границами PR, а не единицами блокировки всего графа. Внутри
+эпика проверки запускаются только по необходимости реализации; формальный
+proof концентрируется перед merge.
 
 ### **0.4. Общие правила для Codex**
 
@@ -73,17 +88,16 @@ Production: NOT AUTHORIZED
 
 **Чего нет совсем:** весь домен Data Hub — каталог, агенты, источники, YRL, inventory, URL Registry, snapshot, подпись, delivery, Exit Bundle, Operations UI.
 
-**Найденные дефекты** (исправляются в DH-01 и DH-02):
+**Подтверждённые дефекты** (проверены по коду exact `6246a2f`, исправляются в
+DH-00, DH-01 и DH-02):
 
 | \# | Дефект | Где исправляется |
 | ----- | ----- | ----- |
 | B1 | Роль STAFF имеет кросс-тенантную запись (включая `Member`) без MFA | DH-01 |
 | B2 | RLS изолирует только по `organizationId`, изоляции Project нет | DH-01 |
 | B3 | Экспортируется `runInDatabaseTransaction` без auth-контекста — обход | DH-01 |
-| B4 | Notification policy не учитывает `visibility` | DH-01 |
 | B5 | `take: 100` в `listFormOptions` и `listProjectTrees` молча обрезает списки | DH-01 |
 | B6 | Несколько membership без `activeOrganizationId` дают `CABINET_USER_INACTIVE` | DH-01 |
-| B7 | `findProjectForAction` ищет без `organizationId` (держится только на RLS) | DH-01 |
 | B8 | `session.id` попадает в `correlationId` | DH-01 |
 | B9 | `auth` инициализируется при импорте модуля | DH-01 |
 | B10 | Healthcheck worker `process.kill(1,0)` при `init: true` всегда зелёный | DH-02 |
@@ -91,8 +105,15 @@ Production: NOT AUTHORIZED
 | B12 | `apt-get upgrade` в runtime-слое ломает воспроизводимость образа | DH-02 |
 | B13 | `pino` не закреплён точной версией | DH-02 |
 | B14 | Миграция RLS требует заранее созданных ролей БД, bootstrap отсутствует | DH-02 |
-| B15 | Два runtime-контура (`ops/systemd` и compose), outbox может обрабатываться дважды | DH-02 |
 | B16 | `NEXT_PUBLIC_CONTACT_*` — форма лидов, которой в Hub быть не должно | DH-00 |
+
+**Отклонённые claims исходного аудита:** B4 уже закрыт
+`visibilityWhere(audience)` и проверкой audience; B7 вызывается только из
+Platform Admin boundary и сам по себе не является tenant bypass; B15 не
+подтвердился — systemd управляет тем же Compose stack, а отдельный timer
+запускает только retention. Эти пункты не импортируются как bugs. Узкое
+defense-in-depth улучшение B7 допустимо внутри DH-01, но не является критерием
+готовности.
 
 ---
 
@@ -102,14 +123,14 @@ Production: NOT AUTHORIZED
 | ----- | ----- |
 | Репозиторий | Этот репозиторий и есть AMS Data Hub. Нейтральность и следы стартера удаляются полностью |
 | Тенанты | Organization \= агентство-клиент. Project \= сайт клиента, 1…N на организацию |
-| Вход | Логин \+ пароль. Регистрации нет, 2FA выключена (код TOTP остаётся под флагом `ADMIN_TOTP_REQUIRED=false`). Обязательны rate limit, блокировка после серии неудачных попыток, аудит входов. Пересмотр через 2–3 месяца (OQ-09) |
+| Вход | Логин + пароль, регистрации нет. Для `PLATFORM_ADMIN` в production обязательна проверенная TOTP 2FA (`ADMIN_TOTP_REQUIRED=true`) и break-glass recovery. Отключение допустимо только в local/test. Обязательны rate limit, блокировка после серии неудачных попыток и аудит входов |
 | Роли сейчас | Только `PLATFORM_ADMIN`: владелец и помощник, у каждого своя учётка. Роль STAFF удаляется |
 | Роли потом | Модель доступа клиентов строится сразу (организационные и проектные роли, матрица прав, RLS), но UI клиентского входа выключен флагом `CLIENT_ACCESS_ENABLED=false` |
 | Каталог новостроек | Полноценный, ручной ввод через Hub Admin. Seed: Краснодарский край (Краснодар), Республика Крым, г. Севастополь, Ростовская область (Ростов-на-Дону). XML новостроек подключается позже тем же YRL-адаптером |
 | Вторичка | YRL-фиды, первый — Bastion (`yrl-realty-2010` \+ `vladis-vt24-v1`) |
 | Публичная часть Hub | Только страница входа (текущий дизайн сохраняется), `/politika/` и подвал с реквизитами. Hub закрыт от индексации |
 | Сайт REALTY LITE | Вне scope. Hub поставляет контракты, snapshot и эталонный тестовый потребитель |
-| Инфраструктура | Timeweb (сервер, PostgreSQL, S3) \+ SecretMaster. Канонический runtime — Docker Compose с образами из SourceCraft Registry |
+| Инфраструктура | Timeweb (сервер, PostgreSQL, S3) + Secret Master. Канонический runtime — Docker Compose с образами из SourceCraft Registry |
 
 ---
 
@@ -126,10 +147,15 @@ Production: NOT AUTHORIZED
 | DH-06 | Ingestion core: источники, адаптеры, YRL, inventory, safety | E17–E21, E24 | да |
 | DH-07 | Bastion: профиль, фикстуры, агенты, медиа, end-to-end | E23, E25–E29 | да |
 | DH-08 | Operations UI, алерты, Exit Bundle | E14, E16, E31 | да |
-| DH-09 | Pilot Release Gate и go-live | E30 (Hub-сторона), E32 | да |
+| DH-09 | Pilot Readiness Gate | E30 (Hub-сторона), E32 | да |
 | DH-10 | Второй фид и мультиисточники (по триггеру) | E33–E36 | да |
 
-Критический путь: DH-00 → DH-01 → DH-02, затем DH-03 и DH-04 можно вести последовательно в любом порядке, потом DH-05 → DH-06 → DH-07 → DH-08 → DH-09. Каталог новостроек (DH-03) идёт раньше Bastion: его можно начинать заполнять вручную сразу после merge.
+Критический путь на уровне минимальных blocking tasks: DH-00 documentation
+mapping → DH-01 auth/RLS contract → DH-02 safety foundations → frozen public
+DTO/snapshot contracts → DH-07 real-feed proof → DH-09 readiness. DH-03,
+DH-04, contract-first часть DH-05, synthetic часть DH-06 и часть DH-08
+открываются волнами по матрице §8; production не является зависимостью.
+DH-10 не входит в completion boundary этой версии.
 
 ---
 
@@ -139,18 +165,23 @@ Production: NOT AUTHORIZED
 
 ### **Задачи**
 
-**dh-00.1 — Новый канон документов.** Итоговая структура:
+**dh-00.1 — Mapping и нормализация канона.** Сначала составить таблицу
+`роль → текущий файл → целевой Source of Truth → уникальный смысл → действие`,
+проверить ссылки и только после этого переносить/переименовывать. Целевая
+структура сохраняет обязательный AMS Product Development Standard 2.0:
 
 | Файл | Роль |
 | ----- | ----- |
 | `AGENTS.md` | короткий router для Codex: порядок чтения, инварианты, git-цикл, команды проверок |
 | `README.md` | что это за продукт, как запустить локально, ссылки на docs |
-| `docs/00_CONSTITUTION.md` | v3.1.2 без изменений |
-| `docs/01_PRODUCT.md` | продукт, пользователи, scope V1, роли сейчас и потом, экраны и маршруты Hub Admin |
-| `docs/02_ARCHITECTURE.md` | модули, границы, профиль платформы, RLS-классы, async, стек и источник версий (lockfile) |
-| `docs/03_DATA_MODEL.md` | карта моделей Prisma по модулям и RLS-классам |
-| `docs/04_IMPLEMENTATION_PLAN.md` | этот план |
-| `docs/05_DELIVERY_STATE.md` | статус эпиков, SHA, доказательства, открытые риски |
+| `docs/00_CONSTITUTION.md` | program-level domain/operations constitution v3.1.2; numbered canon ссылается на неё и не дублирует детали |
+| `docs/01_PRD.md` | продукт, пользователи, scope V1, роли, требования и open questions |
+| `docs/02_PRODUCT_STRUCTURE.md` | экраны, маршруты, flows и публичная поверхность Hub Admin |
+| `docs/03_ARCHITECTURE.md` | модули, data ownership, профиль платформы, RLS-классы, async, stack, security и production contract |
+| `docs/04_BACKLOG.md` | NOW/NEXT/LATER и ссылка на exact APPROVED implementation plan/Beads graph |
+| `docs/05_RELEASE_CHECKLIST.md` | release readiness, exact-main release, live proof и rollback |
+| `docs/04_IMPLEMENTATION_PLAN.md` | этот exact master plan после approved rename; не второй backlog |
+| `docs/DELIVERY_STATE.yaml` | machine-readable epic/PR/SHA/proof pointer; без требований и acceptance |
 | `docs/SECURITY.md` | доверительные границы, ПДн, секреты, подпись snapshot, вход |
 | `docs/OPERATIONS.md` | деплой, релиз, rollback, backup/restore, ротации ключей, инциденты |
 | `docs/ENVIRONMENT.md` | реестр переменных окружения без значений |
@@ -159,9 +190,23 @@ Production: NOT AUTHORIZED
 | `docs/adr/` | только действующие ADR |
 | `CHANGELOG.md` | история изменений продукта с v0.1.0 |
 
-**dh-00.2 — Удалить без архива** (история остаётся в Git): `docs/MASTER_PLAN.md`, `docs/MASTER_PLAN.inventory.json`, `docs/DERIVATION.md`, `docs/HANDOVER.md`, `docs/PRODUCT.md`, `docs/ARCHITECTURE.md` (legacy), `docs/01_PRD.md`, `docs/02_PRODUCT_STRUCTURE.md`, `docs/04_BACKLOG.md`, `docs/05_RELEASE_CHECKLIST.md` (полезное перенести в `OPERATIONS.md`), `docs/AUTH.md` (перенести в `SECURITY.md`), `docs/RUNBOOK_DEPLOY.md` и `docs/ops/*` (влить в `OPERATIONS.md`), `docs/EXTERNAL_SITE_DESIGN_SYSTEM.md` и `docs/INTERNAL_DASHBOARD_DESIGN_SYSTEM.md` (влить в `DESIGN_SYSTEM.md`), `starter.identity.json`, а также скрипты и package-команды derivation и clean-room: `derive:smoke`, стартерные части `verify:conformance` и связанные с ними тесты.
+**dh-00.2 — Перенос и cleanup только после mapping PASS.** Сохранить и
+обновить `01_PRD.md`, `02_PRODUCT_STRUCTURE.md`, `03_ARCHITECTURE.md`,
+`04_BACKLOG.md`, `05_RELEASE_CHECKLIST.md`. Для `MASTER_PLAN*`, `DERIVATION`,
+`HANDOVER`, legacy `PRODUCT/ARCHITECTURE`, `AUTH`, deploy/ops и двух legacy
+design-system файлов сначала перенести актуальный уникальный смысл в
+профильный numbered source либо доказанно самостоятельный optional extension,
+обновить все ссылки и получить `pnpm docs:check` PASS. Лишь затем удалить
+superseded files одним отдельным checkpoint-коммитом; rollback — revert этого
+коммита. `starter.identity.json`, derivation/clean-room scripts и package
+commands удаляются только после замены project-owned guards и доказательства,
+что release/conformance contract не потерян.
 
-**dh-00.3 — Ревизия ADR.** Действующие решения (профиль платформы, RLS ADR-006, async, release по digest) переписать как ADR Data Hub и перенумеровать `ADR-001…`. Стартерные ADR (нейтральность, derivation, handover) удалить.
+**dh-00.3 — Ревизия ADR.** Действующие решения (профиль платформы, RLS
+ADR-006, async, release по digest) сохранить под стабильными IDs либо дать
+явную mapping-таблицу старый ID → новый ID. Не перенумеровывать ради косметики.
+Starter-specific ADR удалять только после доказанного переноса уникального
+решения и обновления ссылок.
 
 **dh-00.4 — Зачистка кода и конфигов от следов шаблона.** Убрать упоминания `starter`, `MicroSaaS`, `copy-source`, `derived`, `neutral`, `derivation` из кода, комментариев, скриптов, `.semgrep.yml`, dependency-cruiser, тестов и package.json. Добавить guard `scripts/verify-no-template-traces.mjs` и включить его в `verify:quick`. Исключение — только `CHANGELOG.md` (запись «initial import»).
 
@@ -175,12 +220,18 @@ Production: NOT AUTHORIZED
 
 **dh-00.6 — Идентичность продукта в приложении.** `appName`, метаданные, title, favicon — «AMS Data Hub». Домен `data-hab.ams24.ru` вынести в одну конфигурацию.
 
-**dh-00.7 — Модули по конституции (§50).** Создать пустые каркасы модулей с `README` о границе: `catalog`, `catalog-history`, `project-catalog`, `project-catalog-links`, `agents`, `source-registry`, `ingestion`, `project-editorial`, `project-contacts`, `project-urls`, `lifecycle`, `snapshots`, `deliveries`, `media`, `platform-operations`. Добавить правила dependency-cruiser между модулями. Модуль `notifications` оставить как канал алертов.
+**dh-00.7 — Module map и guards.** Зафиксировать все будущие ownership-boundary
+в Module Map `03_ARCHITECTURE.md`, но не создавать пустой production-код и
+README-каркасы «на будущее». Каждый module directory появляется в первом
+эпике, который даёт ему реальный vertical slice. Общие dependency-cruiser
+правила добавить сейчас; `notifications` сохранить как канал алертов.
 
 ### **Приёмка**
 
 * `pnpm verify:quick` зелёный. Guard «нет следов шаблона» зелёный.  
-* В docs ровно один authoritative документ на каждую область.  
+* Mapping полного текущего docs tree зафиксирован; каждый удалённый файл имеет
+  target и proof переноса уникального смысла; в docs ровно один authoritative
+  документ на каждую область.
 * Публично доступны только `/`, `/politika/`, `/api/health/*`. Остальное отдаёт 404 или требует входа.  
 * Сборка, unit- и E2E-тесты (обновлённые) проходят.
 
@@ -201,7 +252,10 @@ Production: NOT AUTHORIZED
 
 **dh-01.2 — Вход.**
 
-* Логин \+ пароль, `disableSignUp`. Флаг `ADMIN_TOTP_REQUIRED=false` по умолчанию: логика TOTP остаётся, но не требуется.  
+* Логин + пароль, `disableSignUp`. `ADMIN_TOTP_REQUIRED=true` обязателен в
+  production для `PLATFORM_ADMIN`; local/test могут явно выключать его.
+  Provisioning включает настройку TOTP, проверку второго фактора, offline
+  recovery material и отключение bootstrap path.
 * Rate limit на вход, блокировка учётки на 15 минут после 10 неудачных попыток подряд (значения в конфиге), аудит успешных и неуспешных входов без пароля в логах.  
 * Минимальная длина пароля 12 символов.  
 * Команда `pnpm admin:provision`: пароль читается из stdin, не из argv. Создаёт или сбрасывает PLATFORM\_ADMIN.  
@@ -219,7 +273,9 @@ Production: NOT AUTHORIZED
 * `PLATFORM_SHARED_CATALOG`: чтение доступно любому аутентифицированному контексту и job, запись — только `platform-admin`.  
 * Новый principal `project-job (organizationId, projectId)` для ingestion и snapshot-задач. `system-job` только для платформенных задач.  
 * `platform-admin` работает в явном платформенном контексте, каждое кросс-проектное действие аудируется.  
-* Notification policy учитывает `visibility` (B4).  
+* Сохранить уже действующий `visibilityWhere(audience)` и добавить regression
+  test, что platform staff не читает `PLATFORM_ADMIN_ONLY`; B4 не является
+  открытым defect.
 * Удалить или закрыть guard’ом `runInDatabaseTransaction` без контекста (B3). Правило dependency-cruiser: прямой `getPrismaClient()` разрешён только в `platform/database` и `platform/auth`.  
 * Обновить `verify:rls-coverage`: каждая таблица имеет RLS-класс, политику и тест.
 
@@ -227,7 +283,9 @@ Production: NOT AUTHORIZED
 
 * B5: пагинация или поиск вместо `take: 100`.  
 * B6: экран выбора организации и автоматический выбор, если membership один.  
-* B7: `findProjectForAction` с `organizationId`.  
+* Defense-in-depth: при появлении tenant/project command искать Project по
+  server-owned `organizationId + projectId`; текущий Platform Admin-only path
+  не классифицируется как B7 defect.
 * B8: `correlationId` генерируется, а не строится из `session.id`.  
 * B9: ленивая инициализация `auth`.
 
@@ -240,7 +298,9 @@ Project A читает A — разрешено. Project A читает или �
 ### **Приёмка**
 
 * Ни один проектный репозиторий не возвращает чужие строки в integration-тестах, включая два проекта в одной организации.  
-* Вход по логину и паролю работает на продакшне после релиза.
+* В pre-production E2E подтверждены login + mandatory TOTP, lockout,
+  recovery и запрет client login; production live proof относится только к
+  отдельному release gate после DH-09.
 
 ---
 
@@ -258,12 +318,17 @@ Project A читает A — разрешено. Project A читает или �
 
 **dh-02.2 — Safe Outbound.** HTTP-клиент: allowlist протоколов `https` (и `http` только для медиа, если профиль разрешает), блок localhost, RFC1918, link-local и IPv6-private, повторная проверка DNS и цели после редиректа, конечные таймауты, лимит байтов, проверка content-type. Все будущие запросы к фидам и медиа идут только через него (правило dependency-cruiser).
 
-**dh-02.3 — Секреты.** Тип `SecretRef` (ссылка, а не значение). Резолвер на сервере читает значения из env, которые доставляются из SecretMaster. Редакция секретов и URL фидов в логах (pino redact) и в UI. Тест: секрет не появляется в логах.
+**dh-02.3 — Секреты.** Тип `SecretRef` (ссылка, а не значение). Резолвер на сервере читает значения из env, которые доставляются из Secret Master. Редакция секретов и URL фидов в логах (pino redact) и в UI. Тест: секрет не появляется в логах.
 
 **dh-02.4 — Идентичность и контракты.**
 
 * Внутренние `id` \= cuid. Shared `uid` \= ULID (иммутабельный). `publicUrlId` — короткий непереиспользуемый идентификатор с таблицей резервирования.  
-* Пакеты в pnpm workspace: `packages/data-contracts`, `packages/realty-contracts`. Zod-схемы, `schemaMajor/schemaMinor`, каноническая сериализация (стабильный порядок ключей). Сборка в публикуемый артефакт в SourceCraft Registry — для сайта и для build independence (§9).  
+* Project-owned workspace-пакеты `packages/data-contracts` и
+  `packages/realty-contracts`: Zod-схемы, `schemaMajor/schemaMinor`,
+  каноническая сериализация. Downstream transfer по умолчанию — pinned
+  vendored schema/release artifact. Общий runtime package или package registry
+  допускается только после ADR и доказанного repeated need; OCI Registry
+  остаётся хранилищем release images, а не подразумеваемым npm registry.
 * Whitelist-паттерн DTO и тест «raw Prisma row → public DTO запрещён».
 
 **dh-02.5 — Media intake (базовый).** Загрузка файла администратором: валидация типа и размера, `sha256`, дедупликация, S3, `MediaAsset` с метаданными прав (`rightsBasis`, `source`, `license`). Зеркалирование по URL добавляется в DH-07.
@@ -275,7 +340,11 @@ Project A читает A — разрешено. Project A читает или �
 * B12: убрать `apt-get upgrade`, обновлять базовый образ сменой digest.  
 * B13: закрепить `pino` точной версией.  
 * B14: `scripts/db-bootstrap-roles.mjs` (идемпотентное создание ролей `ams_data_hub_web/worker/backup`, пароли через stdin или env) и шаг в `OPERATIONS.md`.  
-* B15: канонический runtime — Docker Compose. Дублирующие systemd-юниты outbox удалить, на хосте оставить systemd только для backup-таймера, если он нужен.
+* Канонический runtime — Docker Compose, а systemd unit остаётся host-level
+  lifecycle wrapper того же Compose stack. Retention timer запускает только
+  одноразовый `outbox-retention`; удалять его как «дублирующий worker» нельзя
+  без отдельного operational proof. Добавить guard, исключающий второй
+  постоянный outbox worker.
 
 **dh-02.7 — Data Safety Gate (E04).**
 
@@ -288,7 +357,7 @@ Project A читает A — разрешено. Project A читает или �
 
 ### **Приёмка**
 
-Все тесты Safe Outbound зелёные (127.0.0.1, частные сети, редирект в частную сеть, перебор размера, таймаут). Изоляция S3 между проектами доказана тестом. Restore drill выполнен, результат записан в `05_DELIVERY_STATE.md`. Health worker отражает реальное состояние.
+Все тесты Safe Outbound зелёные (127.0.0.1, частные сети, редирект в частную сеть, перебор размера, таймаут). Изоляция S3 между проектами доказана тестом. Restore drill выполнен, результат записан в `DELIVERY_STATE.yaml`. Health worker отражает реальное состояние.
 
 ---
 
@@ -330,7 +399,10 @@ Project A читает A — разрешено. Project A читает или �
 
 ### **Приёмка**
 
-Владелец после релиза вручную заводит застройщика, ЖК, корпуса, цены и фото по трём регионам. Проект подписывается на город.
+На synthetic/pre-production данных оператор создаёт застройщика, ЖК, корпуса,
+цены и фото по трём регионам, проект подписывается на город, а второй проект
+переиспользует тот же shared entity без утечки project state. Реальный ручной
+ввод после release — операционная работа, не acceptance эпика.
 
 ---
 
@@ -383,7 +455,7 @@ Project A читает A — разрешено. Project A читает или �
 * Проекция публичной точности локации: детерминированное обобщение координат по uid и версии политики, без случайного jitter. Тест: координаты в snapshot N и N+1 совпадают.  
 * Если для flow нужен fallback, а `ProjectPublicContact` отсутствует, сборка падает.
 
-**dh-05.2 — Подпись (§39).** Ed25519, приватный ключ только в SecretMaster. Trust set: текущий ключ, следующий ключ и список отозванных `keyId`. Runbook плановой ротации и экстренного отзыва в `OPERATIONS.md`. Все 6 обязательных тестов §39.2.
+**dh-05.2 — Подпись (§39).** Ed25519, приватный ключ только в Secret Master. Trust set: текущий ключ, следующий ключ и список отозванных `keyId`. Runbook плановой ротации и экстренного отзыва в `OPERATIONS.md`. Все 6 обязательных тестов §39.2.
 
 **dh-05.3 — Delivery (E13, §40).** Загрузка в изолированное хранилище проекта, `current manifest`, webhook без данных, polling как запасной канал, `DeliveryRun` (`PENDING → NOTIFIED → DOWNLOADED → APPLIED → ACKNOWLEDGED | FAILED | STALE`), stale после 24 часов без ACK.
 
@@ -439,7 +511,7 @@ Snapshot собирается из каталога, контактов, аге�
 
 **dh-07.1 — Профиль `vladis-vt24-v1` (E26).** Алиасы категорий (квартира, комната, house, часть дома, lot, дача, таунхаус, гараж+box), типов сделки, единиц (кв. м, сотка), полей §16.5. Маппинг `deal-status` → `dealKind`. Детерминированное извлечение `Код объекта: <value>.` в `sourceObjectCode`. Паттерны подозрительного текста (только WARNING, без авто-правки через AI). Плейсхолдеры кадастровых номеров. Список `sharedOfficePhone` (OQ-04). Политика точности локации Bastion: все типы `STREET`, `DISTRICT` только явным override, `EXACT` выключен.
 
-**dh-07.2 — Фикстуры (E27).** Санитизированный корпус `tests/fixtures/yrl/vladis-vt24/` (16 файлов по §18B.5) без реальных ПДн. URL фида только через SecretRef: в Source хранится ссылка, значение лежит в SecretMaster.
+**dh-07.2 — Фикстуры (E27).** Санитизированный корпус `tests/fixtures/yrl/vladis-vt24/` (16 файлов по §18B.5) без реальных ПДн. URL фида только через SecretRef: в Source хранится ссылка, значение лежит в Secret Master.
 
 **dh-07.3 — Извлечение и сопоставление агентов (E23, §18C, §22).** `AgentSourceEvidence`. Ключ — `phoneNorm` внутри проекта. Одинаковый телефон при разных ФИО уходит в `AgentMatchReview` без авто-merge и без дублей. `sharedOfficePhone` исключён из identity. Агент без офферов получает `NO_ACTIVE_LISTINGS` и никогда `DEPARTED`. Фид не трогает MANUAL-поля и ручные назначения.
 
@@ -475,20 +547,27 @@ Snapshot собирается из каталога, контактов, аге�
 
 ---
 
-## **DH-09 — Pilot Release Gate и go-live**
+## **DH-09 — Pilot Readiness Gate**
 
-**Цель:** закрыть чек-лист E32 конституции для Hub-стороны и выпустить Bastion в продакшн.
+**Цель:** закрыть чек-лист E32 конституции для Hub-стороны и доказать
+готовность Bastion pilot к отдельному owner-authorized production release.
 
 ### **Задачи**
 
-* **dh-09.1** — Прогнать и задокументировать все блоки E32: Data, Privacy/Content, Agent, Media, Safety, Delivery isolation, Snapshot, плановая ротация ключа. Каждое доказательство со ссылкой на тест или лог записать в `05_DELIVERY_STATE.md`.  
+* **dh-09.1** — Прогнать и задокументировать все блоки E32: Data, Privacy/Content, Agent, Media, Safety, Delivery isolation, Snapshot, плановая ротация ключа. Каждое доказательство со ссылкой на тест или лог записать в `DELIVERY_STATE.yaml` как pointer на Beads ledger/артефакт, не копируя требования.
 * **dh-09.2** — Совместный прогон с сайтом (E30): Hub выключен, S3 выключен после apply — сайт рендерит. Exit Bundle \+ `DATA_MODE=local` на чистой машине. Это работа команды сайта, Hub предоставляет артефакты и verifier.  
 * **dh-09.3** — Закрыть OQ-04 и OQ-05. Включить `deactivationEnabled` после калибровки.  
-* **dh-09.4** — Финальная синхронизация документации и `CHANGELOG.md`, релиз по digest, live-доказательство.
+* **dh-09.4** — Финальная синхронизация документации и `CHANGELOG.md`, freeze
+  exact candidate main SHA, release manifest и rollback rehearsal. Никакого
+  deploy, server mutation, production migration или live release внутри
+  implementation graph.
 
 ### **Приёмка**
 
-Все обязательные доказательства PASS, значит BASTION PILOT PRODUCTION READY.
+Все обязательные pre-production доказательства PASS, exact candidate SHA и
+image contract зафиксированы: `BASTION PILOT READY FOR OWNER RELEASE DECISION`.
+Production выполняется только отдельной командой владельца через
+`ams-production-deploy` и не меняет status implementation tasks.
 
 ---
 
@@ -500,7 +579,7 @@ Snapshot собирается из каталога, контактов, аге�
 
 ## **4\. Бэклог по триггеру (вне текущего плана)**
 
-XLSX-импорт каталога новостроек (dry-run → diff → apply). Клиентский вход в Hub (`CLIENT_ACCESS_ENABLED=true`, UI для ORG\_ADMIN и PROJECT\_EDITOR). 2FA или иная усиленная защита входа (OQ-09, пересмотр через 2–3 месяца). API- и CSV-адаптеры. Продвинутая сборка мусора медиа. Профиль FULL (Payload).
+XLSX-импорт каталога новостроек (dry-run → diff → apply). Клиентский вход в Hub (`CLIENT_ACCESS_ENABLED=true`, UI для ORG\_ADMIN и PROJECT\_EDITOR). Дополнительный phishing-resistant second factor при доказанной необходимости; mandatory TOTP Platform Admin уже входит в DH-01. API- и CSV-адаптеры. Продвинутая сборка мусора медиа. Профиль FULL (Payload).
 
 ## **5\. Открытые вопросы, влияющие на план**
 
@@ -508,7 +587,7 @@ XLSX-импорт каталога новостроек (dry-run → diff → ap
 | ----- | ----- | ----- |
 | OQ-04 | Список общих офисных телефонов Bastion | до DH-09 |
 | OQ-05 | Паттерны подозрительного текста после калибровки | после прогонов 2–3 (DH-07) |
-| OQ-09 | 2FA для админа | через 2–3 месяца эксплуатации |
+| OQ-09 | Second factor для Platform Admin | DECIDED: mandatory TOTP в production; более сильный factor — revisit через 2–3 месяца |
 | OQ-01, 02, 08 | Сроки хранения после расторжения, лицензия frozen-каталога, лиды | до первого коммерческого договора |
 | OQ-10 (новый) | Договор поручения на обработку ПДн между ИП и агентством (для агентов и данных фидов) | до DH-07 (реальные данные Bastion) |
 | OQ-11 (новый) | Возможности изоляции Timeweb S3 по bucket или префиксу | в DH-02 (ADR) |
@@ -525,7 +604,9 @@ XLSX-импорт каталога новостроек (dry-run → diff → ap
 1. Положить конституцию v3.1.2 в `docs/00_CONSTITUTION.md`, а этот план — в `docs/04_IMPLEMENTATION_PLAN.md`.  
 2. Прочитать `AGENTS.md`, skills владельца по git-циклу SourceCraft, затем этот план.  
 3. Создать ветку `epic/dh-00-canon-cleanup` и выполнить задачи dh-00.1…dh-00.7.  
-4. Пройти git-цикл §0.3. Следующий эпик начинается только после merge, удаления веток и обновления `05_DELIVERY_STATE.md`.
+4. Пройти git-цикл §0.3. После PR продолжить независимую ready work по §8;
+   зависимая задача ждёт merge/freeze point. Production не является условием
+   следующего эпика.
 
 ---
 
@@ -594,15 +675,15 @@ explicit gates. Production is not an ordinary Developer task.
 
 | ID | Severity | Scope | Finding | Recommendation | Owner decision | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| MP-001 | BLOCKER | §0.3 delivery | План запускает local checks и SourceCraft Gate до/при создании PR, использует `git branch -D` и связывает следующий эпик с production release. Это противоречит действующему AMS workflow: PR создаётся без checks, Gate выполняется только перед merge, cleanup использует safe `-d`, production не является условием начала следующего implementation epic. | Переписать delivery contract в Task Manager shape: implementation/verification/delivery PR_ONLY/owner merge decision; production вынести в отдельный gate. | no | OPEN |
-| MP-002 | BLOCKER | DH-09 | `go-live` и release по digest находятся внутри обычной implementation chain, хотя Developer не имеет production authority. | Разделить pilot readiness evidence и отдельную owner-authorized RELEASE task/decision, не попадающую в autonomous ready-loop. | no | OPEN |
-| MP-003 | MAJOR | auth/security | DRAFT утверждает `ADMIN_TOTP_REQUIRED=false` для CRITICAL-платформы с PII, signing keys и production operations, тогда как текущий Data Hub требует verified TOTP для Platform Admin. | До approval оформить owner/security decision: сохранить mandatory TOTP либо доказать компенсирующие controls и ограниченный pilot boundary. Рекомендация Architect — сохранить обязательный TOTP для production Platform Admin. | yes | NEEDS_OWNER |
-| MP-004 | MAJOR | DH-00 docs | Массовое удаление действующего канона и ADR задано без обязательного mapping unique meaning → new source, docs-link guard и rollback checkpoint. | Добавить отдельный documentation mapping/normalization task через `ams-project-documentation`; удалять legacy только после доказанного переноса уникального смысла. | no | OPEN |
-| MP-005 | MAJOR | dependency/autonomy | Зависимости заданы преимущественно на уровне целых эпиков; contract freeze, shared schema/config ownership, parallel-safe waves и минимальный blocking scope не описаны. | Построить task-level dependency matrix `HARD | CONTRACT | SOFT | EXTERNAL | OWNER | PRODUCTION`, выделить freeze points и independent waves. | no | OPEN |
-| MP-006 | MAJOR | external prerequisites | S3 isolation, signing keys, feed access, REALTY LITE consumer, legal/consent evidence и Timeweb backup перечислены как будущие действия, но не имеют полного preflight/fallback/stop contract. | До final audit добавить External Preconditions matrix; реальные secret values не извлекать на стадии plan assembly. | partly | OPEN |
-| MP-007 | MAJOR | acceptance/evidence | Несколько эпиков имеют только крупное итоговое утверждение без entry/exit, rollback/recovery, delivery mode и promise tier (`domain-model | wired | live`). | Довести каждый DH epic до исполнимого Epic Contract и разделить local evidence, SourceCraft attestation и live proof. | no | OPEN |
-| MP-008 | QUESTION | source of truth | Фактические входные имена `00_CONSTITUTION.MD.md` и `AMS Data Hub Master Plan v1.md` расходятся с будущими canonical names из DH-00. | Сохранить текущие файлы как intake basis; rename/mapping выполнять только в одобренном DH-00 stream, без второй competing копии. | no | OPEN |
-| MP-009 | QUESTION | scope | DH-10 помечен «по триггеру», но включён в общую карту DH-00…DH-10 без явного completion rule. | Исключить DH-10 из первого обязательного completion boundary и открывать отдельной APPROVED revision либо заранее описанным trigger task. | yes | NEEDS_OWNER |
+| MP-001 | BLOCKER | §0.3 delivery | Исходный цикл смешивал PR, Gate, force cleanup и production. | §0.3 переписан в `PR_ONLY`; Gate только перед merge, cleanup safe, production отдельно. | no | RESOLVED |
+| MP-002 | BLOCKER | DH-09 | Go-live был обычной implementation task. | DH-09 стал Pilot Readiness Gate; release вынесен в owner-authorized production phase. | no | RESOLVED |
+| MP-003 | MAJOR | auth/security | `ADMIN_TOTP_REQUIRED=false` ослаблял CRITICAL/PII Platform Admin и противоречил Core 3.4. | Входной пункт REJECTED как небезопасный; production TOTP + break-glass обязательны, false разрешён только local/test. | no | RESOLVED |
+| MP-004 | MAJOR | DH-00 docs | Удаление канона не имело mapping и rollback. | Добавлены Standard 2.0 mapping, preservation, link guard и отдельный reversible cleanup checkpoint. | no | RESOLVED |
+| MP-005 | MAJOR | dependency/autonomy | Whole-epic dependencies скрывали freeze points и ready waves. | Добавлены task-scoped dependency matrix, shared-contract sequencing и waves §8. | no | RESOLVED |
+| MP-006 | MAJOR | external prerequisites | Critical внешние контуры не имели preflight/fallback/stop. | Добавлена external preconditions matrix §10; реальные credentials/secrets не читаются Architect. | no | RESOLVED |
+| MP-007 | MAJOR | acceptance/evidence | Epic contracts не разделяли entry/exit, rollback, tier и delivery. | Добавлена Epic Contract matrix §9 и promise/evidence contract §11. | no | RESOLVED |
+| MP-008 | QUESTION | source of truth | Intake filenames отличаются от будущих canonical paths. | Текущие файлы остаются единственным intake basis; rename выполняется как `git mv` только в approved DH-00 после mapping. | no | RESOLVED |
+| MP-009 | QUESTION | scope | DH-10 trigger-based, но выглядел частью первого completion boundary. | DH-10 явно исключён из v1 graph и требует отдельного owner trigger/approved revision. | no | RESOLVED |
 
 ### **7.3. Owner decisions represented by the provided basis**
 
@@ -610,7 +691,8 @@ explicit gates. Production is not an ordinary Developer task.
 поверхности, manual-first shared catalog, Bastion/YRL pilot, REALTY LITE
 boundary и Timeweb/SourceCraft infrastructure. На стадии `v0 DRAFT` они
 считаются revision input, а не approval exact execution graph. Отдельно до
-approval требуется подтвердить MP-003 и MP-009.
+MP-003 разрешён более строгим обязательным security contract; MP-009 разрешён
+исключением DH-10 из completion boundary. Before-approval owner decisions: 0.
 
 ### **7.4. Revision history**
 
@@ -628,3 +710,217 @@ boundary for DH-10.
 **Next:** assembly round with owner/external findings. Final audit starts only
 after an explicit command such as «Переходим к финальной проверке».
 
+#### **v1 — READY_FOR_OWNER_APPROVAL — 2026-10-03**
+
+**Revision input ID:** `FINAL-AUDIT-2026-10-03-01`
+**Source:** explicit owner transition to final check; exact v0 at
+`c83ca7e4ca5d56e85cc601dcad0e4bc5c84e6252`; code baseline
+`6246a2fa26ed8aaae629f891d6c64d07c0f8a96f`.
+**Accepted:** product/domain outcomes, Data Hub production identity, Bastion
+pilot, manual shared catalog, signed snapshot/delivery/exit direction.
+**Rejected:** pre-PR gate, force branch deletion, production inside Developer
+loop, disabled production TOTP, deletion-before-mapping, empty future module
+scaffolds, B4/B7/B15 as confirmed bugs and DH-10 in first completion boundary.
+**Added:** task-scoped dependency matrix, epic contracts, external preconditions,
+owner decision register, promise/evidence tiers and four-pass audit scorecard.
+**Task Manager:** import remains forbidden until exact owner phrase
+«План утверждён» or «План утвержден».
+
+---
+
+## **8. Dependency matrix и ready waves**
+
+`HARD` блокирует только указанную task, не целый epic. `CONTRACT` открывается
+после freeze перечисленного DTO/API/schema contract. `SOFT` задаёт удобный
+порядок. `EXTERNAL`, `OWNER` и `PRODUCTION` используют §10 и §12. Один plan
+имеет одного writing worker; waves дают альтернативную ready work, а не
+разрешают двум агентам писать в один worktree.
+
+| Scope | Depends on | Type / blocking scope | Entry / freeze point | Parallel-safe / fallback | Wave |
+| --- | --- | --- | --- | --- | --- |
+| dh-00.1 mapping | approved v1 import | OWNER, pre-execution | exact plan + current docs inventory | read-only code audit | W0 |
+| dh-00.2…7 cleanup | dh-00.1 mapping PASS | HARD, cleanup tasks only | unique meaning mapped, rollback commit defined | no deletion; continue mapping/guards | W0 |
+| dh-01 auth/RLS contract | v1 role/tenant decisions | CONTRACT | role matrix, RLS classes and migration sequence frozen | dh-02.1…3 design | W1 |
+| dh-01 migrations/runtime | auth/RLS contract | HARD, schema/apply tasks | expand/migrate/contract plan + test DB guard | non-schema DH-02 work | W1 |
+| dh-02 safety foundations | v1 platform profile | CONTRACT | storage/outbound/SecretRef interfaces frozen | dh-01 tests/docs | W1 |
+| dh-02 runtime cleanup | dh-00 config cleanup merge | SOFT, shared config files | no overlapping package/Docker edits | storage/outbound implementation | W1 |
+| dh-03 catalog schema/write | dh-01 RLS class freeze | HARD, tenant/RLS migrations only | shared-catalog RLS and ownership contract frozen | dh-04 domain contracts | W2 |
+| dh-03 media/UI | dh-02 media intake contract | CONTRACT | MediaAsset port frozen | catalog domain/data work | W2 |
+| dh-04 project state | dh-01 project-scope RLS freeze | HARD, project-owned tables only | composite FK/capability contract frozen | dh-03 shared catalog | W2 |
+| dh-05 manifest/verifier contract | dh-02 DTO/canonical serialization freeze | CONTRACT | SnapshotV1 + signing input frozen | dh-03/dh-04 implementation | W2 |
+| dh-05 composer integration | dh-03 + dh-04 public DTO freeze | CONTRACT, dataset mappers only | catalog/project projections stable | verifier/signing/storage work | W3 |
+| dh-05 delivery isolation | dh-02 storage proof | HARD, delivery tasks only | per-project isolation path passes | composer/verifier | W3 |
+| dh-06 parser/safety | dh-02 Safe Outbound + SecretRef contracts | CONTRACT | interfaces frozen; synthetic fixtures available | dh-05 composer work | W3 |
+| dh-06 apply/snapshot trigger | dh-01 RLS + dh-05 manifest contract | HARD, apply/publish integration only | project-job and SnapshotV1 frozen | parser/profile/tests | W3 |
+| dh-07 synthetic Bastion profile | dh-06 adapter/profile contract | CONTRACT | YRL adapter API frozen | dh-08 operations contract | W4 |
+| dh-07 real-feed E2E | dh-04 agents + dh-05 verifier + dh-06 GOOD pipeline | HARD + EXTERNAL, real-data task only | legal/feed/SecretRef preflight PASS | sanitized fixture work remains ready | W4 |
+| dh-08 dashboard/alerts | dh-05/06 operations DTO freeze | CONTRACT | observable state/events frozen | dh-07 synthetic tasks | W4 |
+| dh-08 Exit Bundle | dh-04 public state + dh-05 schemas | HARD, bundle task only | vendored schemas and privacy projection frozen | dashboard/alerts | W4 |
+| dh-09 readiness | dh-02…08 required evidence | HARD, readiness only | all required ledgers and candidate SHA present | none; natural owner release gate | W5 |
+| production release | dh-09 PASS + explicit owner command | PRODUCTION | clean canonical main, green exact-head gate, immutable digests, backup/rollback proof | no fallback to unverified rollout | OUTSIDE GRAPH |
+| DH-10 | separate trigger and approved plan revision | OWNER | real second source exists | not required for v1 completion | NOT IMPORTED |
+
+**DAG:** cycles = 0. Shared schema/auth/config changes have one owner and merge
+sequence. Contract-first tasks open W2/W3 before full upstream epic completion.
+If one external task blocks, Developer records/releases it and chooses another
+ready task; no task may bypass its specific HARD dependency.
+
+---
+
+## **9. Epic Contract matrix**
+
+Для всех implementation epics source of truth = Constitution v3.1.2 + relevant
+numbered canon + this exact plan. Delivery mode = `PR_ONLY`; merge/release не
+подразумеваются approval плана.
+
+| Epic | Observable outcome / entry | Exit, acceptance and verification | Tier | Rollback / stop |
+| --- | --- | --- | --- | --- |
+| DH-00 | Exact approved v1; docs/code inventory available | mapping PASS; required 2.0 canon preserved; no template traces; public route/browser proof; `docs:check`, quick proof and targeted E2E | wired | revert cleanup checkpoint; stop on unmapped unique meaning or broken links |
+| DH-01 | role/RLS contract frozen; isolated test PostgreSQL proven | migrations reviewed; tenant/project isolation integration matrix; login+TOTP+lockout+recovery E2E; no session id in logs | wired | expand/migrate/contract or forward-fix; stop on reset, unknown DB target or weaker auth |
+| DH-02 | platform ports frozen; provider capabilities may be unknown but §10 applies | Safe Outbound security tests; secret-redaction proof; S3 isolation proof or selected fallback ADR; restore drill; real worker readiness | wired | disable new adapters/jobs; restore known config; stop on secret exposure or unproven isolation |
+| DH-03 | RLS/media contracts frozen | two-project shared entity proof, provenance/version tests, Admin CRUD browser proof, no project write to shared catalog | wired | reversible additive migrations/feature disable; stop on catalog/project ownership ambiguity |
+| DH-04 | project-scope RLS and public ID policy frozen | project isolation, slug/redirect/tombstone, consent/publication and manual-owned field tests; Admin flow proof | wired | feature disable + forward-fix; stop on PII policy or public ID reuse failure |
+| DH-05 | SnapshotV1, storage and public DTO contracts frozen | deterministic build; privacy scan; six signing cases; isolated delivery; verifier and ACK/replay tests; rollback-as-new-sequence | wired | keep last-good; revoke key/token; stop on missing contact, bad signature, lower sequence or cross-project read |
+| DH-06 | Safe Outbound/SecretRef/adapter contracts frozen | synthetic namespace-aware streaming YRL reaches GOOD/snapshot; XXE/limits/idempotency/drop/grace tests; one source failure isolated | wired | keep Last Good; disable source/deactivation; stop on unknown adapter, unsafe target or SUSPICIOUS without approval |
+| DH-07 | synthetic profile may start after adapter freeze; real path also needs §10 PASS | sanitized corpus green; three stable runs; agent/media/privacy rules; reference verifier PASS; real feed evidence only after legal/access gates | live, bounded to feed/pre-production surface | freeze source and keep Last Good; stop real data on missing legal, consent or credential gate |
+| DH-08 | operations event/DTO contracts frozen | fleet UI/browser proof; audited actions; alert delivery test; Exit Bundle validates on clean consumer and privacy scan | wired | disable action/email adapter; export remains immutable; stop on unaudited destructive action or private data leak |
+| DH-09 | DH-02…08 required ledgers available | E32 matrix complete, candidate SHA/digests/rollback rehearsal recorded, joint consumer test classified; no production mutation | readiness evidence | return failing evidence to owning epic; stop at owner release gate |
+
+Large tasks inherit: goal, scope in/out, exact dependencies, measurable
+acceptance, required checks, allowed actions and stop conditions. Beads import
+must preserve stable IDs `dh-XX.N`; small tasks may reference the epic contract
+instead of copying it.
+
+---
+
+## **10. External Preconditions matrix**
+
+| ID / prerequisite | Deadline | Preflight | Fallback / safe work | Stop condition |
+| --- | --- | --- | --- | --- |
+| EXT-01 Timeweb S3 isolation | before dh-02 isolation exit | prove bucket/prefix policy with A→B denial using non-production credentials | separate bucket per project or Hub-issued short-lived presigned URL | no real project artifact until isolation proof PASS |
+| EXT-02 Managed PostgreSQL backup/restore | before dh-02 Data Safety exit | provider schedule/retention + isolated restore target + connection budget | encrypted logical dump to isolated S3 and non-production restore drill | no real PII/import and no production migration without proven recovery |
+| EXT-03 Secret Master refs and signing key | before real dh-05/dh-07 | exact project/env/path and least-privilege runtime reference verified without printing values | ephemeral test keys and sanitized fixtures only | no live feed, real signature or deploy; Developer cannot create a new secret silently |
+| EXT-04 SourceCraft OCI Registry | before owner release | pull/push identity and immutable digest proof | local/pre-production image only | production release blocked; implementation continues |
+| EXT-05 Bastion YRL access | before dh-07 real-feed task | credential reference, endpoint allowlist, expected namespace and owner authorization | sanitized fixture corpus | no network fetch or real-data apply |
+| EXT-06 REALTY LITE consumer | before joint dh-09 proof | pinned SnapshotV1/verifier compatibility and isolated test endpoint | Hub reference consumer proves contract | joint apply/ACK remains NOT VERIFIED; Hub work continues |
+| EXT-07 PII legal/consent basis | before real Bastion data | owner/legal confirmation of processing role, retention and consent evidence contract | synthetic/anonymized data | no real agent/feed PII ingestion, publication or protected export |
+| EXT-08 email alert channel | before dh-08 email acceptance | provider identity, secret ref, recipient and redaction proof | in-app notifications + recorded failed-delivery state | email claim not accepted; dashboard work continues |
+| EXT-09 Bastion office phones/pattern calibration | before dh-07 final real run | OQ-04 list and OQ-05 evidence from runs 2–3 | treat uncertain matches/text as WARNING and hide from auto-publication | no auto-merge/auto-correction or final pilot readiness |
+
+Architect and plan audit do not connect to servers, fetch secrets or create
+infrastructure. Each external task is claimable only after its preflight; a
+failed preflight becomes an explicit blocker dependency, not an implicit
+workaround.
+
+---
+
+## **11. Promise, evidence и delivery contract**
+
+1. `domain-model` = unit/property tests + typecheck + relevant static guards.
+2. `wired` = domain proof + реальный route/action/job/worker/CLI/repository path
+   and relevant PostgreSQL/browser/integration evidence.
+3. `live` = only the named real non-production or production surface. Local
+   tests, created files, successful build and a started workflow are not live
+   proof.
+4. Task evidence is recorded as `EXECUTION_LEDGER_V1` in Beads: changed files,
+   exact checks/results, deviations, commit/push and PR/head SHA. It is not a
+   second project task store.
+5. PR evidence proves only PR identity. Merge evidence for this CRITICAL
+   project requires review + one green exact-head `RISKY` SourceCraft Gate.
+6. Production evidence exists only after explicit owner release: clean exact
+   main SHA, immutable image digests, migration/backup proof, rollout,
+   `/api/health`, `/api/ready`, worker/queue, changed critical flow and rollback
+   marker.
+
+---
+
+## **12. Owner Decision Register**
+
+| ID | Decision | Recommendation / result | Deadline | Status |
+| --- | --- | --- | --- | --- |
+| OD-01 | Repository becomes product-owned AMS Data Hub | keep SourceCraft primary and GitHub one-way public mirror | before approval | DECIDED |
+| OD-02 | Platform Admin second factor | mandatory TOTP in production; false only local/test; retain break-glass | before approval | DECIDED by higher-priority security contract |
+| OD-03 | DH-10 completion boundary | exclude from v1; separate trigger and approved revision | before approval | DECIDED |
+| OD-04 | Merge mode | all v1 epics `PR_ONLY`; owner command required to review/gate/merge | before approval | DECIDED |
+| OD-05 | Production release | never part of Developer graph; explicit owner release command | before approval | DECIDED |
+| OD-06 | OQ-01/02/08 commercial/legal terms | resolve before first commercial contract | later | OPEN, does not block safe implementation |
+| OD-07 | OQ-04/05 Bastion calibration | resolve before real dh-07 completion | later | OPEN with EXT-09 stop condition |
+| OD-08 | OQ-10 legal processing basis | resolve before any real PII task | later | OPEN with EXT-07 stop condition |
+| OD-09 | OQ-11 storage isolation method | choose from proven options during dh-02 ADR | later | OPEN with EXT-01 fallback/stop |
+
+Before-approval owner decisions open: **0**.
+
+---
+
+## **13. Final Architect Audit — exact v1**
+
+### **13.1. Pass 1 — Logic / Completeness**
+
+All primary outcomes map to DH-00…DH-09. DH-10 and other triggered backlog are
+outside the first completion boundary. Production, commercial-contract and
+real-data gates no longer masquerade as ordinary implementation tasks.
+Result: `PASS`, blockers 0, major 0.
+
+### **13.2. Pass 2 — Architecture / Data / Security**
+
+Application Platform Core 3.4 profile remains
+`multi-tenant / outbox-plus-queue / pii / own-saas / platform-admin enabled`.
+Mandatory production TOTP, project RLS, transaction-bound repositories,
+Last Good, isolated storage, SecretRef, signing/revocation, privacy projection,
+backup/restore and PII stops are explicit. Code audit rejected stale B4/B7/B15
+claims and retained confirmed B1–B3, B5–B6, B8–B14 and B16.
+Result: `PASS`, blockers 0, major 0.
+
+### **13.3. Pass 3 — Dependencies / Autonomy**
+
+Cycles: 0. HARD dependencies are task-scoped. Shared schema/auth/config have
+single-owner freeze points. Independent W1–W4 work survives local external
+blockers, while PR_ONLY merge gates remain explicit natural owner stops.
+Critical path: W0 → auth/RLS+safety contracts → frozen snapshot/ingestion
+contracts → real-feed proof → pilot readiness.
+Result: `PASS`, cycles 0, single hidden blocking points 0.
+
+### **13.4. Pass 4 — Executability / Evidence / Delivery**
+
+DH-00…DH-09 have observable outcomes, entry/exit, acceptance, verification,
+rollback/stop, promise tier and delivery mode. Local, merge attestation and
+production live evidence are separated. No production action is importable as
+Developer work.
+Result: `PASS`, ambiguous critical definitions of done 0.
+
+### **13.5. Audit scorecard**
+
+```text
+Logic/completeness: blockers=0; major=0
+Architecture/data/security: blockers=0; major=0
+Dependency/autonomy: cycles=0; HARD=task-scoped; independent waves=W1-W4
+Executability/evidence: epics with acceptance=10/10; verification=10/10
+Owner decisions before approval open=0
+Unknown critical prerequisites=0 (all routed through §10)
+Production actions in implementation graph=0
+```
+
+### **13.6. NIGHT RUN READINESS**
+
+```text
+Independent ready waves: W1-W4 after their contract freeze points
+Critical path: W0 → auth/RLS+safety → contracts → Bastion proof → readiness
+Single blocking points: owner merge gates; real-data/legal/feed prerequisites
+Safe work if one task blocks: synthetic fixtures, contracts, UI, verifier,
+  parser, catalog/project modules and evidence tasks allowed by §8
+Expected natural stops: PR_ONLY merge command; real PII/feed access;
+  production release authorization
+Result: READY_WITH_LIMITS
+```
+
+Limits are unavoidable and safe: the exact plan intentionally cannot
+authorize its own merge, new secrets, real PII ingestion or production. They
+do not prevent approval/import; they become explicit Beads blocker/decision
+nodes, and Developer continues other ready work.
+
+### **13.7. Readiness verdict**
+
+Exact `v1` satisfies the Architect gate and is
+`READY_FOR_OWNER_APPROVAL`. This is not approval. Beads `Init/Import`, graph
+mutation and Developer goal remain forbidden until the owner says exactly
+«План утверждён» or «План утвержден».
