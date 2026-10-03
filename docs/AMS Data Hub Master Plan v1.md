@@ -2,7 +2,7 @@
 
 ```text
 Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01
-Architect version: v1
+Version: v1
 Status: APPROVED
 Phase: APPROVAL_HANDOFF
 Baseline repository SHA: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
