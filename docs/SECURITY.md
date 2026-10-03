@@ -33,6 +33,26 @@ E09 formalizes route-aware cache/error/log safeguards in [`ADR-012`](adr/ADR-012
 
 Secrets must stay in environment/secret manager, never in Git, docs, browser code, argv or logs.
 
+## Login, roles and provisioning
+
+Better Auth owns identity, password and session lifecycle. Public signup is
+disabled. `PLATFORM_ADMIN` is the platform authority; tenant users require an
+active organization membership and server-side resource authorization.
+
+The supported provisioning flow is one-time and auditable:
+
+```text
+operator creates identity
+→ server stores only a hash of the setup token
+→ user sets a password
+→ token is consumed and sibling tokens are revoked
+→ fresh principal resolution enables access
+```
+
+Platform Admin authority requires verified TOTP in production. Multiple active
+memberships require explicit organization selection. Temporary passwords, when
+used by migration tooling, are supplied through stdin and never bypass setup.
+
 ## Authentication Transition
 
 E02 makes Platform Admin authority conditional on verified TOTP and replaces

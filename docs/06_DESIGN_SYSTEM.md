@@ -2,17 +2,28 @@
 
 **Статус:** Active
 
-The starter has two intentionally separate but compatible visual surfaces:
+## Общие правила
 
-- public commercial shell: dark premium theme, wordmark, legal pages, footer
-  and login modal;
-- private application shell: navigation, compact headers, tables, forms and
-  explicit loading/empty/error states.
+- Project-owned components use semantic tokens, not raw brand colors.
+- Reuse → variant → create; product-specific class names are forbidden.
+- Loading, empty, error, disabled and permission-denied states are explicit.
+- Private data never enters service-worker or public caches.
+- Responsive controls keep a minimum practical touch target and visible focus.
 
-Components use semantic tokens and reusable patterns; product-specific class
-names, raw brand colors and real legal/contact data do not belong to the
-baseline. Private data must never enter service-worker caches.
+## Public surface
 
-`EXTERNAL_SITE_DESIGN_SYSTEM.md` and `INTERNAL_DASHBOARD_DESIGN_SYSTEM.md`
-remain detailed surface specifications. This file decides cross-surface rules;
-the detailed files cannot introduce a competing product identity.
+- Dark premium shell and compact `AMS DATA HUB` wordmark.
+- Login and legal content share one public visual language.
+- Footer contains only approved operator/legal information.
+- No marketing landing blocks are introduced by the design system.
+
+## Private application surface
+
+- Predictable left navigation, compact headers/cards, data tables and forms.
+- Responsive shell uses a mobile drawer and preserves keyboard navigation.
+- Admin workflows prioritize scanability, status clarity and repeated work.
+- Private routes include workspace, Platform Admin and notifications only when
+  enabled by the product contract.
+
+This document consolidates the former external/private design-system notes
+without changing runtime visuals.

@@ -1,42 +1,51 @@
 # Release Checklist — AMS Data Hub
 
-**Статус:** Active
-**Applicability:** production releases of `ams-data-hub` to
-`https://data-hab.ams24.ru`.
+**Статус:** Active  
+**Applicability:** production release `ams-data-hub` на
+`https://data-hab.ams24.ru`. Текущий approved plan production не разрешает.
 
-## Before a derived product may release
+## Guarantee-to-proof matrix
 
-- [ ] Select `COMMERCIAL` or `CRITICAL` delivery profile and record it in the
-      derived `03_ARCHITECTURE.md`.
-- [ ] Replace starter identity, origin, legal data, service/artifact names and
-      environment registry.
-- [ ] Create a product-owned Secret Master scope and a separate database;
-      starter credentials or database are never reused.
-- [ ] Provision a project-specific SourceCraft Registry pull PAT; never reuse
-      Git credentials or another project's registry credential.
-- [ ] Set production DB, migration and runtime identities; runtime has no DDL
-      or `BYPASSRLS` privilege.
-- [ ] Configure a manual exact-head SourceCraft merge gate; push and PR remain
-      zero-CI.
-- [ ] Build one immutable artifact set with separate non-root web, worker and
-      migrator images from reviewed canonical `main` SHA; do not build on the
-      production host.
-- [ ] Document backup, restore, rollback digest, connection budget and trusted
-      proxy policy.
+| Гарантия | Proof |
+| --- | --- |
+| Auth, principal и tenant isolation | auth/RLS tests и `pnpm verify:rls-coverage` |
+| Atomic mutations и audit | command tests и PostgreSQL rollback scenarios |
+| Async/outbox reliability | lease, retry, dead-letter и shutdown tests |
+| Exact-head quality gate | один manual SourceCraft RISKY gate для CRITICAL profile |
+| Immutable release | web/worker/migrator digests и registry manifest exact main SHA |
+| Runtime readiness | health/live, health/ready, worker и browser smoke |
 
-## Proof before rollout
+## Before rollout
 
-- [ ] Run only the risk-relevant local proof and the required exact-head gate.
-- [ ] Verify migration plan, health/readiness and worker contract where async is
-      enabled.
-- [ ] Record commit SHA, image digest, runtime version and release timestamp.
-- [ ] Confirm the production host pulled all three `image@sha256` references
-      from SourceCraft Registry and did not build locally.
-- [ ] Perform live smoke for `/api/health/live`, `/api/health/ready`, public
-      entry, workspace and Platform Admin where enabled.
+- [ ] Clean canonical SourceCraft `main`; exact SHA recorded.
+- [ ] Один green exact-head RISKY gate; push/PR остаются zero-CI.
+- [ ] Project-owned Secret Master scope and separate managed PostgreSQL roles.
+- [ ] Production runtime roles have no DDL or `BYPASSRLS`.
+- [ ] One immutable non-root image set: web, worker and migrator.
+- [ ] Registry digests, connection budget, backup and restore proof recorded.
+- [ ] Trusted proxy/origin boundary configured and verified.
 
-## Rollback
+## Rollout and live proof
 
-- [ ] Stop rollout and retain the failed evidence.
-- [ ] Roll back to a recorded prior immutable image; do not rebuild ad hoc.
-- [ ] Restore data only through the product-owned recovery procedure.
+- [ ] Run one manual SourceCraft release workflow for exact `main`.
+- [ ] Production host pulls exact digests and never builds.
+- [ ] Apply forward-compatible migrations through the migrator identity.
+- [ ] Smoke `/api/health/live`, `/api/health/ready`, `/`, workspace and Admin.
+- [ ] Record timestamp, SHA, digests and operator-visible outcome.
+
+## Known bounded exceptions
+
+- First release has no previous application image; later releases retain the
+  prior digest set.
+- Local checks are not CI attestation or live proof.
+- Managed PostgreSQL backup evidence remains provider-owned until captured.
+
+## Handover and rollback
+
+- Stop rollout and retain failed evidence.
+- Roll back only to recorded immutable digests; never rebuild ad hoc.
+- Artifact rollback does not reverse schema/data. Restore only through the
+  reviewed isolated recovery procedure in `OPERATIONS.md`.
+- Final closure records exact main SHA, gate URL/verdict, registry manifest,
+  rollout result and rollback unit. Production always requires a separate
+  explicit owner command.

@@ -32,12 +32,12 @@ Request automatically.
 | Current schema and migrations | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/` |
 | Current work | `04_BACKLOG.md`; execution state is local Task Manager `.beads` |
 | Release template | `05_RELEASE_CHECKLIST.md`, Docker/Compose and `ops/` |
-| Final conformance and derived handover | `HANDOVER.md` and ADR-014 |
+| Final conformance, handover and rollback | `05_RELEASE_CHECKLIST.md`, `OPERATIONS.md` and ADR-014 |
 | Exact versions | `package.json`, `pnpm-lock.yaml`, `.node-version`, Dockerfile |
 
-The detailed `AUTH.md`, `DATA_MODEL.md`, `SECURITY.md`, `ENVIRONMENT.md`,
-`RUNBOOK_DEPLOY.md`, `ops/*` and two design-system documents remain justified
-extensions. They refine the area named here and cannot override it.
+The detailed `DATA_MODEL.md`, `SECURITY.md`, `ENVIRONMENT.md` and
+`OPERATIONS.md` files remain justified extensions. They refine the area named
+here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 
 ## Modular monolith
 
