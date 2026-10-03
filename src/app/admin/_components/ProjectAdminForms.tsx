@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useForm, type Resolver } from "react-hook-form";
 import {
   createProjectInputSchema,
+  projectServiceStateSchema,
   projectStatusSchema,
   updateProjectInputSchema,
   type CreateProjectInput,
@@ -22,6 +23,14 @@ const statusLabels = {
   DISABLED: "Отключён",
 } as const;
 const statusOptions = projectStatusSchema.options.map((value) => ({ value, label: statusLabels[value] }));
+const serviceStateLabels = {
+  ACTIVE: "Сервис активен",
+  SUSPENDED: "Сервис приостановлен",
+} as const;
+const serviceStateOptions = projectServiceStateSchema.options.map((value) => ({
+  value,
+  label: serviceStateLabels[value],
+}));
 
 function ProjectEditCard({ item, options }: { item: ProjectListItem; options: ProjectFormOptions }) {
   const router = useRouter();
@@ -36,6 +45,10 @@ function ProjectEditCard({ item, options }: { item: ProjectListItem; options: Pr
       name: item.name,
       description: item.description ?? "",
       status: item.status,
+      serviceState: item.serviceState,
+      siteBaseUrl: item.siteBaseUrl ?? "",
+      publicUrlPolicyVersion: item.publicUrlPolicyVersion ?? "",
+      notes: item.notes ?? "",
     },
   });
   const submit = form.handleSubmit(async (values) => {
@@ -59,6 +72,9 @@ function ProjectEditCard({ item, options }: { item: ProjectListItem; options: Pr
         <FormField error={form.formState.errors.status?.message} label="Статус" required>
           <SelectInput options={statusOptions} {...form.register("status")} />
         </FormField>
+        <FormField error={form.formState.errors.serviceState?.message} label="Состояние сервиса" required>
+          <SelectInput options={serviceStateOptions} {...form.register("serviceState")} />
+        </FormField>
         <FormField error={form.formState.errors.name?.message} label="Название" required>
           <TextInput {...form.register("name")} />
         </FormField>
@@ -68,6 +84,17 @@ function ProjectEditCard({ item, options }: { item: ProjectListItem; options: Pr
         <div className="md:col-span-2">
           <FormField error={form.formState.errors.description?.message} label="Описание">
             <AreaInput rows={3} {...form.register("description")} />
+          </FormField>
+        </div>
+        <FormField error={form.formState.errors.siteBaseUrl?.message} label="Основной URL сайта">
+          <TextInput placeholder="https://example.ru" type="url" {...form.register("siteBaseUrl")} />
+        </FormField>
+        <FormField error={form.formState.errors.publicUrlPolicyVersion?.message} label="Версия URL-политики">
+          <TextInput placeholder="v1" {...form.register("publicUrlPolicyVersion")} />
+        </FormField>
+        <div className="md:col-span-2">
+          <FormField error={form.formState.errors.notes?.message} label="Операционные заметки">
+            <AreaInput rows={3} {...form.register("notes")} />
           </FormField>
         </div>
         <div className="md:col-span-2">
@@ -89,6 +116,10 @@ export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[
       name: "",
       description: "",
       status: "ACTIVE",
+      serviceState: "ACTIVE",
+      siteBaseUrl: "",
+      publicUrlPolicyVersion: "",
+      notes: "",
     },
   });
   const submit = form.handleSubmit(async (values) => {
@@ -98,7 +129,17 @@ export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[
       setFeedback(feedbackFrom(result));
       return;
     }
-    form.reset({ organizationId: options.organizations[0]?.id ?? "", slug: "", name: "", description: "", status: "ACTIVE" });
+    form.reset({
+      organizationId: options.organizations[0]?.id ?? "",
+      slug: "",
+      name: "",
+      description: "",
+      status: "ACTIVE",
+      serviceState: "ACTIVE",
+      siteBaseUrl: "",
+      publicUrlPolicyVersion: "",
+      notes: "",
+    });
     setFeedback({ kind: "success", message: "Проект создан" });
     router.refresh();
   });
@@ -112,6 +153,9 @@ export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[
           <FormField error={form.formState.errors.status?.message} label="Статус" required>
             <SelectInput options={statusOptions} {...form.register("status")} />
           </FormField>
+          <FormField error={form.formState.errors.serviceState?.message} label="Состояние сервиса" required>
+            <SelectInput options={serviceStateOptions} {...form.register("serviceState")} />
+          </FormField>
           <FormField error={form.formState.errors.name?.message} label="Название" required>
             <TextInput {...form.register("name")} />
           </FormField>
@@ -121,6 +165,17 @@ export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[
           <div className="md:col-span-2">
             <FormField error={form.formState.errors.description?.message} label="Описание">
               <AreaInput rows={3} {...form.register("description")} />
+            </FormField>
+          </div>
+          <FormField error={form.formState.errors.siteBaseUrl?.message} label="Основной URL сайта">
+            <TextInput placeholder="https://example.ru" type="url" {...form.register("siteBaseUrl")} />
+          </FormField>
+          <FormField error={form.formState.errors.publicUrlPolicyVersion?.message} label="Версия URL-политики">
+            <TextInput placeholder="v1" {...form.register("publicUrlPolicyVersion")} />
+          </FormField>
+          <div className="md:col-span-2">
+            <FormField error={form.formState.errors.notes?.message} label="Операционные заметки">
+              <AreaInput rows={3} {...form.register("notes")} />
             </FormField>
           </div>
           <div className="md:col-span-2">

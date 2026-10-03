@@ -19,6 +19,10 @@ export function hasAuthConfiguration() {
   return readAuthEnvironment() !== null && hasDatabaseConfiguration();
 }
 
+export function isClientAccessEnabled() {
+  return readAuthEnvironment()?.clientAccessEnabled ?? false;
+}
+
 let initializedAuth: ReturnType<typeof betterAuth> | null | undefined;
 
 export function getAuth() {

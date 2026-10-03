@@ -93,17 +93,25 @@ function UserCard({ item }: { item: IdentityAdminUserListItem }) {
   );
 }
 
-export function UsersAdminForms({ users, options }: { users: IdentityAdminUserListItem[]; options: IdentityAdminFormOptions }) {
+export function UsersAdminForms({ users, options, clientAccessEnabled }: {
+  users: IdentityAdminUserListItem[];
+  options: IdentityAdminFormOptions;
+  clientAccessEnabled: boolean;
+}) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const organizationOptions = [{ value: "", label: "Без организации" }, ...options.organizations.map((option) => ({ value: option.id, label: option.name }))];
+  const availableSystemRoleOptions = clientAccessEnabled
+    ? systemRoleOptions
+    : systemRoleOptions.filter((option) => option.value === "PLATFORM_ADMIN");
+  const defaultSystemRole = clientAccessEnabled ? "USER" : "PLATFORM_ADMIN";
   const form = useForm<CreateUserInput>({
     resolver: zodResolver(createUserInputSchema) as Resolver<CreateUserInput>,
     defaultValues: {
       name: "",
       username: "",
       email: "",
-      systemRole: "USER",
+      systemRole: defaultSystemRole,
       organizationId: "",
       tenantRole: "ORG_VIEWER",
     },
@@ -115,14 +123,19 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
       setFeedback(feedbackFrom(result));
       return;
     }
-    form.reset({ name: "", username: "", email: "", systemRole: "USER", organizationId: "", tenantRole: "ORG_VIEWER" });
+    form.reset({ name: "", username: "", email: "", systemRole: defaultSystemRole, organizationId: "", tenantRole: "ORG_VIEWER" });
     setFeedback({ kind: "success", message: `Пользователь создан. Передайте setup-материал один раз через защищённый канал: ${result.data.setupToken}` });
     router.refresh();
   });
 
   return (
     <div className="space-y-4">
-      <SectionCard title="Создать пользователя" description="Добавьте оператора, сотрудника платформы или участника организации.">
+      <SectionCard
+        title="Создать пользователя"
+        description={clientAccessEnabled
+          ? "Добавьте администратора платформы или участника организации."
+          : "Клиентский вход выключен: можно создать только администратора платформы."}
+      >
         <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={submit}>
           <FormField error={form.formState.errors.name?.message} label="Имя" required>
             <TextInput {...form.register("name")} />
@@ -134,14 +147,18 @@ export function UsersAdminForms({ users, options }: { users: IdentityAdminUserLi
             <TextInput type="email" {...form.register("email")} />
           </FormField>
           <FormField error={form.formState.errors.systemRole?.message} label="Системная роль" required>
-            <SelectInput options={systemRoleOptions} {...form.register("systemRole")} />
+            <SelectInput options={availableSystemRoleOptions} {...form.register("systemRole")} />
           </FormField>
-          <FormField error={form.formState.errors.organizationId?.message} label="Организация">
-            <SelectInput options={organizationOptions} {...form.register("organizationId")} />
-          </FormField>
-          <FormField error={form.formState.errors.tenantRole?.message} label="Доступ в организации" required>
-            <SelectInput options={tenantRoleOptions} {...form.register("tenantRole")} />
-          </FormField>
+          {clientAccessEnabled ? (
+            <>
+              <FormField error={form.formState.errors.organizationId?.message} label="Организация">
+                <SelectInput options={organizationOptions} {...form.register("organizationId")} />
+              </FormField>
+              <FormField error={form.formState.errors.tenantRole?.message} label="Доступ в организации" required>
+                <SelectInput options={tenantRoleOptions} {...form.register("tenantRole")} />
+              </FormField>
+            </>
+          ) : null}
           <div className="md:col-span-2 xl:col-span-3">
             <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Создать пользователя" onRefresh={() => router.refresh()} pendingLabel="Создаём..." />
           </div>

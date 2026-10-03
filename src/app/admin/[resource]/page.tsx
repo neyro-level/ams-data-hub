@@ -13,6 +13,7 @@ import {
 } from "../../../modules/identity-access/server.ts";
 import {
   getIdentityAdminFormOptions,
+  isClientAccessEnabled,
   listMemberships,
   listOrganizations,
   listUsers,
@@ -63,6 +64,11 @@ const projectStatusLabels: Record<string, string> = {
   ACTIVE: "Активен",
   PLANNED: "Планируется",
   DISABLED: "Отключён",
+};
+
+const projectServiceStateLabels: Record<string, string> = {
+  ACTIVE: "Сервис активен",
+  SUSPENDED: "Сервис приостановлен",
 };
 
 function Filters({ query, resource }: { query: PlatformAdminPageQuery; resource: string }) {
@@ -169,6 +175,7 @@ export default async function AdminResourcePageRoute({
   }
 
   if (resource === "memberships") {
+    const clientAccessEnabled = isClientAccessEnabled();
     const [summary, result, options, users] = await Promise.all([
       getPlatformAdminDashboardSummary(state.principal),
       listMemberships(state.principal, listQuery),
@@ -179,7 +186,9 @@ export default async function AdminResourcePageRoute({
       id: item.id,
       primary: item.userName,
       secondary: `${item.userEmail} · ${item.organizationName}`,
-      status: accessLevelLabels[item.tenantRole] ?? "Доступ настроен",
+      status: clientAccessEnabled
+        ? accessLevelLabels[item.tenantRole] ?? "Доступ настроен"
+        : "Клиентский доступ выключен",
       updatedAt: item.updatedAt,
     }));
     const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -191,8 +200,8 @@ export default async function AdminResourcePageRoute({
         <AdminResourceNav currentPath={currentPath} />
         <Filters query={query} resource={resource} />
         <PlatformAdminTable pageSize={result.pageSize} query={query} resource={resource} rows={rows} sortOptions={defaultSortOptions} total={result.total} />
-        <UsersAdminForms options={options} users={users} />
-        <MembershipsAdminForms items={result.items} options={options} />
+        <UsersAdminForms clientAccessEnabled={clientAccessEnabled} options={options} users={users} />
+        <MembershipsAdminForms clientAccessEnabled={clientAccessEnabled} items={result.items} options={options} />
       </div>
     );
   }
@@ -207,7 +216,7 @@ export default async function AdminResourcePageRoute({
       id: item.id,
       primary: item.name,
       secondary: `${item.organizationName} · ${item.slug}`,
-      status: projectStatusLabels[item.status] ?? "Настроен",
+      status: `${projectStatusLabels[item.status] ?? "Настроен"} · ${projectServiceStateLabels[item.serviceState] ?? "Сервис настроен"}`,
       updatedAt: item.updatedAt,
     }));
     const pageCount = Math.max(1, Math.ceil(result.total / result.pageSize));

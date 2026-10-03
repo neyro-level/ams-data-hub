@@ -16,6 +16,7 @@ function mapError(error: unknown) {
 
   const messages: Record<string, string> = {
     IDENTITY_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
+    CLIENT_ACCESS_DISABLED: "Клиентский доступ отключён настройкой платформы.",
     ORGANIZATION_NOT_FOUND_OR_FORBIDDEN: "Организация недоступна или уже удалена.",
     ORGANIZATION_STALE: "Организация уже изменена. Обновите страницу.",
     ORGANIZATION_SLUG_CONFLICT: "Такой адрес организации уже занят.",

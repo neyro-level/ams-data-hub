@@ -16,7 +16,7 @@ const organizationNameSchema = z
   .max(160);
 
 export const tenantRoleSchema = z.enum(["ORG_ADMIN", "ORG_EDITOR", "ORG_VIEWER"]);
-export const systemRoleSchema = z.enum(["PLATFORM_ADMIN", "USER", "USER"]);
+export const systemRoleSchema = z.enum(["PLATFORM_ADMIN", "USER"]);
 
 export const usernameSchema = z
   .string()
@@ -117,7 +117,7 @@ export interface IdentityAdminUserListItem {
   name: string;
   username: string;
   email: string;
-  systemRole: "PLATFORM_ADMIN" | "USER" | "USER";
+  systemRole: "PLATFORM_ADMIN" | "USER";
   disabled: boolean;
   memberships: Array<{ id: string; organizationName: string; tenantRole: TenantRole }>;
 }
@@ -129,6 +129,12 @@ export interface OrganizationListItem {
   version: number;
   membershipCount: number;
   projectCount: number;
+  projects: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    serviceState: "ACTIVE" | "SUSPENDED";
+  }>;
   updatedAt: string;
 }
 
@@ -165,6 +171,7 @@ export interface IdentityAdminFormOptions {
 
 export type IdentityAdminErrorCode =
   | "IDENTITY_ADMIN_ACCESS_DENIED"
+  | "CLIENT_ACCESS_DISABLED"
   | "ORGANIZATION_NOT_FOUND_OR_FORBIDDEN"
   | "ORGANIZATION_STALE"
   | "ORGANIZATION_SLUG_CONFLICT"

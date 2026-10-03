@@ -1,4 +1,8 @@
-export { getAuth, hasAuthConfiguration } from "../../platform/auth/auth.ts";
+export {
+  getAuth,
+  hasAuthConfiguration,
+  isClientAccessEnabled,
+} from "../../platform/auth/auth.ts";
 export {
   getCurrentCabinetRedirect,
   getCurrentOrganizationSelection,

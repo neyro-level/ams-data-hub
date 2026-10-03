@@ -30,6 +30,10 @@ const organizationSelect = {
   version: true,
   updatedAt: true,
   _count: { select: { members: true, projects: true } },
+  projects: {
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: { id: true, name: true, slug: true, serviceState: true },
+  },
 } satisfies Prisma.OrganizationSelect;
 
 const membershipSelect = {
@@ -87,6 +91,7 @@ function toOrganizationListItem(record: SelectedOrganization): OrganizationListI
     version: record.version,
     membershipCount: record._count.members,
     projectCount: record._count.projects,
+    projects: record.projects,
     updatedAt: record.updatedAt.toISOString(),
   };
 }

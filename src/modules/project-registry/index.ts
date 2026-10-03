@@ -1,5 +1,6 @@
 export {
   createProjectInputSchema,
+  projectServiceStateSchema,
   projectSlugSchema,
   projectStatusSchema,
   updateProjectInputSchema,
