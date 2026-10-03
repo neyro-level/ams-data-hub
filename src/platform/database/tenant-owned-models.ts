@@ -9,6 +9,7 @@ export const TENANT_OWNED_MODELS = [
   "IdempotencyKey",
   "OutboxEvent",
   "JobRun",
+  "PublicUrlIdReservation",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];
