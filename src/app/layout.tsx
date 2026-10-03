@@ -1,35 +1,36 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "../components/ui/sonner.tsx";
+import { productIdentity } from "../platform/config/product-identity.ts";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://data-hab.ams24.ru"),
+  metadataBase: productIdentity.metadataBase,
   title: {
-    default: "AMS Data Hub",
-    template: "%s | AMS Data Hub",
+    default: productIdentity.appName,
+    template: `%s | ${productIdentity.appName}`,
   },
   description: "Рабочая платформа AMS для CRM, аналитических кабинетов и внутренних веб-приложений.",
-  applicationName: "AMS Data Hub",
+  applicationName: productIdentity.appName,
   keywords: ["CRM", "аналитический кабинет", "внутреннее веб-приложение", "Data Hub"],
   alternates: {
     canonical: "/",
   },
   icons: {
-    icon: [{ url: "/ams-data-hub-favicon.svg", type: "image/svg+xml" }],
-    shortcut: "/ams-data-hub-favicon.svg",
+    icon: [{ url: productIdentity.faviconPath, type: "image/svg+xml" }],
+    shortcut: productIdentity.faviconPath,
   },
   openGraph: {
     type: "website",
     locale: "ru_RU",
     url: "/",
-    siteName: "AMS Data Hub",
-    title: "AMS Data Hub",
+    siteName: productIdentity.appName,
+    title: productIdentity.appName,
     description: "Закрытая рабочая платформа AMS для данных и внутренних систем.",
   },
   twitter: {
     card: "summary",
-    title: "AMS Data Hub",
+    title: productIdentity.appName,
     description: "Закрытая рабочая платформа AMS для данных и внутренних систем.",
   },
   robots: {

@@ -60,9 +60,27 @@ for (const file of await collectFiles(root)) {
 
 const identityManifest = JSON.parse(await readFile(path.join(root, "project.identity.json"), "utf8"));
 const expectedProductName = identityManifest.identity?.productName;
+const expectedPublicOrigin = identityManifest.identity?.publicOrigin;
+const expectedFaviconPath = identityManifest.identity?.faviconPath;
 const rootLayout = await readFile(path.join(root, "src/app/layout.tsx"), "utf8");
-if (typeof expectedProductName !== "string" || !expectedProductName.trim() || !rootLayout.includes(`default: ${JSON.stringify(expectedProductName)}`)) {
+if (typeof expectedProductName !== "string" || !expectedProductName.trim() || !rootLayout.includes("default: productIdentity.appName")) {
   violations.push("src/app/layout.tsx: metadata must match project.identity.json");
+}
+const productIdentitySource = await readFile(path.join(root, "src/platform/config/product-identity.ts"), "utf8");
+for (const field of ["productName", "productSlug", "publicOrigin", "faviconPath"]) {
+  if (!productIdentitySource.includes(field)) violations.push(`src/platform/config/product-identity.ts: missing ${field}`);
+}
+for (const literal of [expectedProductName, expectedPublicOrigin, expectedFaviconPath]) {
+  if (typeof literal !== "string" || !literal.trim()) {
+    violations.push("project.identity.json: application identity values must be non-empty strings");
+    continue;
+  }
+  for (const file of await collectFiles(path.join(root, "src"))) {
+    const source = await readFile(file, "utf8");
+    if (source.includes(literal)) {
+      violations.push(`${path.relative(root, file).replaceAll("\\", "/")}: duplicates project identity literal ${literal}`);
+    }
+  }
 }
 if (!rootLayout.includes("index: false") || !rootLayout.includes("follow: false")) {
   violations.push("src/app/layout.tsx: every surface must inherit noindex, nofollow");

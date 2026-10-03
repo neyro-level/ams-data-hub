@@ -1,12 +1,13 @@
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import styles from "../components/marketing/PublicLoginPage.module.css";
+import { productIdentity } from "../platform/config/product-identity.ts";
 
 const quickLinks = [
   {
     href: "/",
     label: "Главная",
-    description: "Вернуться на главную AMS Data Hub.",
+    description: `Вернуться на главную ${productIdentity.appName}.`,
   },
   {
     href: "/politika/",
@@ -25,9 +26,9 @@ export default function NotFound() {
       <div className="absolute inset-0 -z-10 bg-[image:var(--ch-not-found-atmosphere)]" aria-hidden />
 
       <div className="mx-auto w-full max-w-[980px] text-center">
-        <Link href="/" className="mx-auto inline-flex items-center gap-3" aria-label="AMS Data Hub - на главную">
+        <Link href="/" className="mx-auto inline-flex items-center gap-3" aria-label={`${productIdentity.appName} — на главную`}>
           <span className="grid size-12 place-items-center border border-[var(--ch-border-control)] bg-[var(--ch-surface-subtle)] text-xs font-extrabold">АМС</span>
-          <span className="text-sm font-extrabold">DATA HUB</span>
+          <span className="text-sm font-extrabold">{productIdentity.wordmark}</span>
         </Link>
 
         <p className="mt-10 flex items-center justify-center gap-3 text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--ch-accent)]">

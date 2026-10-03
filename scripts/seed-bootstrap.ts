@@ -3,6 +3,7 @@ import {
   formatDatabaseTargetSummary,
   inspectDatabaseTarget,
 } from "../src/platform/config/database-target.ts";
+import { productIdentity } from "../src/platform/config/product-identity.ts";
 
 const databaseEnvironment = {
   DATABASE_URL: process.env.DATABASE_URL,
@@ -22,12 +23,12 @@ const database = createPrismaContext(databaseEnvironment);
 export async function bootstrapDatabase() {
   const created: string[] = [];
   const organization = await database.prisma.organization.upsert({
-    where: { slug: "ams-data-hub" },
+    where: { slug: productIdentity.productSlug },
     update: {},
-    create: { slug: "ams-data-hub", name: "AMS Data Hub" },
+    create: { slug: productIdentity.productSlug, name: productIdentity.appName },
     select: { id: true },
   });
-  created.push("organization:ams-data-hub");
+  created.push(`organization:${productIdentity.productSlug}`);
 
   await database.prisma.project.upsert({
     where: {

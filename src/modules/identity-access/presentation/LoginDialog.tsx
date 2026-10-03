@@ -13,6 +13,7 @@ import {
 } from "../../../components/ui/dialog.tsx";
 import { Input } from "../../../components/ui/input.tsx";
 import { authClient } from "../../../platform/auth/client.ts";
+import { productIdentity } from "../../../platform/config/product-identity.ts";
 
 type LoginDialogProps = {
   initialOpen?: boolean;
@@ -83,7 +84,7 @@ export function LoginDialog({ initialOpen = false }: LoginDialogProps) {
           showCloseButton={!pending}
         >
           <DialogHeader>
-            <p className="text-[10px] font-bold uppercase text-[var(--ch-accent)]">AMS Data Hub</p>
+            <p className="text-[10px] font-bold uppercase text-[var(--ch-accent)]">{productIdentity.appName}</p>
             <DialogTitle className="mt-2 text-[32px] font-extrabold leading-tight tracking-[-0.04em] text-[var(--ch-white)] sm:text-[34px]">
               Вход в кабинет
             </DialogTitle>

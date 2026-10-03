@@ -11,6 +11,7 @@ import {
 } from "../../modules/identity-access/server.ts";
 import { listProjectTreesForUser } from "../../modules/project-registry/server.ts";
 import { hasPermission } from "../../platform/authorization/principal.ts";
+import { productIdentity } from "../../platform/config/product-identity.ts";
 
 export default async function DashboardPage() {
   const cabinetRedirect = await getCurrentCabinetRedirect();
@@ -24,7 +25,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="AMS Data Hub"
+        title={productIdentity.appName}
         description="Нейтральная рабочая область для будущих кабинетов, CRM, аналитики и внутренних процессов."
         actions={
           hasPermission(state.principal, "platform:manage") ? (

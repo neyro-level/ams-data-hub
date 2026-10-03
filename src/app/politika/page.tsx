@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { LegalDocument } from "../../components/marketing/LegalDocument.tsx";
 import { PrivacyContent } from "../../components/marketing/legal/LegalContents.tsx";
+import { productIdentity } from "../../platform/config/product-identity.ts";
 
 export const metadata: Metadata = {
   title: "Политика обработки персональных данных и конфиденциальности",
-  description: "Проект политики обработки персональных данных и конфиденциальности AMS Data Hub. Требует юридической проверки владельцем.",
+  description: `Проект политики обработки персональных данных и конфиденциальности ${productIdentity.appName}. Требует юридической проверки владельцем.`,
   alternates: { canonical: "/politika/" },
   robots: { index: false, follow: false, nocache: true },
 };

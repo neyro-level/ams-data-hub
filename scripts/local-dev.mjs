@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, openSync } from "node:fs";
+import { mkdirSync, openSync, readFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ if (!new Set(["status", "start"]).has(mode)) {
 }
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectIdentity = JSON.parse(readFileSync(path.join(projectRoot, "project.identity.json"), "utf8")).identity;
 const host = "127.0.0.1";
 const port = 3001;
 const baseUrl = `http://${host}:${port}`;
@@ -32,7 +33,7 @@ async function readWebStatus() {
     });
     if (!response.ok) return null;
     const body = await response.json();
-    return body?.status === "ok" && body?.service === "ams-data-hub" ? body : null;
+    return body?.status === "ok" && body?.service === projectIdentity.serviceId ? body : null;
   } catch {
     return null;
   }
@@ -89,7 +90,7 @@ if (!web) {
     web = await readWebStatus();
     if (web) break;
   }
-  if (!web) throw new Error("AMS Data Hub did not become ready on port 3001; inspect .next/local-dev-3001.error.log");
+  if (!web) throw new Error(`${projectIdentity.productName} did not become ready on port 3001; inspect .next/local-dev-3001.error.log`);
 }
 
 printSummary(true);

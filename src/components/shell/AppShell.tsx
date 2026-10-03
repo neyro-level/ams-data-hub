@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import type { NavigationSection } from "../../modules/project-registry/presentation.ts";
 import { authClient } from "../../platform/auth/client.ts";
+import { productIdentity } from "../../platform/config/product-identity.ts";
 import { Button } from "../ui/button.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
 import { MobileDrawer } from "./MobileDrawer.tsx";
@@ -72,7 +73,7 @@ export function AppShell({ sections, accountLabel, notificationSummary, children
         <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--border)] bg-[var(--card)]/95 px-4 backdrop-blur sm:px-6 lg:hidden">
           <MobileDrawer sections={sections} currentPath={pathname} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-app-foreground">{activeLabel ?? "AMS Data Hub"}</p>
+            <p className="truncate text-sm font-semibold text-app-foreground">{activeLabel ?? productIdentity.appName}</p>
           </div>
           {notificationSummary ? <NotificationCenter initialSummary={notificationSummary} /> : null}
           <Button type="button" variant="ghost" size="icon" className="lg:hidden" onClick={signOut} disabled={signingOut} aria-label="Выйти из кабинета"><LogOut aria-hidden /></Button>

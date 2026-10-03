@@ -3,6 +3,7 @@ import "server-only";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { betterAuth } from "better-auth";
 import { twoFactor, username } from "better-auth/plugins";
+import { productIdentity } from "../config/product-identity.ts";
 import {
   hasDatabaseConfiguration,
   readAuthEnvironment,
@@ -26,7 +27,7 @@ export const auth =
       ? betterAuth({
         secret: authEnvironment.secret,
         baseURL: authEnvironment.baseUrl,
-        appName: "AMS Data Hub",
+        appName: productIdentity.appName,
         session: {
           additionalFields: {
             twoFactorVerifiedAt: {

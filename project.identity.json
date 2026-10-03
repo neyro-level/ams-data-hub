@@ -4,6 +4,7 @@
     "productName": "AMS Data Hub",
     "productSlug": "ams-data-hub",
     "publicOrigin": "https://data-hab.ams24.ru",
+    "faviconPath": "/ams-data-hub-favicon.svg",
     "serviceId": "ams-data-hub",
     "workerId": "ams-data-hub-worker",
     "databaseApplicationPrefix": "ams-data-hub",
