@@ -39,20 +39,34 @@ The detailed `DATA_MODEL.md`, `SECURITY.md`, `ENVIRONMENT.md` and
 `OPERATIONS.md` files remain justified extensions. They refine the area named
 here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 
-## Modular monolith
+## Module Map
 
-| Module | Owns | Public boundary |
-| --- | --- | --- |
-| `identity-access` | users, memberships, auth administration | server facade and contracts |
-| `project-registry` | neutral tenant project registry | server facade and DTOs |
-| `platform-operations` | audit, idempotency, outbox, jobs, readiness | server facade and worker contracts |
-| `notifications` | notification feed/read state | server facade and DTOs |
-| `platform-admin` | platform-wide summaries and operations UI | explicit admin presentation boundary |
-| `platform/*` | database, commands, auth, authorization, config, observability | platform-owned server APIs |
+The map records ownership before implementation, but a directory is created
+only by the first epic that delivers a real vertical slice. A future module in
+this table is a boundary decision, not permission to add an empty scaffold.
 
-Presentation calls a module facade. Application code uses ports and DTOs;
-Prisma stays in `platform/database` and module infrastructure. External side
-effects stay outside a business transaction.
+| Boundary | State / first slice | Owns | Public boundary |
+| --- | --- | --- | --- |
+| `identity-access` | active | users, memberships, account setup, authentication administration | `contracts.ts`, `client.ts`, `server.ts`, `index.ts` |
+| `project-registry` | active | organizations, projects, memberships and service state | `contracts.ts`, `server.ts`, `index.ts` |
+| `platform-operations` | active | audit, idempotency, outbox, jobs and readiness | `contracts.ts`, `server.ts`, `worker.ts`, `index.ts` |
+| `notifications` | active; retained for DH-08 alerts | in-app notification delivery, feed and read state | `actions.ts`, `server.ts`, `index.ts` |
+| `platform-admin` | active | platform-wide resource views, summaries and admin queries | `contracts.ts`, `server.ts`, `index.ts` |
+| `shared-catalog` | future; DH-03 | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | contracts plus server facade created with the first catalog slice |
+| `project-state` | future; DH-04 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
+| `media-assets` | future; DH-03 after DH-02 media port | media metadata, intake state, hashes, object references and ownership rules | media contracts; storage remains a platform port |
+| `snapshot-delivery` | future; DH-05 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | snapshot contracts, server/worker facade; verifier lives in `packages/snapshot-verifier` |
+| `ingestion-core` | future; DH-06 | source registry, adapter/profile contracts, raw and normalized revisions, identity resolution, safety analysis and apply plan | adapter contracts plus project-job worker facade |
+| `operations-control` | future; DH-08 | fleet projections, audited operator actions and Exit Bundle orchestration | operations contracts plus server facade; alerts go through `notifications` |
+| `platform/*` | active platform layer | database, commands, auth, authorization, config, observability, safe outbound and storage ports | platform-owned APIs only |
+
+Dependency direction is `app/components/worker → module public boundary →
+application/domain`; infrastructure implements ports and never becomes another
+module's public API. Cross-module imports may use only root facade/contract
+files. Prisma stays in `platform/database` and module infrastructure. Safe
+outbound, object storage and secret resolution remain platform adapters rather
+than business modules. External side effects stay outside a business
+transaction.
 
 ## Data, tenancy and async direction
 

@@ -9,6 +9,19 @@ const removedModulePaths = [
   ["rank", "ing", "analytics"].join("-"),
   ["report", "ing"].join(""),
 ].map((moduleName) => `src/modules/${moduleName}`);
+const moduleMapNames = [
+  "identity-access",
+  "notifications",
+  "platform-admin",
+  "platform-operations",
+  "project-registry",
+  "shared-catalog",
+  "project-state",
+  "media-assets",
+  "snapshot-delivery",
+  "ingestion-core",
+  "operations-control",
+];
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -38,6 +51,31 @@ for (const relativePath of [
     await readFile(path.join(rootDir, relativePath));
   } catch {
     failures.push(`Missing required platform boundary: ${relativePath}`);
+  }
+}
+
+const architecture = await readFile(path.join(rootDir, "docs/03_ARCHITECTURE.md"), "utf8");
+const dependencyRules = await readFile(path.join(rootDir, "dependency-cruiser.config.cjs"), "utf8");
+for (const moduleName of moduleMapNames) {
+  if (!architecture.includes(`| \`${moduleName}\``)) {
+    failures.push(`Module Map misses ownership boundary: ${moduleName}`);
+  }
+  if (!dependencyRules.includes(`"${moduleName}"`)) {
+    failures.push(`Dependency guard misses module boundary: ${moduleName}`);
+  }
+}
+
+const modulesDirectory = path.join(sourceDir, "modules");
+for (const entry of await readdir(modulesDirectory, { withFileTypes: true })) {
+  if (!entry.isDirectory()) continue;
+  const moduleDirectory = path.join(modulesDirectory, entry.name);
+  const codeFiles = await collectFiles(moduleDirectory);
+  if (codeFiles.length === 0) {
+    failures.push(`Empty module scaffold is forbidden: src/modules/${entry.name}`);
+  }
+  const rootFiles = await readdir(moduleDirectory, { withFileTypes: true });
+  if (!rootFiles.some((file) => file.isFile() && /^(?:actions|client|contracts|index|presentation|server|worker)\.(?:ts|tsx)$/.test(file.name))) {
+    failures.push(`Module has no explicit public boundary: src/modules/${entry.name}`);
   }
 }
 

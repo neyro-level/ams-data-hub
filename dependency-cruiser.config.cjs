@@ -1,3 +1,24 @@
+const boundedModules = [
+  "identity-access",
+  "notifications",
+  "platform-admin",
+  "platform-operations",
+  "project-registry",
+  "shared-catalog",
+  "project-state",
+  "media-assets",
+  "snapshot-delivery",
+  "ingestion-core",
+  "operations-control",
+];
+
+const privateModuleRules = boundedModules.map((moduleName) => ({
+  name: `${moduleName}-internals-are-private`,
+  severity: "error",
+  from: { pathNot: `^src/modules/${moduleName}/` },
+  to: { path: `^src/modules/${moduleName}/(domain|application|infrastructure|presentation)/` },
+}));
+
 module.exports = {
   forbidden: [
     {
@@ -92,30 +113,7 @@ module.exports = {
       from: { path: "^src/modules/[^/]+/application/" },
       to: { path: "^src/modules/[^/]+/(infrastructure|presentation)/" },
     },
-    {
-      name: "identity-access-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/identity-access/" },
-      to: { path: "^src/modules/identity-access/(domain|application|infrastructure|presentation)/" },
-    },
-    {
-      name: "project-registry-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/project-registry/" },
-      to: { path: "^src/modules/project-registry/(domain|application|infrastructure|presentation)/" },
-    },
-    {
-      name: "platform-operations-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/platform-operations/" },
-      to: { path: "^src/modules/platform-operations/(domain|application|infrastructure|presentation)/" },
-    },
-    {
-      name: "admin-cms-internals-are-private",
-      severity: "error",
-      from: { pathNot: "^src/modules/admin-cms/" },
-      to: { path: "^src/modules/admin-cms/(domain|application|infrastructure|presentation)/" },
-    },
+    ...privateModuleRules,
     {
       name: "only-platform-database-imports-generated-prisma-client",
       severity: "error",
