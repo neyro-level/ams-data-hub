@@ -33,18 +33,18 @@ export async function bootstrapDatabase() {
     where: {
       organizationId_slug: {
         organizationId: organization.id,
-        slug: "starter",
+        slug: "data-hub",
       },
     },
     update: {},
     create: {
       organizationId: organization.id,
-      slug: "starter",
+      slug: "data-hub",
       name: "Стартовый проект",
       description: "Нейтральная сущность для проверки кабинета после развёртывания.",
     },
   });
-  created.push("project:starter");
+  created.push("project:data-hub");
 
   return { created, unchanged: 0 };
 }

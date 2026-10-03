@@ -1,4 +1,4 @@
-# SourceCraft branch protection for the copy-source starter.
+# SourceCraft branch protection for AMS Data Hub.
 branch_protection:
   policies:
     - target: default_branch

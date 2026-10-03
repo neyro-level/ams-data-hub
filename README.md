@@ -2,7 +2,7 @@
 
 Рабочее reference-приложение AMS Data Hub для будущих CRM, аналитических кабинетов и внутренних веб-приложений АМС.
 
-Repository является производной копией AMS MicroSaaS Starter с `PROJECT_CLASS = STANDARD` и `DELIVERY_PROFILE = CRITICAL`. Push и Pull Request не расходуют SourceCraft CI; один ручной exact-head Gate предшествует merge, а production выпускается отдельно из exact `main` через SourceCraft Registry.
+Repository является product-owned приложением с `PROJECT_CLASS = STANDARD` и `DELIVERY_PROFILE = CRITICAL`. Push и Pull Request не расходуют SourceCraft CI; один ручной exact-head Gate предшествует merge, а production выпускается отдельно из exact `main` через SourceCraft Registry.
 
 Внутри уже есть публичная главная страница, legal pages, login modal, приватный shell, Platform Admin, пользователи, организации, роли, проекты, audit trail, idempotency, outbox, worker, Docker/release templates и безопасный PWA-слой.
 
@@ -47,4 +47,4 @@ pnpm verify:quick
 
 Карта документов: [`docs/README.md`](docs/README.md).
 
-Главная идея упаковки: не делать из starter “пример продукта”. Каждый новый продукт берёт эту базу, затем отдельным stream добавляет свою доменную модель, данные, интеграции, тексты, legal и production-профиль.
+AMS Data Hub сохраняет общие platform boundaries, но владеет собственной доменной моделью, данными, интеграциями, legal и production-профилем.

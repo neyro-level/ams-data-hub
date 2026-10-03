@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getPrismaClient } from "../../src/platform/database/prisma/client.ts";
 
 describe("PostgreSQL test foundation", () => {
-  it("runs against PostgreSQL 18 with neutral bootstrap identities", async () => {
+  it("runs against PostgreSQL 18 with isolated bootstrap identities", async () => {
     const prisma = getPrismaClient();
     const [database] = await prisma.$queryRaw<
       Array<{ current_database: string; current_user: string; server_version: string }>

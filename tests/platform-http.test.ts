@@ -5,7 +5,7 @@ const releaseSha = "a".repeat(40);
 const correlationId = "00000000-0000-4000-8000-000000000000";
 
 describe("health contracts", () => {
-  it("accepts neutral live service id", () => {
+  it("accepts the Data Hub live service id", () => {
     expect(
       liveHealthSchema.parse({
         status: "ok",

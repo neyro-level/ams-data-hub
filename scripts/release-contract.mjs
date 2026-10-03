@@ -34,7 +34,7 @@ export function createReleaseManifest(input) {
   return {
     schemaVersion: 2,
     application: "ams-data-hub",
-    repository: "derived-project-required",
+    repository: "project-repository-required",
     source: "canonical main",
     commitSha: assertCommitSha(input.commitSha),
     createdAt: input.createdAt,

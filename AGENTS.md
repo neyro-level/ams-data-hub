@@ -2,9 +2,8 @@
 
 ## Scope
 
-`AMS Data Hub` is the product-owned reference application derived from AMS
-MicroSaaS Starter. It is deployed as a working baseline for CRM, analytics
-workspaces, internal systems and future MicroSaaS products.
+`AMS Data Hub` is the product-owned reference application and working baseline
+for CRM, analytics workspaces, internal systems and future AMS products.
 Read the narrowest applicable source before changing code or documentation.
 
 ## Reading order
@@ -19,7 +18,7 @@ Read the narrowest applicable source before changing code or documentation.
 
 ## Local invariants
 
-- Keep the application domain-neutral while preserving the Data Hub production
+- Keep the application domain-agnostic while preserving the Data Hub production
   identity and project-owned infrastructure boundaries.
 - Authentication does not replace server-side permission and resource checks.
 - Business mutation follows action/API/job → command → transaction-bound

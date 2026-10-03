@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import manifest from "../src/app/manifest.ts";
 
 describe("PWA baseline", () => {
-  it("is installable with neutral app name", () => {
+  it("is installable with the Data Hub app name", () => {
     expect(manifest()).toMatchObject({
       name: "AMS Data Hub",
       short_name: "AMS Data Hub",

@@ -3,7 +3,7 @@ type KpiCardProps = {
   value: string;
   tone?: "default" | "primary" | "soft" | "success";
   delta?: string;
-  deltaTone?: "positive" | "negative" | "neutral";
+  deltaTone?: "positive" | "negative" | "muted";
 };
 
 const toneMap: Record<NonNullable<KpiCardProps["tone"]>, string> = {
@@ -18,7 +18,7 @@ export function KpiCard({
   value,
   tone = "default",
   delta,
-  deltaTone = "neutral",
+  deltaTone = "muted",
 }: KpiCardProps) {
   return (
     <article className={`rounded-[var(--radius-card)] border p-5 shadow-[var(--shadow-surface)] ${toneMap[tone]}`}>

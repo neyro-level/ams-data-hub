@@ -12,7 +12,7 @@ const requiredFiles = [
   "docs/OPERATIONS.md",
   "docs/AMS Data Hub Master Plan v1.md",
   "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
-  "starter.identity.json",
+  "project.identity.json",
   ".sourcecraft/branches.yaml",
   ".sourcecraft/ci.yaml",
   "Dockerfile",
@@ -30,7 +30,6 @@ const requiredScripts = [
   "security:secrets",
   "verify:sourcecraft-policy",
   "verify:release-template",
-  "derive:smoke",
   "verify:conformance",
   "verify:release",
 ];
@@ -80,18 +79,14 @@ export function verifyFinalConformance({ root = process.cwd(), requireClean = tr
   requireText(root, ".sourcecraft/ci.yaml", ["merge-standard:", "merge-risky:", "EXPECTED_COMMIT_SHA"]);
   requireText(root, ".sourcecraft/branches.yaml", ["prevent_force_push", "prevent_non_pr_changes", "prevent_deletion"]);
 
-  const identity = JSON.parse(read(root, "starter.identity.json"));
-  if (!new Set(["starter", "derived"]).has(identity.mode)) throw new Error("Unknown identity mode.");
+  const identity = JSON.parse(read(root, "project.identity.json"));
   const architecture = read(root, "docs/03_ARCHITECTURE.md");
-  const deliveryProfile = identity.mode === "starter" ? "EXPERIMENT" : identity.derivation?.deliveryProfile;
-  if (identity.mode === "starter" && !architecture.includes("DELIVERY_PROFILE = CRITICAL")) {
-    throw new Error("Starter architecture must retain DELIVERY_PROFILE = CRITICAL.");
+  const deliveryProfile = identity.deliveryProfile;
+  if (!new Set(["COMMERCIAL", "CRITICAL"]).has(deliveryProfile)) {
+    throw new Error("Data Hub must retain COMMERCIAL or CRITICAL delivery profile before final conformance.");
   }
-  if (identity.mode === "derived" && !new Set(["COMMERCIAL", "CRITICAL"]).has(deliveryProfile)) {
-    throw new Error("Derived product must select COMMERCIAL or CRITICAL before final conformance.");
-  }
-  if (identity.mode === "derived" && identity.derivation?.migrationOwner !== identity.identity?.productSlug) {
-    throw new Error("Derived product migration ownership must match identity.productSlug.");
+  if (!architecture.includes(`DELIVERY_PROFILE = ${deliveryProfile}`)) {
+    throw new Error("Project identity and Architecture delivery profiles differ.");
   }
 
   const migrations = git(root, ["ls-files", "prisma/migrations"]).split(/\r?\n/u).filter(Boolean);
@@ -110,12 +105,10 @@ export function verifyFinalConformance({ root = process.cwd(), requireClean = tr
     status: "PASS",
     commitSha,
     treeSha,
-    identityMode: identity.mode,
+    identityMode: "product",
     deliveryProfile,
-    guaranteeGroups: ["identity", "postgresql", "authorization", "commands", "async", "ci", "runtime", "ui", "derivation", "handover"],
-    boundedExceptions: identity.mode === "starter"
-      ? ["starter-not-production", "experiment-no-paid-ci", "derived-product-release-proof-required"]
-      : ["first-release-no-previous-application-image", "exact-main-release-proof-required"],
+    guaranteeGroups: ["identity", "postgresql", "authorization", "commands", "async", "ci", "runtime", "ui", "handover"],
+    boundedExceptions: ["first-release-no-previous-application-image", "exact-main-release-proof-required"],
   };
 }
 

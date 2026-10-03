@@ -60,8 +60,8 @@
   --warning-soft: #fff4dc;
   --info: #48639b;
   --info-soft: #edf1fb;
-  --status-neutral: #687680;
-  --status-neutral-soft: #eef1f3;
+  --status-muted: #687680;
+  --status-muted-soft: #eef1f3;
   --chart-1: #5f7fae;
   --chart-2: #3e5d86;
   --chart-3: #2a7057;
@@ -169,7 +169,7 @@ body {
 .text-app-secondary-foreground { color: var(--secondary-foreground); }
 .text-app-sidebar-foreground { color: var(--sidebar-foreground); }
 .text-app-sidebar-muted { color: var(--sidebar-muted); }
-.text-app-status-neutral { color: var(--status-neutral); }
+.text-app-status-muted { color: var(--status-muted); }
 .text-app-success { color: var(--success); }
 .text-app-secondary { color: var(--text-secondary); }
 .text-app-warning { color: var(--warning); }

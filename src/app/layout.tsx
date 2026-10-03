@@ -10,10 +10,10 @@ export const metadata: Metadata = {
     default: "AMS Data Hub",
     template: "%s | AMS Data Hub",
   },
-  description: "Нейтральный стартовый шаблон для CRM, аналитических кабинетов и внутренних веб-приложений.",
+  description: "Рабочая платформа AMS для CRM, аналитических кабинетов и внутренних веб-приложений.",
   applicationName: "AMS Data Hub",
   manifest: "/manifest.webmanifest",
-  keywords: ["CRM", "аналитический кабинет", "внутреннее веб-приложение", "SaaS starter"],
+  keywords: ["CRM", "аналитический кабинет", "внутреннее веб-приложение", "Data Hub"],
   alternates: {
     canonical: "/",
   },

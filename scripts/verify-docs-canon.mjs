@@ -67,7 +67,6 @@ for (const file of [
   "docs/ARCHITECTURE.md",
   "docs/MASTER_PLAN.md",
   "docs/MASTER_PLAN.inventory.json",
-  "docs/DERIVATION.md",
   "docs/HANDOVER.md",
   "docs/AUTH.md",
   "docs/RUNBOOK_DEPLOY.md",

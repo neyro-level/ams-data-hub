@@ -9,17 +9,9 @@ describe("final conformance contract", () => {
     expect(result.status).toBe("PASS");
     expect(result.commitSha).toMatch(/^[0-9a-f]{40}$/);
     expect(result.treeSha).toMatch(/^[0-9a-f]{40}$/);
-    expect(["starter", "derived"]).toContain(result.identityMode);
-    expect(
-      result.identityMode === "starter"
-        ? result.deliveryProfile === "EXPERIMENT"
-        : ["COMMERCIAL", "CRITICAL"].includes(result.deliveryProfile),
-    ).toBe(true);
-    expect(result.guaranteeGroups).toHaveLength(10);
-    expect(result.boundedExceptions).toContain(
-      result.identityMode === "starter"
-        ? "starter-not-production"
-        : "exact-main-release-proof-required",
-    );
+    expect(result.identityMode).toBe("product");
+    expect(["COMMERCIAL", "CRITICAL"]).toContain(result.deliveryProfile);
+    expect(result.guaranteeGroups).toHaveLength(9);
+    expect(result.boundedExceptions).toContain("exact-main-release-proof-required");
   });
 });

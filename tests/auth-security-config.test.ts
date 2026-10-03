@@ -7,7 +7,7 @@ import {
 
 const authEnvironment = {
   BETTER_AUTH_SECRET: "a-secure-test-secret-that-is-longer-than-32-characters",
-  BETTER_AUTH_URL: "https://starter.example.test",
+  BETTER_AUTH_URL: "https://data-hub.example.test",
 };
 
 describe("auth network and MFA configuration", () => {

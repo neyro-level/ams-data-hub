@@ -5,8 +5,8 @@ import {
   type PrincipalContext,
 } from "../src/platform/authorization/principal.ts";
 
-describe("neutral principal permissions", () => {
-  it("gives platform admin full starter permissions", () => {
+describe("principal permissions", () => {
+  it("gives platform admin full Data Hub permissions", () => {
     const principal: PrincipalContext = {
       kind: "platform-admin",
       userId: "user-1",

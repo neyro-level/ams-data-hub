@@ -51,8 +51,8 @@ describe("SourceCraft gate policy", () => {
   });
 
   it("validates scoped test paths and explicit risk flags", () => {
-    expect(parseTestFiles("tests/starter-contracts.test.ts", "UNIT_TEST_FILES"))
-      .toEqual(["tests/starter-contracts.test.ts"]);
+    expect(parseTestFiles("tests/data-hub-contracts.test.ts", "UNIT_TEST_FILES"))
+      .toEqual(["tests/data-hub-contracts.test.ts"]);
     expect(parseTestFiles("none", "INTEGRATION_TEST_FILES", { allowNone: true }))
       .toEqual([]);
     expect(() => parseTestFiles("tests/../secret.test.ts", "UNIT_TEST_FILES"))

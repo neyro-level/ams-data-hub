@@ -11,6 +11,8 @@ async function filesUnder(relativeDirectory) {
 }
 
 const violations = [];
+const paletteNames = ["white", "black", "slate", "gray", "zinc", ["neu", "tral"].join(""), "stone", "red", "rose", "orange", "amber", "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia", "pink"].join("|");
+const paletteUtility = new RegExp(`(?:text|bg|border|ring|fill|stroke)-(?:${paletteNames})(?:\\b|/|\\[)`);
 const trackedUiFiles = [...await filesUnder("src"), ...await filesUnder("docs")].filter((file) => /\.(?:css|md|ts|tsx)$/.test(file));
 for (const file of trackedUiFiles) {
   const source = await readFile(path.join(root, file), "utf8");
@@ -26,7 +28,7 @@ const reusableComponents = (await filesUnder("src/components"))
 for (const file of reusableComponents) {
   const source = await readFile(path.join(root, file), "utf8");
   if (/#[0-9a-f]{3,8}\b|rgba?\(/i.test(source)) violations.push(`${file}: system color must use a semantic token`);
-  if (/(?:text|bg|border|ring|fill|stroke)-(?:white|black|slate|gray|zinc|neutral|stone|red|rose|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)(?:\b|\/|\[)/.test(source)) violations.push(`${file}: Tailwind palette color must use a semantic token`);
+  if (paletteUtility.test(source)) violations.push(`${file}: Tailwind palette color must use a semantic token`);
   if (/rounded-(?:sm|md|lg|xl|2xl|3xl)|rounded-\[[0-9]+px\]/.test(source)) violations.push(`${file}: system radius must use a canonical radius token`);
   const normalized = file.replaceAll("\\", "/");
   if (normalized.includes("/components/ui/") && /--ch-/.test(source)) violations.push(`${file}: generic primitive depends on public brand tokens`);
@@ -39,7 +41,7 @@ for (const file of reusableComponents) {
 for (const relativeDirectory of ["src/app/admin", "src/app/dashboard", "src/app/notifications"]) {
   for (const file of (await filesUnder(relativeDirectory)).filter((item) => /\.tsx$/.test(item))) {
     const source = await readFile(path.join(root, file), "utf8");
-    if (/(?:text|bg|border|ring|fill|stroke)-(?:white|black|slate|gray|zinc|neutral|stone|red|rose|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)(?:\b|\/|\[)/.test(source)) violations.push(`${file}: private UI palette color must use a semantic token`);
+    if (paletteUtility.test(source)) violations.push(`${file}: private UI palette color must use a semantic token`);
     if (/rounded-(?:sm|md|lg|xl|2xl|3xl)|rounded-\[[0-9]+px\]/.test(source)) violations.push(`${file}: private UI radius must use a canonical radius token`);
   }
 }

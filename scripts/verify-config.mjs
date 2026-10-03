@@ -57,10 +57,8 @@ for (const file of await collectFiles(root)) {
   }
 }
 
-const identityManifest = JSON.parse(await readFile(path.join(root, "starter.identity.json"), "utf8"));
-const expectedProductName = identityManifest.mode === "derived"
-  ? identityManifest.identity?.productName
-  : "AMS Data Hub";
+const identityManifest = JSON.parse(await readFile(path.join(root, "project.identity.json"), "utf8"));
+const expectedProductName = identityManifest.identity?.productName;
 const appManifest = await readFile(path.join(root, "src/app/manifest.ts"), "utf8");
 if (
   typeof expectedProductName !== "string"
@@ -68,7 +66,7 @@ if (
   || !appManifest.includes(`name: ${JSON.stringify(expectedProductName)}`)
   || !appManifest.includes('display: "standalone"')
 ) {
-  violations.push("src/app/manifest.ts: PWA manifest must be installable and match starter.identity.json");
+  violations.push("src/app/manifest.ts: PWA manifest must be installable and match project.identity.json");
 }
 
 const serviceWorker = await readFile(path.join(root, "public/sw.js"), "utf8");
@@ -82,7 +80,7 @@ if (/cache\.put\(request/.test(serviceWorker) && !serviceWorker.includes("isPriv
 }
 
 if (violations.length > 0) {
-  console.error(`Starter config verification failed:\n${violations.map((item) => `- ${item}`).join("\n")}`);
+  console.error(`Data Hub config verification failed:\n${violations.map((item) => `- ${item}`).join("\n")}`);
   process.exit(1);
 }
 

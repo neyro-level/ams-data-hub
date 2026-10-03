@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "identity": {
+    "productName": "AMS Data Hub",
+    "productSlug": "ams-data-hub",
+    "publicOrigin": "https://data-hab.ams24.ru",
+    "serviceId": "ams-data-hub",
+    "workerId": "ams-data-hub-worker",
+    "databaseApplicationPrefix": "ams-data-hub",
+    "artifactPrefix": "ams-data-hub",
+    "repositorySlug": "ams-data-hub",
+    "legalOperatorName": "Индивидуальный предприниматель Скрицкая Юлия Викторовна",
+    "legalOperatorEmail": "integrator-p@yandex.ru",
+    "legalOperatorAddress": "350062, г. Краснодар, ул. им. Игнатова, д. 4/3, корп. 2, кв. 249"
+  },
+  "deliveryProfile": "CRITICAL",
+  "capabilities": {
+    "outboxPlusQueue": "enabled",
+    "pwa": "enabled",
+    "platformAdmin": "enabled"
+  }
+}

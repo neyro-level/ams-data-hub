@@ -20,7 +20,7 @@ export type NavigationSection = {
   items: NavigationItem[];
 };
 
-export interface StarterOverview {
+export interface ProjectOverview {
   organizations: number;
   projects: number;
   pendingJobs: number;

@@ -1,6 +1,6 @@
 import { coreFeatures, createCoreRowModel, tableFeatures } from "@tanstack/react-table";
 
-export const starterTableFeatures = tableFeatures({
+export const dataHubTableFeatures = tableFeatures({
   ...coreFeatures,
   coreRowModel: createCoreRowModel(),
 });
