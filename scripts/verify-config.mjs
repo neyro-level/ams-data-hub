@@ -24,8 +24,8 @@ const ignoredDirectories = new Set([
   "graphify-out",
 ]);
 const ignoredFiles = new Set([
-  "docs/MASTER_PLAN.md",
-  "docs/MASTER_PLAN.inventory.json",
+  "docs/AMS Data Hub Master Plan v1.md",
+  "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
 ]);
 
 async function collectFiles(directory) {

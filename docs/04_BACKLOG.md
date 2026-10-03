@@ -1,6 +1,6 @@
 # Backlog — AMS Data Hub
 
-**Статус:** Active  
+**Статус:** Active
 **Execution source:** `AMS-DATA-HUB-IMPLEMENTATION-2026-01 v1 APPROVED`, его
 inventory и Beads graph. Этот файл — продуктовая сводка, не второй task graph.
 

@@ -6,8 +6,9 @@ Final conformance is evaluated at one exact final `main` SHA, not by combining p
 
 The final handover supplies: derivation checklist; `EXPERIMENT → COMMERCIAL | CRITICAL` hardening boundary; manual exact-head gate; immutable artifact/rollback template; database identity/backup obligations; secret and domain ownership; and a statement that the starter itself is not production.
 
-`docs/HANDOVER.md` is the human-readable matrix. `pnpm verify:conformance`
-checks its required links against the runtime template and emits the exact Git
+`docs/05_RELEASE_CHECKLIST.md` is the human-readable matrix and
+`docs/OPERATIONS.md` owns executable recovery detail. `pnpm verify:conformance`
+checks their required links against the runtime template and emits the exact Git
 commit/tree identity. `pnpm verify:release` includes that static conformance
 check after the daily proof; `pnpm derive:smoke` remains the independent
 copy-source proof.

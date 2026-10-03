@@ -1,6 +1,6 @@
 # Release Checklist — AMS Data Hub
 
-**Статус:** Active  
+**Статус:** Active
 **Applicability:** production release `ams-data-hub` на
 `https://data-hab.ams24.ru`. Текущий approved plan production не разрешает.
 

@@ -1,7 +1,7 @@
 # DH-00 Canon Mapping
 
-Status: `DH-00.2_TRANSFER_COMPLETE`  
-Source task: `dh-00.1` of `AMS-DATA-HUB-IMPLEMENTATION-2026-01 v1`  
+Status: `DH-00.2_TRANSFER_COMPLETE`
+Source task: `dh-00.1` of `AMS-DATA-HUB-IMPLEMENTATION-2026-01 v1`
 Base: `6246a2fa26ed8aaae629f891d6c64d07c0f8a96f`
 
 This is a mapping checkpoint, not a new source of truth. It records the only

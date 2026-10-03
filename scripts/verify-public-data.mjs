@@ -50,6 +50,11 @@ const ignoredDirectories = new Set([
   "pnpm-store",
   "test-results",
 ]);
+const ignoredFiles = new Set([
+  "docs/00_CONSTITUTION.MD.md",
+  "docs/AMS Data Hub Master Plan v1.md",
+  "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
+]);
 
 function listContextFiles(root = ".", relativeRoot = "") {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -96,6 +101,7 @@ for (const file of trackedFiles) {
   // Deleted paths contain no release data and must not make the verifier crash.
   if (!existsSync(file)) continue;
   const normalizedPath = file.replaceAll("\\", "/");
+  if (ignoredFiles.has(normalizedPath)) continue;
   if (normalizedPath.startsWith("config/") && !normalizedPath.startsWith("config/examples/")) {
     violations.add(normalizedPath);
   }

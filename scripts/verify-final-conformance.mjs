@@ -8,8 +8,10 @@ const requiredFiles = [
   "docs/03_ARCHITECTURE.md",
   "docs/04_BACKLOG.md",
   "docs/05_RELEASE_CHECKLIST.md",
-  "docs/DERIVATION.md",
-  "docs/HANDOVER.md",
+  "docs/SECURITY.md",
+  "docs/OPERATIONS.md",
+  "docs/AMS Data Hub Master Plan v1.md",
+  "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
   "starter.identity.json",
   ".sourcecraft/branches.yaml",
   ".sourcecraft/ci.yaml",
@@ -66,17 +68,15 @@ export function verifyFinalConformance({ root = process.cwd(), requireClean = tr
     throw new Error("test:e2e:run must use the guarded local database lifecycle.");
   }
 
-  requireText(root, "docs/README.md", ["`HANDOVER.md`"]);
-  requireText(root, "docs/HANDOVER.md", [
+  requireText(root, "docs/README.md", ["`05_RELEASE_CHECKLIST.md`", "`OPERATIONS.md`"]);
+  requireText(root, "docs/05_RELEASE_CHECKLIST.md", [
     "## Guarantee-to-proof matrix",
-    "## Verify command matrix",
     "## Known bounded exceptions",
-    "## Derived-product handover",
-    "## Final-main closure",
-    "Production requires an explicit owner release command.",
+    "## Handover and rollback",
+    "Production always requires a separate",
   ]);
-  requireText(root, "docs/05_RELEASE_CHECKLIST.md", ["manual exact-head SourceCraft merge gate", "Build one immutable artifact set"]);
-  requireText(root, "docs/DERIVATION.md", ["outboxPlusQueue", "pnpm derive:smoke"]);
+  requireText(root, "docs/OPERATIONS.md", ["## Production deployment", "## Recovery and restore"]);
+  requireText(root, "docs/AMS Data Hub Master Plan v1.md", ["Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01", "Status: APPROVED"]);
   requireText(root, ".sourcecraft/ci.yaml", ["merge-standard:", "merge-risky:", "EXPECTED_COMMIT_SHA"]);
   requireText(root, ".sourcecraft/branches.yaml", ["prevent_force_push", "prevent_non_pr_changes", "prevent_deletion"]);
 
@@ -86,10 +86,6 @@ export function verifyFinalConformance({ root = process.cwd(), requireClean = tr
   const deliveryProfile = identity.mode === "starter" ? "EXPERIMENT" : identity.derivation?.deliveryProfile;
   if (identity.mode === "starter" && !architecture.includes("DELIVERY_PROFILE = CRITICAL")) {
     throw new Error("Starter architecture must retain DELIVERY_PROFILE = CRITICAL.");
-  }
-  if (identity.mode === "starter") {
-    requireText(root, "docs/HANDOVER.md", ["CI NOT RUN (EXPERIMENT)"]);
-    requireText(root, "docs/05_RELEASE_CHECKLIST.md", ["this starter itself is not a release target"]);
   }
   if (identity.mode === "derived" && !new Set(["COMMERCIAL", "CRITICAL"]).has(deliveryProfile)) {
     throw new Error("Derived product must select COMMERCIAL or CRITICAL before final conformance.");

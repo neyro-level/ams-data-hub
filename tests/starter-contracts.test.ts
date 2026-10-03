@@ -31,8 +31,8 @@ describe("starter admin contracts", () => {
 
   it("keeps approved Task Manager artifacts outside product neutrality scanning", () => {
     const verifier = readFileSync("scripts/verify-config.mjs", "utf8");
-    expect(verifier).toContain('"docs/MASTER_PLAN.md"');
-    expect(verifier).toContain('"docs/MASTER_PLAN.inventory.json"');
+    expect(verifier).toContain('"docs/AMS Data Hub Master Plan v1.md"');
+    expect(verifier).toContain('"docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json"');
     expect(verifier).toContain("if (ignoredFiles.has(relativeFile)) continue");
   });
 });
