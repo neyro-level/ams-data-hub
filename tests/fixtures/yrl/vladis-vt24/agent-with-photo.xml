@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06" data-synthetic="true">
+  <generation-date>2026-10-04T13:30:00+03:00</generation-date>
+  <offer internal-id="synthetic-agent-photo-1"><type>продажа</type><category>квартира</category>
+    <location><locality-name>Тестоград</locality-name><address>ул. Демонстрационная, 11</address></location>
+    <sales-agent><name>Агент Тестовый Один</name><phone>+7 959 000-00-01</phone><category>agency</category><photo>https://media.example.invalid/agents/synthetic-one.jpg</photo></sales-agent>
+  </offer>
+</realty-feed>
