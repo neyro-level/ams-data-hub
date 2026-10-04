@@ -1,0 +1,35 @@
+schema_version: AMS_DATA_HUB_DELIVERY_STATE_V1
+project: ams-data-hub
+canonical_git: sourcecraft
+plan:
+  id: AMS-DATA-HUB-IMPLEMENTATION-2026-01
+  version: v3
+  status: APPROVED
+  source: docs/AMS Data Hub Master Plan v1.md
+  source_sha256: 59709fc19322fffed93484422392ebf6a8ab2975ae282424e7c4c4d9109ebbfa
+consolidation:
+  task_id: adh-dh-00-delivery
+  status: MERGE_AFTER_GATE
+  pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/6
+  source_branch: work/data-hub-v3-consolidation
+  target_branch: main
+  base_sha: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
+  included_closed_implementation_ledgers: 26
+  excluded_unfinished_tasks:
+    - adh-dh-02-1
+    - adh-dh-03-6
+  exact_merge_and_gate_evidence: beads://adh-dh-00-delivery#EXECUTION_LEDGER_V1
+  superseded_after_merge:
+    - https://sourcecraft.dev/integrator-p/ams-data-hub/pr/4
+    - https://sourcecraft.dev/integrator-p/ams-data-hub/pr/5
+local_preflight:
+  docs_check: PASS
+  diff_check: PASS
+  prisma_generate: PASS
+  prisma_validate: PASS
+  selected_test_files: 8
+  selected_tests: 36
+  result: PASS
+production:
+  authorized: false
+  release_run: NOT_RUN
