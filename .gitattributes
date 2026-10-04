@@ -5,3 +5,5 @@
 *.service text eol=lf
 *.timer text eol=lf
 ops/nginx/* text eol=lf
+docs/00_CONSTITUTION.MD.md whitespace=-trailing-space
+"docs/AMS Data Hub Master Plan v1.md" whitespace=-trailing-space
