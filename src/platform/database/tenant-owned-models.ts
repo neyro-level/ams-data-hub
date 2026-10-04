@@ -23,6 +23,7 @@ export const TENANT_OWNED_MODELS = [
   "Source",
   "SourceCredentialRef",
   "SourceManualRunRequest",
+  "ListingDevelopmentLink",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];

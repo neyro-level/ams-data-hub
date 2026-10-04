@@ -129,6 +129,12 @@ enum ProjectEditorialEntityType {
   AGENT
 }
 
+enum ListingDevelopmentLinkStatus {
+  CANDIDATE
+  CONFIRMED
+  REJECTED
+}
+
 enum FactualLifecycleStatus {
   ACTIVE
   INACTIVE
@@ -372,6 +378,7 @@ model Project {
   sources                 Source[]
   sourceCredentialRefs    SourceCredentialRef[]
   sourceManualRunRequests SourceManualRunRequest[]
+  listingDevelopmentLinks ListingDevelopmentLink[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -925,11 +932,35 @@ model Development {
   aliases           DevelopmentAlias[]
   buildings         Building[]
   catalogSelections ProjectCatalogSubscriptionSelection[]
+  listingLinks      ListingDevelopmentLink[]
 
   @@unique([cityUid, normalizedName])
   @@index([developerUid, lifecycle])
   @@index([districtUid])
   @@index([mergedIntoUid])
+}
+
+model ListingDevelopmentLink {
+  id                  String                       @id @default(cuid())
+  organizationId      String
+  projectId           String
+  inventoryUid        String                       @db.VarChar(26)
+  developmentUid      String?                      @db.VarChar(26)
+  candidateReason     String                       @db.VarChar(500)
+  candidateConfidence Decimal?                     @db.Decimal(5, 4)
+  status              ListingDevelopmentLinkStatus @default(CANDIDATE)
+  confirmedBy         String?
+  confirmedAt         DateTime?                    @db.Timestamptz(3)
+  sourceRevisionId    String?                      @db.VarChar(128)
+  version             Int                          @default(1)
+  createdAt           DateTime                     @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                     @updatedAt @db.Timestamptz(3)
+  project             Project                      @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  development         Development?                 @relation(fields: [developmentUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, inventoryUid])
+  @@index([projectId, status])
+  @@index([developmentUid])
 }
 
 model DevelopmentAlias {
