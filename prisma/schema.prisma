@@ -93,12 +93,22 @@ enum ConstructionStatus {
   SUSPENDED
 }
 
+enum CatalogSubscriptionMode {
+  ALL_SHARED
+  CURATED
+}
+
+enum CatalogSelectionDecision {
+  INCLUDE
+  EXCLUDE
+}
+
 model User {
-  id                String             @id
+  id                String                  @id
   name              String
-  username          String?            @unique
-  email             String             @unique
-  emailVerified     Boolean            @default(false)
+  username          String?                 @unique
+  email             String                  @unique
+  emailVerified     Boolean                 @default(false)
   image             String?
   twoFactorEnabled  Boolean            @default(false)
   failedLoginCount  Int                @default(0)
@@ -149,45 +159,45 @@ model RateLimit {
 }
 
 model AccountSetupToken {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  expiresAt   DateTime @db.Timestamptz(3)
-  consumedAt  DateTime? @db.Timestamptz(3)
-  revokedAt   DateTime? @db.Timestamptz(3)
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId, expiresAt])
 }
 
 model PlatformRecoveryToken {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  expiresAt   DateTime @db.Timestamptz(3)
-  consumedAt  DateTime? @db.Timestamptz(3)
-  revokedAt   DateTime? @db.Timestamptz(3)
-  createdAt   DateTime @default(now())
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime  @db.Timestamptz(3)
+  consumedAt DateTime? @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId, expiresAt])
 }
 
 model Session {
-  id           String   @id
-  userId       String
-  token        String   @unique
-  expiresAt    DateTime
-  ipAddress    String?
-  userAgent    String?
-  activeTeamId String?
+  id                   String    @id
+  userId               String
+  token                String    @unique
+  expiresAt            DateTime
+  ipAddress            String?
+  userAgent            String?
+  activeTeamId         String?
   activeOrganizationId String?
-  twoFactorVerifiedAt DateTime?
-  setupCompletedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  twoFactorVerifiedAt  DateTime?
+  setupCompletedAt     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([userId])
   @@index([activeOrganizationId])
@@ -278,6 +288,7 @@ model Project {
   notifications  Notification[]
   members        ProjectMember[]
   publicUrlIdReservations PublicUrlIdReservation[]
+  catalogSubscription     ProjectCatalogSubscription?
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -300,6 +311,46 @@ model ProjectMember {
   @@unique([organizationId, projectId, userId])
   @@index([userId])
   @@index([organizationId, projectId])
+}
+
+model ProjectCatalogSubscription {
+  organizationId String
+  projectId      String
+  mode           CatalogSubscriptionMode
+  version        Int                                   @default(1)
+  createdAt      DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                              @updatedAt @db.Timestamptz(3)
+  project        Project                               @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  cities         ProjectCatalogSubscriptionCity[]
+  selections     ProjectCatalogSubscriptionSelection[]
+
+  @@id([organizationId, projectId])
+  @@index([projectId])
+}
+
+model ProjectCatalogSubscriptionCity {
+  organizationId String
+  projectId      String
+  cityUid        String                     @db.VarChar(26)
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  subscription   ProjectCatalogSubscription @relation(fields: [organizationId, projectId], references: [organizationId, projectId], onDelete: Cascade, onUpdate: Cascade)
+  city           City                       @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([organizationId, projectId, cityUid])
+  @@index([cityUid])
+}
+
+model ProjectCatalogSubscriptionSelection {
+  organizationId String
+  projectId      String
+  developmentUid String                     @db.VarChar(26)
+  decision       CatalogSelectionDecision
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  subscription   ProjectCatalogSubscription @relation(fields: [organizationId, projectId], references: [organizationId, projectId], onDelete: Cascade, onUpdate: Cascade)
+  development    Development                @relation(fields: [developmentUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([organizationId, projectId, developmentUid])
+  @@index([developmentUid, decision])
 }
 
 model Notification {
@@ -493,17 +544,18 @@ model RegionAlias {
 }
 
 model City {
-  uid            String                 @id @db.VarChar(26)
-  regionUid      String                 @db.VarChar(26)
-  name           String                 @db.VarChar(160)
-  normalizedName String                 @db.VarChar(160)
-  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
-  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
-  region         Region                 @relation(fields: [regionUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
-  aliases        CityAlias[]
-  districts      District[]
-  developments   Development[]
+  uid                  String                           @id @db.VarChar(26)
+  regionUid            String                           @db.VarChar(26)
+  name                 String                           @db.VarChar(160)
+  normalizedName       String                           @db.VarChar(160)
+  lifecycle            CatalogLifecycleStatus           @default(ACTIVE)
+  createdAt            DateTime                         @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                         @updatedAt @db.Timestamptz(3)
+  region               Region                           @relation(fields: [regionUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  aliases              CityAlias[]
+  districts            District[]
+  developments         Development[]
+  catalogSubscriptions ProjectCatalogSubscriptionCity[]
 
   @@unique([regionUid, normalizedName])
   @@index([lifecycle, normalizedName])
@@ -575,24 +627,25 @@ model DeveloperAlias {
 }
 
 model Development {
-  uid            String                 @id @db.VarChar(26)
-  developerUid   String                 @db.VarChar(26)
-  cityUid        String                 @db.VarChar(26)
-  districtUid    String?                @db.VarChar(26)
-  name           String                 @db.VarChar(200)
-  normalizedName String                 @db.VarChar(200)
-  lifecycle      CatalogLifecycleStatus @default(ACTIVE)
-  version        Int                    @default(1)
-  mergedIntoUid  String?                @db.VarChar(26)
-  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
-  developer      Developer              @relation(fields: [developerUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
-  city           City                   @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
-  district       District?              @relation(fields: [cityUid, districtUid], references: [cityUid, uid], onDelete: Restrict, onUpdate: Cascade)
-  mergedInto     Development?           @relation("DevelopmentMerge", fields: [mergedIntoUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
-  mergedFrom     Development[]          @relation("DevelopmentMerge")
-  aliases        DevelopmentAlias[]
-  buildings      Building[]
+  uid               String                                @id @db.VarChar(26)
+  developerUid      String                                @db.VarChar(26)
+  cityUid           String                                @db.VarChar(26)
+  districtUid       String?                               @db.VarChar(26)
+  name              String                                @db.VarChar(200)
+  normalizedName    String                                @db.VarChar(200)
+  lifecycle         CatalogLifecycleStatus                @default(ACTIVE)
+  version           Int                                   @default(1)
+  mergedIntoUid     String?                               @db.VarChar(26)
+  createdAt         DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                              @updatedAt @db.Timestamptz(3)
+  developer         Developer                             @relation(fields: [developerUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  city              City                                  @relation(fields: [cityUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  district          District?                             @relation(fields: [cityUid, districtUid], references: [cityUid, uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedInto        Development?                          @relation("DevelopmentMerge", fields: [mergedIntoUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)
+  mergedFrom        Development[]                         @relation("DevelopmentMerge")
+  aliases           DevelopmentAlias[]
+  buildings         Building[]
+  catalogSelections ProjectCatalogSubscriptionSelection[]
 
   @@unique([cityUid, normalizedName])
   @@index([developerUid, lifecycle])
@@ -601,7 +654,7 @@ model Development {
 }
 
 model DevelopmentAlias {
-  developmentUid String      @db.VarChar(26)
+  developmentUid  String      @db.VarChar(26)
   value           String      @db.VarChar(200)
   normalizedValue String      @db.VarChar(200)
   development     Development @relation(fields: [developmentUid], references: [uid], onDelete: Restrict, onUpdate: Cascade)

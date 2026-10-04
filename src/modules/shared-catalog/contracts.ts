@@ -113,6 +113,64 @@ export type CreateBuildingsBatchInput = z.infer<typeof createBuildingsBatchInput
 export type MergeSharedCatalogEntityInput = z.infer<typeof mergeSharedCatalogEntityInputSchema>;
 export type RelinkSharedCatalogEntityInput = z.infer<typeof relinkSharedCatalogEntityInputSchema>;
 
+const projectIdentifierSchema = z.string().trim().min(1).max(128);
+
+export const catalogSubscriptionSelectionSchema = z.object({
+  developmentUid: ulidSchema,
+  decision: z.enum(["INCLUDE", "EXCLUDE"]),
+}).strict();
+
+export const replaceProjectCatalogSubscriptionInputSchema = z.object({
+  organizationId: projectIdentifierSchema,
+  projectId: projectIdentifierSchema,
+  mode: z.enum(["ALL_SHARED", "CURATED"]),
+  version: z.number().int().nonnegative(),
+  cityUids: z.array(ulidSchema).max(100),
+  selections: z.array(catalogSubscriptionSelectionSchema).max(500),
+}).strict().superRefine((input, context) => {
+  if (new Set(input.cityUids).size !== input.cityUids.length) {
+    context.addIssue({ code: "custom", path: ["cityUids"], message: "Города не должны повторяться" });
+  }
+  const selectionUids = input.selections.map((selection) => selection.developmentUid);
+  if (new Set(selectionUids).size !== selectionUids.length) {
+    context.addIssue({ code: "custom", path: ["selections"], message: "ЖК не должны повторяться" });
+  }
+  if (input.mode === "ALL_SHARED" && input.cityUids.length === 0) {
+    context.addIssue({ code: "custom", path: ["cityUids"], message: "Выберите хотя бы один город" });
+  }
+  if (input.mode === "ALL_SHARED" && input.selections.length > 0) {
+    context.addIssue({ code: "custom", path: ["selections"], message: "Явный выбор ЖК доступен только в режиме CURATED" });
+  }
+  if (input.mode === "CURATED" && input.cityUids.length > 0) {
+    context.addIssue({ code: "custom", path: ["cityUids"], message: "Города используются только в режиме ALL_SHARED" });
+  }
+  if (input.mode === "CURATED" && !input.selections.some((selection) => selection.decision === "INCLUDE")) {
+    context.addIssue({ code: "custom", path: ["selections"], message: "Добавьте хотя бы один ЖК" });
+  }
+});
+
+export const projectCatalogSelectionQuerySchema = z.object({
+  organizationId: projectIdentifierSchema,
+  projectId: projectIdentifierSchema,
+}).strict();
+
+export type ReplaceProjectCatalogSubscriptionInput = z.infer<typeof replaceProjectCatalogSubscriptionInputSchema>;
+export type ProjectCatalogSelectionQuery = z.infer<typeof projectCatalogSelectionQuerySchema>;
+
+export interface ProjectCatalogSnapshotSelection {
+  organizationId: string;
+  projectId: string;
+  mode: "ALL_SHARED" | "CURATED";
+  version: number;
+  cityUids: string[];
+  developments: Array<{
+    uid: string;
+    developerUid: string;
+    cityUid: string;
+    buildingUids: string[];
+  }>;
+}
+
 export const catalogAdminQuerySchema = z.object({
   q: z.string().trim().max(160).default(""),
   lifecycle: z.enum(["ALL", "ACTIVE", "INACTIVE", "ARCHIVED"]).default("ALL"),

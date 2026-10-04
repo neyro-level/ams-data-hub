@@ -25,7 +25,7 @@ export function createDatabaseAuthorizationContext(
       return {
         principalKind: principal.kind,
         actorId: principal.userId,
-      organizationId: principal.organizationId,
+        organizationId: principal.organizationId,
         projectIds: principal.projectIds,
         correlationId: principal.correlationId,
       };
@@ -33,7 +33,7 @@ export function createDatabaseAuthorizationContext(
       return {
         principalKind: principal.kind,
         actorId: principal.userId,
-      organizationId: null,
+        organizationId: null,
         projectIds: "*",
         correlationId: principal.correlationId,
       };
@@ -41,7 +41,7 @@ export function createDatabaseAuthorizationContext(
       return {
         principalKind: principal.kind,
         actorId: principal.apiClientId,
-      organizationId: principal.organizationId,
+        organizationId: principal.organizationId,
         projectIds: principal.projectIds,
         correlationId: principal.correlationId,
       };
@@ -126,6 +126,17 @@ export async function runInPrincipalDatabaseTransaction<TResult>(
 ): Promise<TResult> {
   return runInAuthorizedDatabaseTransaction(
     createDatabaseAuthorizationContext(principal),
+    execute,
+  );
+}
+
+export async function runInProjectPrincipalDatabaseTransaction<TResult>(
+  principal: PrincipalContext,
+  projectId: string,
+  execute: (transaction: DatabaseTransaction) => Promise<TResult>,
+): Promise<TResult> {
+  return runInAuthorizedDatabaseTransaction(
+    { ...createDatabaseAuthorizationContext(principal), projectId },
     execute,
   );
 }
