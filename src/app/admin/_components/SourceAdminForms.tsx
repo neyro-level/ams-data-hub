@@ -77,7 +77,7 @@ function SourceFields({ form, projects, edit }: {
       </FormField>
       <FormField error={form.formState.errors.adapterKey?.message} label="Adapter key" required><TextInput placeholder="yrl-realty-2010" {...form.register("adapterKey")} /></FormField>
       <FormField error={form.formState.errors.adapterVersion?.message} label="Adapter version" required><TextInput placeholder="1.0.0" {...form.register("adapterVersion")} /></FormField>
-      <FormField error={form.formState.errors.profileKey?.message} label="Profile key" required><TextInput placeholder="neutral-v1" {...form.register("profileKey")} /></FormField>
+      <FormField error={form.formState.errors.profileKey?.message} label="Profile key" required><TextInput placeholder="default-v1" {...form.register("profileKey")} /></FormField>
       <FormField error={form.formState.errors.profileVersion?.message} label="Profile version" required><TextInput placeholder="1.0.0" {...form.register("profileVersion")} /></FormField>
       <FormField error={form.formState.errors.datasetType?.message} label="Dataset" required><SelectInput options={datasetOptions} {...form.register("datasetType")} /></FormField>
       <FormField error={form.formState.errors.scheduleMode?.message} label="Запуск" required><SelectInput options={scheduleOptions} {...form.register("scheduleMode")} /></FormField>

@@ -36,7 +36,7 @@ describe("source registry", () => {
         endpointCredentialRef: secretRefName,
         adapterKey: "yrl-realty-2010",
         adapterVersion: "1.0.0",
-        profileKey: "neutral-v1",
+        profileKey: "default-v1",
         profileVersion: "1.0.0",
         datasetType: "MIXED_REALTY",
         transportType: "HTTPS_XML",
@@ -115,7 +115,7 @@ describe("source registry", () => {
     });
     const input = {
       ...setup, sourceKey: "guard-source", name: "Guard source", endpointCredentialRef: "SYNTHETIC_GUARD_ENDPOINT",
-      adapterKey: "neutral-adapter", adapterVersion: "1", profileKey: "neutral-profile", profileVersion: "1", datasetType: "RESALE" as const,
+      adapterKey: "guard-adapter", adapterVersion: "1", profileKey: "guard-profile", profileVersion: "1", datasetType: "RESALE" as const,
       transportType: "HTTPS_XML" as const, sharingPolicy: "PROJECT_ONLY" as const, schedulePolicy: { mode: "MANUAL_ONLY" as const }, safetyPolicyId: "", expectedNamespace: "", expectedProducer: "",
     };
     const created = await sourceRegistryCommands.createSource(principal, input);
