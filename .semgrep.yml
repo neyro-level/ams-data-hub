@@ -61,5 +61,6 @@ rules:
       include:
         - /src/modules/ingestion-core/**
     pattern-either:
-      - pattern-regex: '\b(projectId|clientSlug)\b\s*(?::|===|!==|==|!=|=)\s*["''][^"'']+["'']'
+      - pattern-regex: '\b(projectId|clientSlug)\b\s*(?:===|!==|==|!=)\s*["''][^"'']+["'']'
       - pattern-regex: '["''][^"'']+["'']\s*(?:===?|!==?)\s*(?:[A-Za-z_$][\w$]*\.)*(projectId|clientSlug)\b'
+      - pattern-regex: '\b(?:const|let|var)\s+(?:projectId|clientSlug)\s*=\s*["''][^"'']+["'']'
