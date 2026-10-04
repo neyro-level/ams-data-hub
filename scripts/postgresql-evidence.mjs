@@ -69,6 +69,7 @@ export const postgresqlEvidenceManifest = Object.freeze({
       suites: [
         "tests/integration/project-public-contact.integration.test.ts",
         "tests/integration/project-editorial.integration.test.ts",
+        "tests/integration/project-url-registry.integration.test.ts",
       ],
       scenarios: [
         "public fallback contacts are project-scoped and tenant reads cannot cross project context",
@@ -76,6 +77,8 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "the public mapping returns only the explicitly approved contact fields",
         "project editorial mapping excludes raw HTML, private notes and foreign-project state",
         "feed media order remains authoritative unless the source policy explicitly permits a current-version override",
+        "published slug changes preserve publicUrlId and create immutable project-scoped 301 history",
+        "gone paths become immutable tombstones and URL lifecycle transitions require registered redirect targets",
       ],
     },
   },

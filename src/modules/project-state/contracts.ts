@@ -93,3 +93,96 @@ export const projectEditorialPublicDtoSchema = z.object({
   mediaOrder: mediaOrderSchema,
   isImageOrderChangeAllowed: z.boolean(),
 }).strict();
+
+export const projectUrlPathSchema = z.string().trim().min(1).max(1024).refine(
+  (value) => value.startsWith("/") && !value.includes("//") && !/[?#\\\\]/u.test(value),
+  "Укажите абсолютный путь без query, hash, backslash и двойных slash",
+);
+export const projectUrlSlugSchema = z.string().trim().min(1).max(200).refine(
+  (value) => !/[/?#\\\\]/u.test(value),
+  "Slug должен быть одним безопасным сегментом пути",
+);
+export const factualLifecycleStatusSchema = z.enum(["ACTIVE", "INACTIVE", "ARCHIVED", "DEPARTED"]);
+export const presentationLifecycleStatusSchema = z.enum(["VISIBLE", "ARCHIVED_VISIBLE", "REDIRECTED", "GONE"]);
+export const projectRedirectReasonSchema = z.enum(["SLUG_CHANGE", "RELINK", "RETIRE", "LIFECYCLE", "MANUAL"]);
+
+export const replaceProjectUrlPolicyInputSchema = projectPublicContactQuerySchema.extend({
+  version: z.number().int().nonnegative(),
+  policyKey: identifierSchema,
+  pathTemplates: z.array(z.object({
+    entityType: projectEditorialEntityTypeSchema,
+    template: z.string().trim().min(1).max(512),
+  }).strict()).min(1).max(20).refine(
+    (items) => new Set(items.map((item) => item.entityType)).size === items.length,
+    "Для типа сущности допустим один шаблон",
+  ),
+  reservedNamespaces: z.array(projectUrlSlugSchema).max(100).default([]).refine(
+    (items) => new Set(items).size === items.length,
+    "Зарезервированные namespace не должны повторяться",
+  ),
+}).strict();
+
+export const projectUrlEntryKeySchema = projectPublicContactQuerySchema.extend({
+  urlEntryId: identifierSchema,
+}).strict();
+
+export const createProjectUrlEntryInputSchema = projectEditorialKeySchema.extend({
+  slug: projectUrlSlugSchema,
+  canonicalPath: projectUrlPathSchema,
+}).strict();
+
+export const publishProjectUrlEntryInputSchema = projectUrlEntryKeySchema.extend({
+  version: z.number().int().positive(),
+}).strict();
+
+export const changeProjectUrlPathInputSchema = publishProjectUrlEntryInputSchema.extend({
+  slug: projectUrlSlugSchema,
+  canonicalPath: projectUrlPathSchema,
+}).strict();
+
+export const relinkProjectUrlEntryInputSchema = publishProjectUrlEntryInputSchema.extend({
+  entityType: projectEditorialEntityTypeSchema,
+  entityUid: ulidSchema,
+}).strict();
+
+export const transitionProjectUrlLifecycleInputSchema = publishProjectUrlEntryInputSchema.extend({
+  factualLifecycle: factualLifecycleStatusSchema,
+  presentationLifecycle: presentationLifecycleStatusSchema,
+  redirectTargetPath: projectUrlPathSchema.nullable().default(null),
+  reason: projectRedirectReasonSchema,
+}).strict().superRefine((value, context) => {
+  if ((value.presentationLifecycle === "REDIRECTED") !== (value.redirectTargetPath !== null)) {
+    context.addIssue({ code: "custom", path: ["redirectTargetPath"], message: "REDIRECTED требует целевой путь; другие состояния запрещают его" });
+  }
+});
+
+export type ReplaceProjectUrlPolicyInput = z.infer<typeof replaceProjectUrlPolicyInputSchema>;
+export type CreateProjectUrlEntryInput = z.infer<typeof createProjectUrlEntryInputSchema>;
+export type ProjectUrlEntryKey = z.infer<typeof projectUrlEntryKeySchema>;
+export type PublishProjectUrlEntryInput = z.infer<typeof publishProjectUrlEntryInputSchema>;
+export type ChangeProjectUrlPathInput = z.infer<typeof changeProjectUrlPathInputSchema>;
+export type RelinkProjectUrlEntryInput = z.infer<typeof relinkProjectUrlEntryInputSchema>;
+export type TransitionProjectUrlLifecycleInput = z.infer<typeof transitionProjectUrlLifecycleInputSchema>;
+
+export interface ProjectUrlEntryDto {
+  urlEntryId: string;
+  entityType: z.infer<typeof projectEditorialEntityTypeSchema>;
+  entityUid: string;
+  publicUrlId: string;
+  slug: string;
+  canonicalPath: string;
+  factualLifecycle: z.infer<typeof factualLifecycleStatusSchema>;
+  presentationLifecycle: z.infer<typeof presentationLifecycleStatusSchema>;
+  redirectTargetPath: string | null;
+  version: number;
+  publishedAt: Date | null;
+  retiredAt: Date | null;
+}
+
+export interface ProjectRedirectDto {
+  fromPath: string;
+  toPath: string;
+  code: 301;
+  reason: z.infer<typeof projectRedirectReasonSchema>;
+  createdAt: Date;
+}

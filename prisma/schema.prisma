@@ -129,6 +129,28 @@ enum ProjectEditorialEntityType {
   AGENT
 }
 
+enum FactualLifecycleStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DEPARTED
+}
+
+enum PresentationLifecycleStatus {
+  VISIBLE
+  ARCHIVED_VISIBLE
+  REDIRECTED
+  GONE
+}
+
+enum ProjectRedirectReason {
+  SLUG_CHANGE
+  RELINK
+  RETIRE
+  LIFECYCLE
+  MANUAL
+}
+
 model User {
   id                String                  @id
   name              String
@@ -318,6 +340,10 @@ model Project {
   publicContact           ProjectPublicContact?
   entityEditorial         EntityEditorial[]
   entityMediaOrderPolicy  EntityMediaOrderPolicy[]
+  urlPolicy               ProjectUrlPolicy?
+  urlEntries              ProjectUrlEntry[]
+  redirects               ProjectRedirect[]
+  urlTombstones           ProjectUrlTombstone[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -393,6 +419,82 @@ model EntityMediaOrderPolicy {
 
   @@id([organizationId, projectId, entityType, entityUid])
   @@index([projectId, entityType])
+}
+
+model ProjectUrlPolicy {
+  organizationId     String
+  projectId          String
+  policyKey          String   @db.VarChar(128)
+  pathTemplates      Json
+  reservedNamespaces String[] @default([])
+  version            Int      @default(1)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+  project            Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId])
+  @@index([projectId])
+}
+
+model ProjectUrlEntry {
+  id                    String                      @id @default(cuid())
+  organizationId        String
+  projectId             String
+  entityType            ProjectEditorialEntityType
+  entityUid             String                      @db.VarChar(26)
+  reservationId         String                      @unique
+  slug                  String                      @db.VarChar(200)
+  canonicalPath         String                      @db.VarChar(1024)
+  factualLifecycle      FactualLifecycleStatus      @default(ACTIVE)
+  presentationLifecycle PresentationLifecycleStatus @default(VISIBLE)
+  redirectTargetPath    String?                     @db.VarChar(1024)
+  version               Int                         @default(1)
+  publishedAt           DateTime?                   @db.Timestamptz(3)
+  retiredAt             DateTime?                   @db.Timestamptz(3)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                    @updatedAt @db.Timestamptz(3)
+  project               Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  reservation           PublicUrlIdReservation      @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  redirects             ProjectRedirect[]
+
+  @@unique([organizationId, projectId, entityType, entityUid])
+  @@unique([projectId, canonicalPath])
+  @@index([projectId, presentationLifecycle])
+}
+
+model ProjectRedirect {
+  id             String                @id @default(cuid())
+  organizationId String
+  projectId      String
+  urlEntryId     String
+  fromPath       String                @db.VarChar(1024)
+  toPath         String                @db.VarChar(1024)
+  code           Int                   @default(301)
+  reason         ProjectRedirectReason
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  project        Project               @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  urlEntry       ProjectUrlEntry       @relation(fields: [urlEntryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, fromPath])
+  @@index([projectId, createdAt])
+  @@index([urlEntryId, createdAt])
+}
+
+model ProjectUrlTombstone {
+  id             String                      @id @default(cuid())
+  organizationId String
+  projectId      String
+  reservationId  String
+  entityType     ProjectEditorialEntityType
+  entityUid      String                      @db.VarChar(26)
+  canonicalPath  String                      @db.VarChar(1024)
+  reason         ProjectRedirectReason
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
+  project        Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  reservation    PublicUrlIdReservation      @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, canonicalPath])
+  @@index([reservationId])
 }
 
 model ProjectCatalogSubscription {
@@ -594,6 +696,8 @@ model PublicUrlIdReservation {
   publicUrlId    String   @db.VarChar(16)
   reservedAt     DateTime @default(now()) @db.Timestamptz(3)
   project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+  urlEntry       ProjectUrlEntry?
+  urlTombstones  ProjectUrlTombstone[]
 
   @@unique([organizationId, projectId, subjectType, subjectUid])
   @@unique([projectId, publicUrlId])

@@ -16,6 +16,10 @@ export const TENANT_OWNED_MODELS = [
   "ProjectPublicContact",
   "EntityEditorial",
   "EntityMediaOrderPolicy",
+  "ProjectUrlPolicy",
+  "ProjectUrlEntry",
+  "ProjectRedirect",
+  "ProjectUrlTombstone",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];
