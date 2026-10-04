@@ -137,3 +137,37 @@ export interface PublicCoordinates {
   latitude: number;
   longitude: number;
 }
+
+export const deliveryRunStatusSchema = z.enum([
+  "PENDING",
+  "NOTIFIED",
+  "DOWNLOADED",
+  "APPLIED",
+  "ACKNOWLEDGED",
+  "FAILED",
+  "STALE",
+]);
+export type DeliveryRunStatus = z.infer<typeof deliveryRunStatusSchema>;
+
+export interface CurrentSnapshotManifest {
+  organizationId: string;
+  projectId: string;
+  publishSequence: number;
+  manifestKey: string;
+  manifestSha256: string;
+  publishedAt: Date;
+}
+
+export interface DeliveryRun extends CurrentSnapshotManifest {
+  deliveryRunId: string;
+  status: DeliveryRunStatus;
+  notifiedAt: Date | null;
+  downloadedAt: Date | null;
+  appliedAt: Date | null;
+  acknowledgedAt: Date | null;
+  failedAt: Date | null;
+  staleAt: Date | null;
+  safeErrorCode: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
