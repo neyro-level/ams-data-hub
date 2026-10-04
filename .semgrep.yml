@@ -52,3 +52,14 @@ rules:
     patterns:
       - pattern-regex: '(?i)(secret|password|passwd|token|api[_-]?key|private[_-]?key)\\s*[:=]\\s*["''][^"'']{12,}["'']'
       - pattern-not-regex: '(?i)(example|placeholder|test-only|not-for-production|process\\.env|field|schema|message|name)'
+
+  - id: ams.ingestion-core-client-hardcode
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Ingestion core must select behavior through adapter/profile descriptors, not client-specific identifiers.
+    paths:
+      include:
+        - /src/modules/ingestion-core/**
+    pattern-either:
+      - pattern-regex: '\b(projectId|clientSlug)\b\s*(?::|===|!==|==|!=|=)\s*["''][^"'']+["'']'
+      - pattern-regex: '["''][^"'']+["'']\s*(?:===?|!==?)\s*(?:[A-Za-z_$][\w$]*\.)*(projectId|clientSlug)\b'

@@ -63,6 +63,9 @@ function mapError(error: unknown) {
     SOURCE_REGISTRY_NOT_FOUND: "Источник не найден.",
     SOURCE_REGISTRY_STALE: "Источник уже изменён. Обновите страницу.",
     SOURCE_REGISTRY_CONFLICT: "Источник с таким ключом уже существует.",
+    SOURCE_REGISTRY_ADAPTER_UNKNOWN: "Выбранный адаптер или его версия не зарегистрированы.",
+    SOURCE_REGISTRY_PROFILE_UNKNOWN: "Выбранный профиль или его версия не зарегистрированы.",
+    SOURCE_REGISTRY_PROFILE_INCOMPATIBLE: "Профиль несовместим с адаптером, транспортом или типом данных.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
   };
