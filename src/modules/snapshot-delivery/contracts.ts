@@ -93,6 +93,36 @@ export interface SnapshotComposition {
   files: readonly SnapshotFileArtifact[];
 }
 
+export interface SnapshotSigner {
+  readonly keyId: string;
+  sign(payload: Uint8Array): Promise<Uint8Array>;
+}
+
+export interface SnapshotTrustSet {
+  currentKeyId: string;
+  nextKeyId: string | null;
+  publicKeys: Readonly<Record<string, string>>;
+  revokedKeyIds: readonly string[];
+}
+
+export interface SnapshotAcceptanceState {
+  projectId: string;
+  schemaMajor: number;
+  publishSequence: number;
+}
+
+export type SnapshotVerificationRejection =
+  | "UNKNOWN_KEY_ID"
+  | "REVOKED_KEY_ID"
+  | "INVALID_SIGNATURE"
+  | "PROJECT_MISMATCH"
+  | "SCHEMA_MAJOR_UNSUPPORTED"
+  | "STALE_PUBLISH_SEQUENCE";
+
+export type SnapshotVerificationResult =
+  | { accepted: true; nextState: SnapshotAcceptanceState }
+  | { accepted: false; reason: SnapshotVerificationRejection; nextState: SnapshotAcceptanceState | null };
+
 export type PublicLocationPrecision = "EXACT" | "STREET" | "DISTRICT";
 
 export interface PublicCoordinatesInput {
