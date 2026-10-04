@@ -11,6 +11,20 @@ export {
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { isSourceEligibleForAutomaticRun } from "./domain/source-schedule.ts";
 export {
+  normalizeArea,
+  normalizeCadastralNumber,
+  normalizeDescription,
+  normalizeHeight,
+  normalizePhone,
+  normalizeTimestamp,
+  sparseValue,
+  toPublicInventoryDto,
+  type CadastralNormalizationResult,
+  type PhoneNormalizationResult,
+  type TimestampNormalizationResult,
+  type UnitNormalizationResult,
+} from "./domain/canonical-inventory.ts";
+export {
   DEFAULT_YRL_PARSER_LIMITS,
   parseYrl2010,
   YrlParserError,
