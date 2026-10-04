@@ -20,6 +20,9 @@ export const TENANT_OWNED_MODELS = [
   "ProjectUrlEntry",
   "ProjectRedirect",
   "ProjectUrlTombstone",
+  "Source",
+  "SourceCredentialRef",
+  "SourceManualRunRequest",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];

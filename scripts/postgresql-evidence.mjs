@@ -81,10 +81,18 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "gone paths become immutable tombstones and URL lifecycle transitions require registered redirect targets",
       ],
     },
+    DH06: {
+      suites: ["tests/integration/source-registry.integration.test.ts"],
+      scenarios: [
+        "source lifecycle is project-scoped and stores a SecretRef name rather than an endpoint value",
+        "manual run requests are authorized and idempotent while disabled sources remain ineligible for automatic scheduling",
+        "tenant principals cannot read or mutate source configuration or credential references",
+      ],
+    },
   },
 });
 
-const requiredContracts = ["E02", "E03", "E04", "E05", "DH03", "DH04"];
+const requiredContracts = ["E02", "E03", "E04", "E05", "DH03", "DH04", "DH06"];
 const forbiddenEvidenceKeys = /(database|dsn|host|password|payload|token|url|user(name)?)/i;
 
 export function requiredPostgresqlEvidenceSuites(manifest = postgresqlEvidenceManifest) {

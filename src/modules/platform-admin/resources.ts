@@ -3,6 +3,7 @@ export const PLATFORM_ADMIN_RESOURCE_KEYS = [
   "memberships",
   "projects",
   "catalog",
+  "sources",
   "operations",
 ] as const;
 
@@ -39,6 +40,12 @@ export const PLATFORM_ADMIN_RESOURCES: readonly PlatformAdminResourceDefinition[
     label: "Каталог",
     description: "Общий каталог застройщиков, жилых комплексов и корпусов.",
     href: "/admin/catalog/",
+  },
+  {
+    key: "sources",
+    label: "Источники",
+    description: "Project-scoped источники данных, версии адаптеров и безопасные ссылки на credentials.",
+    href: "/admin/sources/",
   },
   {
     key: "operations",

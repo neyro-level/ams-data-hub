@@ -3,6 +3,7 @@ import { PlatformOperationsAdminError } from "../../../modules/platform-operatio
 import { ProjectRegistryError } from "../../../modules/project-registry/index.ts";
 import { SharedCatalogError } from "../../../modules/shared-catalog/server.ts";
 import { ProjectStateError } from "../../../modules/project-state/server.ts";
+import { SourceRegistryError } from "../../../modules/ingestion-core/server.ts";
 import { defineAction } from "../../../platform/actions/define-action.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 
@@ -17,6 +18,8 @@ function mapError(error: unknown) {
           : error instanceof SharedCatalogError
           ? error.code
           : error instanceof ProjectStateError
+            ? error.code
+          : error instanceof SourceRegistryError
             ? error.code
           : "PLATFORM_ADMIN_ACTION_FAILED";
 
@@ -55,6 +58,11 @@ function mapError(error: unknown) {
     PROJECT_URL_PATH_RESERVED: "Этот namespace зарезервирован политикой сайта.",
     PROJECT_URL_PATH_CONFLICT: "Этот URL уже занят или сохранён в истории.",
     PROJECT_URL_REDIRECT_TARGET_INVALID: "Цель редиректа должна быть другой активной записью проекта.",
+    SOURCE_REGISTRY_ADMIN_ACCESS_DENIED: "Недостаточно прав для управления источниками.",
+    SOURCE_REGISTRY_REFERENCE_INVALID: "Проект или связанная запись источника недоступны.",
+    SOURCE_REGISTRY_NOT_FOUND: "Источник не найден.",
+    SOURCE_REGISTRY_STALE: "Источник уже изменён. Обновите страницу.",
+    SOURCE_REGISTRY_CONFLICT: "Источник с таким ключом уже существует.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
   };

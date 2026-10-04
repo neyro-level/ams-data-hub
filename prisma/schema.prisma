@@ -151,6 +151,31 @@ enum ProjectRedirectReason {
   MANUAL
 }
 
+enum SourceDatasetType {
+  MIXED_REALTY
+  RESALE
+  NEW_BUILD
+  HOUSE
+  LAND
+  COMMERCIAL
+  AGENT
+}
+
+enum SourceTransportType {
+  HTTPS_XML
+}
+
+enum SourceSharingPolicy {
+  PROJECT_ONLY
+}
+
+enum SourceManualRunStatus {
+  REQUESTED
+  CLAIMED
+  COMPLETED
+  FAILED
+}
+
 model User {
   id                String                  @id
   name              String
@@ -344,6 +369,9 @@ model Project {
   urlEntries              ProjectUrlEntry[]
   redirects               ProjectRedirect[]
   urlTombstones           ProjectUrlTombstone[]
+  sources                 Source[]
+  sourceCredentialRefs    SourceCredentialRef[]
+  sourceManualRunRequests SourceManualRunRequest[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -495,6 +523,71 @@ model ProjectUrlTombstone {
 
   @@unique([organizationId, projectId, canonicalPath])
   @@index([reservationId])
+}
+
+model Source {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  projectId            String
+  sourceKey            String               @db.VarChar(128)
+  name                 String               @db.VarChar(200)
+  adapterKey           String               @db.VarChar(128)
+  adapterVersion       String               @db.VarChar(64)
+  profileKey           String               @db.VarChar(128)
+  profileVersion       String               @db.VarChar(64)
+  datasetType          SourceDatasetType
+  transportType        SourceTransportType  @default(HTTPS_XML)
+  sharingPolicy        SourceSharingPolicy  @default(PROJECT_ONLY)
+  schedulePolicy       Json
+  safetyPolicyId       String?
+  enabled              Boolean              @default(false)
+  lastAttemptAt        DateTime?             @db.Timestamptz(3)
+  lastSuccessAt        DateTime?             @db.Timestamptz(3)
+  lastGoodRevisionId   String?
+  expectedNamespace    String?               @db.VarChar(500)
+  expectedProducer     String?               @db.VarChar(300)
+  version              Int                  @default(1)
+  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
+  project              Project              @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  credentialRef        SourceCredentialRef?
+  manualRunRequests    SourceManualRunRequest[]
+
+  @@unique([organizationId, projectId, id])
+  @@unique([organizationId, projectId, sourceKey])
+  @@index([projectId, enabled])
+}
+
+model SourceCredentialRef {
+  id                        String   @id @default(cuid())
+  organizationId            String
+  projectId                 String
+  sourceId                  String   @unique
+  endpointCredentialRefName String   @db.VarChar(128)
+  createdAt                 DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime @updatedAt @db.Timestamptz(3)
+  project                   Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source                    Source   @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@unique([organizationId, projectId, sourceId])
+}
+
+model SourceManualRunRequest {
+  id             String                @id @default(cuid())
+  organizationId String
+  projectId      String
+  sourceId       String
+  idempotencyKey String                @db.VarChar(128)
+  requestedBy    String
+  status         SourceManualRunStatus @default(REQUESTED)
+  createdAt      DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @db.Timestamptz(3)
+  project        Project               @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source         Source                @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([sourceId, idempotencyKey])
+  @@index([projectId, status, createdAt])
 }
 
 model ProjectCatalogSubscription {
