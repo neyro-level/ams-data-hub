@@ -186,3 +186,125 @@ export interface ProjectRedirectDto {
   reason: z.infer<typeof projectRedirectReasonSchema>;
   createdAt: Date;
 }
+
+export const agentRoleSchema = z.enum(["AGENT", "LAWYER", "MORTGAGE_BROKER", "MANAGER", "OTHER"]);
+export const agentOriginSchema = z.enum(["FEED", "MANUAL"]);
+export const agentStatusSchema = z.enum(["ACTIVE", "HIDDEN", "DEPARTED"]);
+export const agentListingPresenceStatusSchema = z.enum(["HAS_ACTIVE_LISTINGS", "NO_ACTIVE_LISTINGS", "UNKNOWN"]);
+const agentSlugSchema = z.string().trim().min(1).max(200).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Используйте латиницу, цифры и дефис");
+const agentSpecializationsSchema = z.array(z.string().trim().min(1).max(120)).max(20).refine(
+  (items) => new Set(items.map((item) => item.toLocaleLowerCase("ru-RU"))).size === items.length,
+  "Специализации не должны повторяться",
+);
+const agentMessengersSchema = z.array(z.url({ protocol: /^https?$/ })).max(10);
+
+export const saveManualAgentInputSchema = projectPublicContactQuerySchema.extend({
+  agentUid: ulidSchema.optional(),
+  version: z.number().int().nonnegative(),
+  origin: agentOriginSchema.default("MANUAL"),
+  slug: agentSlugSchema,
+  role: agentRoleSchema,
+  fullName: z.string().trim().min(2).max(240),
+  position: optionalText(240),
+  bio: plainEditorialText(4000).default(""),
+  specializations: agentSpecializationsSchema.default([]),
+  photoMediaId: identifierSchema.nullable().default(null),
+  workPhone: optionalText(40),
+  workEmail: z.union([z.literal(""), z.email()]).default(""),
+  messengers: agentMessengersSchema.default([]),
+  showOnSite: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).max(100000).default(0),
+  status: agentStatusSchema.default("ACTIVE"),
+  listingPresenceStatus: agentListingPresenceStatusSchema.default("UNKNOWN"),
+}).strict();
+
+export const mergeAgentsInputSchema = projectPublicContactQuerySchema.extend({
+  sourceAgentUid: ulidSchema,
+  sourceVersion: z.number().int().positive(),
+  targetAgentUid: ulidSchema,
+  targetVersion: z.number().int().positive(),
+}).strict().refine((value) => value.sourceAgentUid !== value.targetAgentUid, {
+  message: "Нельзя объединить агента с самим собой",
+  path: ["targetAgentUid"],
+});
+
+export const relinkAgentIdentityInputSchema = projectPublicContactQuerySchema.extend({
+  externalIdentityId: identifierSchema,
+  sourceAgentUid: ulidSchema,
+  targetAgentUid: ulidSchema,
+  targetVersion: z.number().int().positive(),
+}).strict().refine((value) => value.sourceAgentUid !== value.targetAgentUid, {
+  message: "Выберите другого агента",
+  path: ["targetAgentUid"],
+});
+
+export const splitAgentIdentityInputSchema = projectPublicContactQuerySchema.extend({
+  externalIdentityId: identifierSchema,
+  sourceAgentUid: ulidSchema,
+  sourceVersion: z.number().int().positive(),
+  newAgentSlug: agentSlugSchema,
+  newAgentFullName: z.string().trim().min(2).max(240),
+}).strict();
+
+export const bulkAgentVisibilityInputSchema = projectPublicContactQuerySchema.extend({
+  agentUids: z.array(ulidSchema).min(1).max(1000).refine((items) => new Set(items).size === items.length, "Агенты не должны повторяться"),
+  showOnSite: z.boolean(),
+}).strict();
+
+export const confirmAgentConsentBatchInputSchema = projectPublicContactQuerySchema.extend({
+  agentUids: z.array(ulidSchema).min(1).max(1000).refine((items) => new Set(items).size === items.length, "Агенты не должны повторяться"),
+  confirmedBy: z.string().trim().min(2).max(240),
+  confirmedAt: z.iso.datetime({ offset: true }),
+  basis: z.string().trim().min(1).max(1000),
+  referenceUrl: z.union([z.literal(""), z.url({ protocol: /^https?$/ })]).default(""),
+  note: plainEditorialText(2000).default(""),
+  confirmSuspicious: z.boolean().default(false),
+}).strict();
+
+export type SaveManualAgentInput = z.infer<typeof saveManualAgentInputSchema>;
+export type MergeAgentsInput = z.infer<typeof mergeAgentsInputSchema>;
+export type RelinkAgentIdentityInput = z.infer<typeof relinkAgentIdentityInputSchema>;
+export type SplitAgentIdentityInput = z.infer<typeof splitAgentIdentityInputSchema>;
+export type BulkAgentVisibilityInput = z.infer<typeof bulkAgentVisibilityInputSchema>;
+export type ConfirmAgentConsentBatchInput = z.infer<typeof confirmAgentConsentBatchInputSchema>;
+
+export interface AgentAdminItem {
+  uid: string;
+  organizationId: string;
+  projectId: string;
+  slug: string;
+  role: z.infer<typeof agentRoleSchema>;
+  origin: z.infer<typeof agentOriginSchema>;
+  fullName: string;
+  position: string | null;
+  bio: string | null;
+  specializations: string[];
+  photoMediaId: string | null;
+  workPhone: string | null;
+  workEmail: string | null;
+  messengers: string[];
+  showOnSite: boolean;
+  sortOrder: number;
+  status: z.infer<typeof agentStatusSchema>;
+  listingPresenceStatus: z.infer<typeof agentListingPresenceStatusSchema>;
+  consentConfirmedBy: string | null;
+  consentConfirmedAt: Date | null;
+  consentBasis: string | null;
+  consentBatchId: string | null;
+  isPubliclyPublishable: boolean;
+  version: number;
+}
+
+export interface AgentMediaOption {
+  id: string;
+  projectId: string;
+  originalFileName: string;
+}
+
+export type AgentBulkMutationResult =
+  | { state: "APPLIED"; affected: number; total: number }
+  | { state: "SUSPICIOUS"; affected: number; total: number; thresholdPercent: 30 };
+
+export type AgentConsentBatchResult =
+  | { state: "APPLIED"; affected: number; total: number; batchId: string }
+  | { state: "SUSPICIOUS"; affected: number; total: number; thresholdPercent: 30 };

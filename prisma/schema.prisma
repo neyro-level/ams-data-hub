@@ -182,6 +182,43 @@ enum SourceManualRunStatus {
   FAILED
 }
 
+enum AgentRole {
+  AGENT
+  LAWYER
+  MORTGAGE_BROKER
+  MANAGER
+  OTHER
+}
+
+enum AgentOrigin {
+  FEED
+  MANUAL
+}
+
+enum AgentStatus {
+  ACTIVE
+  HIDDEN
+  DEPARTED
+}
+
+enum AgentListingPresenceStatus {
+  HAS_ACTIVE_LISTINGS
+  NO_ACTIVE_LISTINGS
+  UNKNOWN
+}
+
+enum AgentMatchReviewStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+enum AgentMergeEventType {
+  MERGE
+  RELINK
+  SPLIT
+}
+
 model User {
   id                String                  @id
   name              String
@@ -380,6 +417,11 @@ model Project {
   sources                 Source[]
   sourceCredentialRefs    SourceCredentialRef[]
   sourceManualRunRequests SourceManualRunRequest[]
+  agents                  Agent[]
+  agentExternalIdentities AgentExternalIdentity[]
+  agentMatchReviews       AgentMatchReview[]
+  agentMergeEvents        AgentMergeEvent[]
+  agentConsentBatches     AgentConsentBatch[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -404,6 +446,129 @@ model ProjectMember {
   @@index([organizationId, projectId])
 }
 
+model Agent {
+  id                    String                     @id @default(cuid())
+  uid                   String                     @unique @db.VarChar(26)
+  organizationId        String
+  projectId             String
+  slug                  String                     @db.VarChar(200)
+  role                  AgentRole                  @default(AGENT)
+  origin                AgentOrigin                @default(MANUAL)
+  fullName              String                     @db.VarChar(240)
+  position              String?                    @db.VarChar(240)
+  bio                   String?                    @db.VarChar(4000)
+  specializations       String[]                   @default([])
+  photoMediaId          String?
+  feedPhotoMediaId      String?
+  workPhone             String?                    @db.VarChar(40)
+  workEmail             String?                    @db.VarChar(320)
+  messengers            Json                       @default("[]")
+  showOnSite            Boolean                    @default(false)
+  sortOrder             Int                        @default(0)
+  status                AgentStatus                @default(ACTIVE)
+  listingPresenceStatus AgentListingPresenceStatus @default(UNKNOWN)
+  consentConfirmedBy    String?
+  consentConfirmedAt    DateTime?                  @db.Timestamptz(3)
+  consentBasis          String?                    @db.VarChar(1000)
+  consentBatchId        String?
+  version               Int                        @default(1)
+  createdAt             DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
+  project               Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  externalIdentities    AgentExternalIdentity[]
+  consentBatch          AgentConsentBatch?         @relation(fields: [organizationId, projectId, consentBatchId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, uid])
+  @@unique([projectId, slug])
+  @@index([projectId, status, sortOrder])
+  @@index([projectId, listingPresenceStatus])
+  @@index([organizationId, projectId, consentBatchId])
+}
+
+model AgentConsentBatch {
+  id             String   @id @db.VarChar(26)
+  organizationId String
+  projectId      String
+  confirmedBy    String   @db.VarChar(240)
+  confirmedAt    DateTime @db.Timestamptz(3)
+  basis          String?  @db.VarChar(1000)
+  referenceUrl   String?  @db.VarChar(2048)
+  note           String?  @db.VarChar(2000)
+  actorId        String
+  correlationId  String
+  agentCount     Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  agents         Agent[]
+
+  @@unique([organizationId, projectId, id])
+  @@index([projectId, createdAt])
+}
+
+model AgentExternalIdentity {
+  id                String   @id @default(cuid())
+  organizationId    String
+  projectId         String
+  agentUid          String   @db.VarChar(26)
+  sourceId          String   @db.VarChar(128)
+  externalId        String?  @db.VarChar(255)
+  phoneNorm         String?  @db.VarChar(40)
+  emailNorm         String?  @db.VarChar(320)
+  sharedOfficePhone Boolean  @default(false)
+  firstSeenAt       DateTime @db.Timestamptz(3)
+  lastSeenAt        DateTime @db.Timestamptz(3)
+  version           Int      @default(1)
+  agent             Agent    @relation(fields: [organizationId, projectId, agentUid], references: [organizationId, projectId, uid], onDelete: Restrict, onUpdate: Cascade)
+  project           Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([projectId, sourceId, externalId])
+  @@index([projectId, phoneNorm])
+  @@index([projectId, emailNorm])
+  @@index([agentUid])
+}
+
+model AgentMatchReview {
+  id                 String                 @id @default(cuid())
+  organizationId     String
+  projectId          String
+  sourceId           String                 @db.VarChar(128)
+  candidateAgentUid  String?                @db.VarChar(26)
+  proposedAgentUid   String?                @db.VarChar(26)
+  normalizedFullName String                 @db.VarChar(240)
+  phoneNorm          String?                @db.VarChar(40)
+  emailNorm          String?                @db.VarChar(320)
+  reason             String                 @db.VarChar(500)
+  status             AgentMatchReviewStatus @default(PENDING)
+  resolvedBy         String?
+  resolvedAt         DateTime?              @db.Timestamptz(3)
+  version            Int                    @default(1)
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+  project            Project                @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, status, createdAt])
+  @@index([candidateAgentUid])
+}
+
+model AgentMergeEvent {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  projectId          String
+  type               AgentMergeEventType
+  sourceAgentUid     String              @db.VarChar(26)
+  targetAgentUid     String              @db.VarChar(26)
+  externalIdentityId String?
+  actorId            String
+  correlationId      String
+  detail             Json
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  project            Project             @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([sourceAgentUid])
+  @@index([targetAgentUid])
+}
+
 model ProjectPublicContact {
   organizationId String
   projectId      String
@@ -422,36 +587,36 @@ model ProjectPublicContact {
 }
 
 model EntityEditorial {
-  organizationId    String
-  projectId         String
-  entityType        ProjectEditorialEntityType
-  entityUid         String                     @db.VarChar(26)
-  shortDescription  String?                    @db.VarChar(500)
-  description       String?                    @db.VarChar(4000)
-  faq               Json
-  presentationNotes String?                    @db.VarChar(2000)
-  mediaOrder         String[]                   @default([])
+  organizationId          String
+  projectId               String
+  entityType              ProjectEditorialEntityType
+  entityUid               String                     @db.VarChar(26)
+  shortDescription        String?                    @db.VarChar(500)
+  description             String?                    @db.VarChar(4000)
+  faq                     Json
+  presentationNotes       String?                    @db.VarChar(2000)
+  mediaOrder              String[]                   @default([])
   mediaOrderPolicyVersion Int?
-  version            Int                        @default(1)
-  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime                   @updatedAt @db.Timestamptz(3)
-  project            Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  version                 Int                        @default(1)
+  createdAt               DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                   @updatedAt @db.Timestamptz(3)
+  project                 Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([organizationId, projectId, entityType, entityUid])
   @@index([projectId, entityType])
 }
 
 model EntityMediaOrderPolicy {
-  organizationId           String
-  projectId                String
-  entityType               ProjectEditorialEntityType
-  entityUid                String                     @db.VarChar(26)
-  sourceMediaOrder         String[]                   @default([])
+  organizationId            String
+  projectId                 String
+  entityType                ProjectEditorialEntityType
+  entityUid                 String                     @db.VarChar(26)
+  sourceMediaOrder          String[]                   @default([])
   isImageOrderChangeAllowed Boolean                    @default(false)
-  version                  Int                        @default(1)
-  createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime                   @updatedAt @db.Timestamptz(3)
-  project                  Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  version                   Int                        @default(1)
+  createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
+  project                   Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([organizationId, projectId, entityType, entityUid])
   @@index([projectId, entityType])
@@ -517,17 +682,17 @@ model ProjectRedirect {
 }
 
 model ProjectUrlTombstone {
-  id             String                      @id @default(cuid())
+  id             String                     @id @default(cuid())
   organizationId String
   projectId      String
   reservationId  String
   entityType     ProjectEditorialEntityType
-  entityUid      String                      @db.VarChar(26)
-  canonicalPath  String                      @db.VarChar(1024)
+  entityUid      String                     @db.VarChar(26)
+  canonicalPath  String                     @db.VarChar(1024)
   reason         ProjectRedirectReason
-  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
-  project        Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
-  reservation    PublicUrlIdReservation      @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  project        Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  reservation    PublicUrlIdReservation     @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([organizationId, projectId, canonicalPath])
   @@index([reservationId])
@@ -802,16 +967,16 @@ model MediaAsset {
   id               String           @id @default(cuid())
   organizationId   String
   projectId        String
-  sha256            String           @db.Char(64)
-  storageKey        String
-  contentType       String           @db.VarChar(127)
-  byteSize          Int
+  sha256           String           @db.Char(64)
+  storageKey       String
+  contentType      String           @db.VarChar(127)
+  byteSize         Int
   originalFileName String           @db.VarChar(255)
-  rightsBasis       MediaRightsBasis
-  source            String           @db.VarChar(2048)
-  license           String?          @db.VarChar(255)
-  uploadedBy        String
-  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  rightsBasis      MediaRightsBasis
+  source           String           @db.VarChar(2048)
+  license          String?          @db.VarChar(255)
+  uploadedBy       String
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   project          Project          @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
 
@@ -821,14 +986,14 @@ model MediaAsset {
 }
 
 model PublicUrlIdReservation {
-  id             String   @id @default(cuid())
+  id             String                @id @default(cuid())
   organizationId String
   projectId      String
-  subjectType    String   @db.VarChar(64)
-  subjectUid     String   @db.VarChar(26)
-  publicUrlId    String   @db.VarChar(16)
-  reservedAt     DateTime @default(now()) @db.Timestamptz(3)
-  project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+  subjectType    String                @db.VarChar(64)
+  subjectUid     String                @db.VarChar(26)
+  publicUrlId    String                @db.VarChar(16)
+  reservedAt     DateTime              @default(now()) @db.Timestamptz(3)
+  project        Project               @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
   urlEntry       ProjectUrlEntry?
   urlTombstones  ProjectUrlTombstone[]
 

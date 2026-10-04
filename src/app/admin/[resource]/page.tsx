@@ -38,7 +38,7 @@ import {
   getProjectRegistryFormOptions,
   listProjects,
 } from "../../../modules/project-registry/server.ts";
-import { listProjectPublicContactsForAdmin } from "../../../modules/project-state/server.ts";
+import { listAgentsForAdmin, listProjectPublicContactsForAdmin } from "../../../modules/project-state/server.ts";
 import { parseCatalogAdminQuery } from "../../../modules/shared-catalog/contracts.ts";
 import { getCatalogAdminData } from "../../../modules/shared-catalog/server.ts";
 import { getSourceAdminData } from "../../../modules/ingestion-core/server.ts";
@@ -241,7 +241,11 @@ export default async function AdminResourcePageRoute({
       listProjects(state.principal, listQuery),
       getProjectRegistryFormOptions(state.principal),
     ]);
-    const contacts = await listProjectPublicContactsForAdmin(state.principal, result.items.map((item) => item.id));
+    const projectIds = result.items.map((item) => item.id);
+    const [contacts, agentData] = await Promise.all([
+      listProjectPublicContactsForAdmin(state.principal, projectIds),
+      listAgentsForAdmin(state.principal, projectIds),
+    ]);
     const rows: PlatformAdminDisplayRow[] = result.items.map((item) => ({
       id: item.id,
       primary: item.name,
@@ -258,7 +262,7 @@ export default async function AdminResourcePageRoute({
         <AdminResourceNav currentPath={currentPath} />
         <Filters query={query} resource={resource} />
         <PlatformAdminTable pageSize={result.pageSize} query={query} resource={resource} rows={rows} sortOptions={defaultSortOptions} total={result.total} />
-        <ProjectsAdminForms contacts={contacts} items={result.items} options={options} />
+        <ProjectsAdminForms agents={agentData.agents} contacts={contacts} items={result.items} media={agentData.media} options={options} />
       </div>
     );
   }

@@ -70,6 +70,7 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "tests/integration/project-public-contact.integration.test.ts",
         "tests/integration/project-editorial.integration.test.ts",
         "tests/integration/project-url-registry.integration.test.ts",
+        "tests/integration/agent-domain.integration.test.ts",
       ],
       scenarios: [
         "public fallback contacts are project-scoped and tenant reads cannot cross project context",
@@ -79,6 +80,8 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "feed media order remains authoritative unless the source policy explicitly permits a current-version override",
         "published slug changes preserve publicUrlId and create immutable project-scoped 301 history",
         "gone paths become immutable tombstones and URL lifecycle transitions require registered redirect targets",
+        "agent field ownership, project scope, audited manual operations and the greater-than-30-percent bulk guard are enforced",
+        "agent merge, relink and split operations are explicit, versioned and event-backed",
       ],
     },
     DH06: {

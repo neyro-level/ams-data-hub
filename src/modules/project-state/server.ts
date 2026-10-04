@@ -10,6 +10,9 @@ import { PrismaEntityEditorialRepository } from "./infrastructure/prisma-entity-
 import { createProjectUrlRegistryCommands } from "./application/project-url-registry-commands.ts";
 import { createProjectUrlRegistryQueries } from "./application/project-url-registry-queries.ts";
 import { PrismaProjectUrlRegistryRepository } from "./infrastructure/prisma-project-url-registry-repository.ts";
+import { createAgentCommands } from "./application/agent-commands.ts";
+import { createAgentQueries } from "./application/agent-queries.ts";
+import { PrismaAgentRepository } from "./infrastructure/prisma-agent-repository.ts";
 
 export const projectPublicContactCommands = createProjectPublicContactCommands({
   createRepository: (transaction) => new PrismaProjectPublicContactRepository(transaction),
@@ -25,6 +28,14 @@ export const projectUrlRegistryCommands = createProjectUrlRegistryCommands({
 
 export const { getProjectUrlRegistry } = createProjectUrlRegistryQueries({
   createRepository: (transaction) => new PrismaProjectUrlRegistryRepository(transaction),
+});
+
+export const agentCommands = createAgentCommands({
+  createRepository: (transaction) => new PrismaAgentRepository(transaction),
+});
+
+export const listAgentsForAdmin = createAgentQueries({
+  createRepository: (transaction) => new PrismaAgentRepository(transaction),
 });
 
 export { getProjectPublicContact, listProjectPublicContactsForAdmin, listProjectEditorialPublic, ProjectStateError };
