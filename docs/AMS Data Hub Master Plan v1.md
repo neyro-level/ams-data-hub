@@ -2,26 +2,33 @@
 
 ```text
 Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01
-Version: v1
+Version: v3
 Status: APPROVED
 Phase: APPROVAL_HANDOFF
 Baseline repository SHA: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
-Revision input: OWNER-2026-10-03-01 + FINAL-AUDIT-2026-10-03-01
+Revision input: OWNER-2026-10-04-SPEED-01 + FINAL-AUDIT-2026-10-04-V2
 Canonical working file: docs/AMS Data Hub Master Plan v1.md
 Architecture input: docs/00_CONSTITUTION.MD.md (v3.1.2 provided basis)
-Approved by: owner, explicit command «План утверждён», 2026-10-03
-Task Manager import: AUTHORIZED AFTER VALIDATE
-Developer handoff: AUTHORIZED AFTER CLEAN RECONCILE
+Previous approved snapshot: v1, owner, 2026-10-03
+Approved by: owner
+Approved at: 2026-10-04
+Task Manager import/upgrade: AUTHORIZED FOR COMPATIBLE v1 -> v3 UPGRADE
+Developer handoff: AUTHORIZED AFTER CLEAN UPGRADE AND RECONCILE
 Production: NOT AUTHORIZED
 ```
 
 > Architect guard: загруженная основа принята как `v0 DRAFT`, исправлена и
-> проверена как exact `v1`.
+> проверена как exact `v1`. После owner finding о скорости exact `v1` сохранена
+> в revision history; `v2 REVIEW` прошла финальный audit, а найденный upgrade
+> blocker устранён в exact `v3`.
 > Раздел «Стартовая инструкция для Codex» не разрешает реализацию, пока exact
 > version не прошла финальный audit, не получила статус
 > `READY_FOR_OWNER_APPROVAL` и владелец явно не сказал «План утверждён».
-> Exact `v1` прошла этот gate и утверждена; Beads остаётся единственным
-> execution state, а production требует отдельной release-команды.
+> Exact `v1` прошла этот gate и была утверждена. `v3` меняет только verification
+> cadence и delivery в `main`; владелец утвердил exact `v3` фразой «План
+> утверждён» 2026-10-04 и разрешил совместимый upgrade существующего
+> Beads-графа и передачу Task Manager Developer. Production по-прежнему требует
+> отдельной release-команды.
 
 **Текущий canonical working file:** `docs/AMS Data Hub Master Plan v1.md`; target
 после approved DH-00 mapping: `docs/04_IMPLEMENTATION_PLAN.md`
@@ -45,7 +52,7 @@ DH-00 mapping: `docs/00_CONSTITUTION.md` (v3.1.2, без смысловых из
 
 Эпики плана называются `DH-00…DH-10`. Номера `E00…E36` в скобках — ссылки на эпики конституции. Старые номера E00–E11 из hardening-плана стартера больше нигде не используются.
 
-### **0.3. Git-цикл эпика (один эпик \= один PR)**
+### **0.3. Git-цикл эпика v3 (один эпик \= один PR)**
 
 Подробности в навыках владельца и каноне SourceCraft. Codex перед стартом читает `AGENTS.md` и skills владельца по выводу в `main`. Кратко цикл выглядит так:
 
@@ -53,26 +60,26 @@ DH-00 mapping: `docs/00_CONSTITUTION.md` (v3.1.2, без смысловых из
    ветку/worktree от exact `origin/main`; не переключать ветку в чужом dirty
    worktree.
 2. Задачи эпика делать отдельными логическими checkpoint-коммитами
-   `dh-XX.N: <описание>` и после каждой закрытой задачи выполнять push.
+   `dh-XX.N: <описание>` и после каждой закрытой задачи выполнять push. До
+   checkpoint запускается только минимальный task-scope профиль из §0.5.
 3. После организационного завершения эпика открыть один Pull Request в
-   SourceCraft с `delivery_mode=PR_ONLY`. Создание PR не запускает tests,
-   review, build, CI или Merge Gate; проверить только source/target/head SHA.
-4. Пока PR ждёт решения владельца, Developer продолжает только независимую
-   ready work из матрицы §8. Зависимая работа ждёт merge/freeze point, а не
-   production release.
-5. Команда владельца на вывод PR в `main` запускает review полного exact diff,
-   risk-specific local proof и один manual exact-head `RISKY` SourceCraft Gate.
-   Только green gate разрешает merge.
-6. После merge обновить canonical `main`, записать merge SHA и evidence в
+   SourceCraft с `delivery_mode=MERGE_AFTER_GATE`. Создание PR не запускает
+   tests, review, build, CI или Merge Gate; проверить только
+   source/target/head SHA.
+4. Перед merge один раз проверить полный exact diff, выполнить минимальный
+   локальный preflight по затронутым рискам и один manual exact-head `RISKY`
+   SourceCraft Gate. Green gate разрешает автономный merge без нового вопроса
+   владельцу; один SHA не получает второй STANDARD/RISKY run.
+5. После merge обновить canonical `main`, записать merge SHA и evidence в
    `docs/DELIVERY_STATE.yaml`, затем удалить ветку безопасно (`git branch -d`)
    только если она действительно merged. Force delete не является default.
-7. Production не входит в Developer ready-loop. По отдельной явной команде
+6. Production не входит в Developer ready-loop. По отдельной явной команде
    владельца выполняется один exact-main release по `image@sha256` с live proof
    и rollback contract.
 
 Эпики являются границами PR, а не единицами блокировки всего графа. Внутри
 эпика проверки запускаются только по необходимости реализации; формальный
-proof концентрируется перед merge.
+full-diff proof и платный Gate выполняются один раз перед merge.
 
 ### **0.4. Общие правила для Codex**
 
@@ -82,6 +89,51 @@ proof концентрируется перед merge.
 * Каждая новая таблица классифицирована по RLS (§51 конституции), закрыта политикой и тестом изоляции.  
 * Публичные DTO строятся только через whitelist-маппер. Prisma-строки наружу не отдаются.  
 * Количества из фида Bastion — evidence, а не контракт.
+
+### **0.5. Минимальная матрица проверок v3**
+
+`task-scoped RISKY proof` означает доказательство конкретного acceptance и
+затронутого риска, а не автоматический запуск `pnpm verify:risky`, production
+build или полного PostgreSQL evidence после каждой задачи.
+
+| Изменение задачи | Минимум до commit/push | Что не запускается автоматически |
+| --- | --- | --- |
+| Docs/config без runtime-логики | профильный validator и `git diff --check` | unit suite, lint всего repo, build, DB |
+| Domain/TypeScript без schema/runtime boundary | профильный unit/contract test; typecheck только при изменении публичного TS-контракта | полный lint, build, integration |
+| UI/action/route | профильный тест изменённого сценария; browser proof только для нового/изменённого user flow | full E2E всех страниц, build |
+| Schema/migration/RLS | Prisma validate/generate, RLS coverage при изменении ownership и один профильный PostgreSQL integration test | полный clean/reverse evidence всех suites |
+| Secret/auth/outbound/security | профильный security/redaction/authorization test и secret scan только когда diff касается этих границ | полный security suite без связи с diff |
+| Worker/job/integration | один профильный job/integration test с synthetic data | production, real feed, полный release proof |
+
+SourceCraft `merge-risky` уже выполняет exact-head check, risk classification,
+secret scan, `verify:quick`, выбранные unit/integration tests и optional build.
+Локальный preflight перед ним не повторяет эти suites: он проверяет только
+merge/conflict-specific риск, корректность входных test paths и `git diff
+--check`. Уже закрытые задачи с валидным ledger повторно не проверяются.
+
+### **0.6. Одноразовая консолидация уже выполненной работы v3**
+
+После approval v3 выполнить совместимый `Upgrade` с теми же 82 managed IDs:
+повторно открыть существующую delivery task `adh-dh-00-delivery` и её parent
+DH-00, не добавляя новый task/epic ID. Эта task становится одноразовой
+consolidation delivery с `MERGE_AFTER_GATE`. DH-01 сохраняет исторический
+`PR_ONLY`; открытые DH-02…DH-09 получают `MERGE_AFTER_GATE`.
+
+В task-owned integration worktree от свежего `origin/main` собрать exact
+результат 26 закрытых implementation ledgers до `adh-dh-06-1` включительно и
+approved v3 plan checkpoint. Источник результата — проверенные task ranges
+`base_sha..head_sha`; merge/commit manifest обязан исключить ranges двух
+незакрытых tasks `adh-dh-02-1` и `adh-dh-03-6`. Если закрытый результат нельзя
+отделить от незакрытого без изменения его acceptance, task останавливается до
+явного исправления ledger/task state, а лишний код не попадает в candidate.
+
+Открытые PR `#4` и `#5` не сливать отдельно: они являются evidence/source для
+консолидации и после успешного общего merge закрываются как superseded. Для
+candidate выполнить один full-diff review, только conflict-specific local
+preflight и один manual exact-head `RISKY` SourceCraft Gate с выбранными
+relevant unit/integration inputs и `run_build=true`. После green gate выполнить
+merge в `main`, записать merge SHA и продолжать новые ветки только от этого
+`main`. Production и deploy не входят в консолидацию.
 
 ---
 
@@ -741,6 +793,47 @@ owner decision register, promise/evidence tiers and four-pass audit scorecard.
 **Not authorized:** release, production deployment, new secret creation,
 real PII/feed execution or merge to `main` without its separate owner command.
 
+#### **v2 — REVIEW — 2026-10-04**
+
+**Revision input ID:** `OWNER-2026-10-04-SPEED-01`.
+**Source:** owner review after 28 closed implementation/delivery tasks and two
+formally closed epics.
+**Finding:** Developer interpreted repeated `task-scoped RISKY proof` too
+broadly and repeatedly ran repository-wide lint/build/PostgreSQL evidence,
+although §0.3 v1 already concentrated formal proof before merge. `PR_ONLY`
+also left approved implementation outside `main`.
+**Accepted:** explicit minimal task verification matrix; no re-test of valid
+closed ledgers; one exact-head Gate per merge candidate; autonomous
+`MERGE_AFTER_GATE` epic delivery; one-time consolidation of all currently
+closed task commits into `main`.
+**Rejected:** removing acceptance proof, RLS isolation tests, secret/auth risk
+checks or the CRITICAL exact-head Merge Gate. These checks protect a named
+risk and are not the source of unnecessary repetition.
+**Task Manager:** v1 execution paused after `adh-dh-06-1` at
+`48ddb9fa7e1593b504665ab04df53f21077c8d1e`; v2 inventory upgrade/import was
+forbidden until final audit and explicit owner approval.
+**Sections changed:** header, §0.3, §0.5, §0.6, §7.4, §12 and §14.
+
+#### **v3 — APPROVED — 2026-10-04**
+
+**Revision input ID:** `FINAL-AUDIT-2026-10-04-V2`.
+**Source:** explicit owner command «Переходим к финальной проверке v2» and
+read-only audit of exact v2 at `db1514a6a0a65d16430b1ebd07be9f9bb6e62dd7`.
+**Resolved BLOCKER:** v2 proposed a new consolidation task, while safe Beads
+`Upgrade` requires identical managed IDs. v3 reuses and reopens stable task
+`adh-dh-00-delivery`; no node is added or removed.
+**Resolved MAJOR:** consolidation provenance now uses all 26 closed
+implementation ledgers and explicitly excludes ranges of in-progress
+`adh-dh-02-1` and `adh-dh-03-6`.
+**Resolved MAJOR:** local merge preflight no longer duplicates SourceCraft
+`merge-risky`, which already runs exact-head, secret, `verify:quick`, selected
+unit/integration and optional build proof.
+**Owner decision:** OD-10 accepted by the owner request to put completed work in
+`main` and speed up further execution. Exact v3 was approved by the owner with
+the phrase «План утверждён» on 2026-10-04; compatible Beads upgrade and
+Developer handoff are authorized, while production remains forbidden.
+**Sections changed:** header, §0.3, §0.5, §0.6, §7.4, §12, §14 and §15.
+
 ---
 
 ## **8. Dependency matrix и ready waves**
@@ -785,8 +878,10 @@ ready task; no task may bypass its specific HARD dependency.
 ## **9. Epic Contract matrix**
 
 Для всех implementation epics source of truth = Constitution v3.1.2 + relevant
-numbered canon + this exact plan. Delivery mode = `PR_ONLY`; merge/release не
-подразумеваются approval плана.
+numbered canon + this exact plan. В v3 DH-01 сохраняет исторический `PR_ONLY`,
+DH-00 используется для одноразовой consolidation delivery, а открытые
+DH-02…DH-09 получают `MERGE_AFTER_GATE`. Release/production не подразумеваются
+approval плана и требуют отдельной команды владельца.
 
 | Epic | Observable outcome / entry | Exit, acceptance and verification | Tier | Rollback / stop |
 | --- | --- | --- | --- | --- |
@@ -856,14 +951,15 @@ workaround.
 | OD-01 | Repository becomes product-owned AMS Data Hub | keep SourceCraft primary and GitHub one-way public mirror | before approval | DECIDED |
 | OD-02 | Platform Admin second factor | mandatory TOTP in production; false only local/test; retain break-glass | before approval | DECIDED by higher-priority security contract |
 | OD-03 | DH-10 completion boundary | exclude from v1; separate trigger and approved revision | before approval | DECIDED |
-| OD-04 | Merge mode | all v1 epics `PR_ONLY`; owner command required to review/gate/merge | before approval | DECIDED |
+| OD-04 | Merge mode v1 | all v1 epics `PR_ONLY`; owner command required to review/gate/merge | historical v1 | DECIDED |
 | OD-05 | Production release | never part of Developer graph; explicit owner release command | before approval | DECIDED |
 | OD-06 | OQ-01/02/08 commercial/legal terms | resolve before first commercial contract | later | OPEN, does not block safe implementation |
 | OD-07 | OQ-04/05 Bastion calibration | resolve before real dh-07 completion | later | OPEN with EXT-09 stop condition |
 | OD-08 | OQ-10 legal processing basis | resolve before any real PII task | later | OPEN with EXT-07 stop condition |
 | OD-09 | OQ-11 storage isolation method | choose from proven options during dh-02 ADR | later | OPEN with EXT-01 fallback/stop |
+| OD-10 | Merge mode v3 | reopen `adh-dh-00-delivery` for one consolidation merge, then epic `MERGE_AFTER_GATE`; no production | before v3 approval | DECIDED by owner speed/main request, 2026-10-04 |
 
-Before-approval owner decisions open: **0**.
+Before-v3-approval owner decisions open: **0**.
 
 ---
 
@@ -939,3 +1035,180 @@ Exact `v1` satisfies the Architect gate and is
 `READY_FOR_OWNER_APPROVAL`. This is not approval. Beads `Init/Import`, graph
 mutation and Developer goal remain forbidden until the owner says exactly
 «План утверждён» or «План утвержден».
+
+---
+
+## **14. Architect assembly — v2 speed and delivery correction**
+
+### **14.1. Revision triage**
+
+| Finding | Decision | Reason |
+| --- | --- | --- |
+| Repository-wide checks were repeated after individual tasks | ACCEPTED | v1 §0.3 already required checks only as needed and concentrated formal proof before merge; the inventory wording was too easy to over-interpret |
+| Keep only a minimal baseline while implementing | ACCEPTED | §0.5 now maps each risk class to the narrowest proof that can establish its acceptance |
+| Put already completed work into `main` | ACCEPTED | exact closed-task commits have ledgers and remote checkpoints; a single consolidated merge avoids six repeated gates |
+| Remove all checks | REJECTED | CRITICAL RLS/auth/schema/secret boundaries still need one relevant proof and one exact-head Merge Gate |
+| Merge existing divergent PRs directly and independently | REJECTED | DH-00/DH-01 and the cumulative DH-02→DH-06 branch have divergent ancestry; one clean integration candidate is safer and faster |
+
+### **14.2. Current authoritative state at v2 intake**
+
+- `main`: `6246a2fa26ed8aaae629f891d6c64d07c0f8a96f`.
+- Closed managed implementation/delivery tasks before v2 correction: 28 of 72
+  after completion of `adh-dh-06-1`.
+- Formally closed epics: DH-00 and DH-01; SourceCraft PR `#5` and `#4` are open,
+  target `main`, and were intentionally not merged under v1 `PR_ONLY`.
+- Latest cumulative implementation head excluding the divergent DH-01 stream:
+  `work/data-hub-dh-06@48ddb9fa7e1593b504665ab04df53f21077c8d1e`.
+- v1 reconciliation immediately after DH06.1 closure: `CLEAN`, coverage `10/10`,
+  managed nodes `82`, cycles `0`.
+
+### **14.3. Final audit findings on exact v2**
+
+1. `V2-AUD-01 BLOCKER`: adding a new consolidation task would change the set
+   of managed IDs, while supported Beads `Upgrade` requires an identical ID
+   set. Resolution in v3: reopen stable `adh-dh-00-delivery`; add no node.
+2. `V2-AUD-02 MAJOR`: “closed-task commits” did not define multi-commit ledger
+   ranges or exclude partial work already present in the cumulative branch.
+   Resolution in v3: use 26 implementation ledger ranges and explicitly
+   exclude `adh-dh-02-1` / `adh-dh-03-6`.
+3. `V2-AUD-03 MAJOR`: local preflight and SourceCraft Gate could still repeat
+   the same repository checks. Resolution in v3: local proof is only
+   conflict-specific; `merge-risky` is the sole full exact-head proof.
+4. `V2-AUD-04 QUESTION`: OD-10 was still marked open. Resolution in v3: the
+   owner’s explicit speed/main instruction records the decision; exact plan
+   approval remains a separate gate.
+
+### **14.4. Assembly status**
+
+Logic/completeness: revision is scoped to execution cadence and delivery; no
+product outcome is removed.
+Architecture/data/security: safeguards remain; only duplicate verification is
+removed.
+Dependency/autonomy: consolidation removes current divergent-baseline debt;
+future delivery no longer pauses for a second owner command.
+Executability/evidence: task proof is explicit and minimal; full-diff proof is
+concentrated once per merge candidate.
+
+Final audit of exact v2: **FAIL — 1 blocker, 2 major, 1 question**.
+All findings are resolved in exact v3 below.
+Night Run Readiness v2: **NOT_READY**.
+Task Manager upgrade: **NOT ALLOWED**.
+Developer handoff: **PAUSED**.
+
+---
+
+## **15. Final Architect Audit — exact v3**
+
+### **15.1. MASTER PLAN MAP**
+
+**Primary goal:** complete DH-00…DH-09 as a production-grade, tenant-isolated
+AMS Data Hub baseline and keep sites independent through signed snapshots.
+
+**Non-goals:** DH-10, production release, real feed/PII ingestion, new secrets
+and server mutation without their separate owner gates.
+
+**Major outcomes:** product-owned canon; auth/RLS; shared catalog; project
+state; signed snapshot/delivery; generic ingestion; Bastion proof; operations
+and exit bundle; pilot readiness.
+
+**Shared foundations:** Application Platform Core 3.4, PostgreSQL 18/RLS,
+SecretRef, safe outbound, outbox/pg-boss, SourceCraft manual gates and immutable
+release artifacts.
+
+**Current execution correction:** one v3 baseline consolidation to `main`, then
+targeted task proof and automatic `MERGE_AFTER_GATE` epic delivery. Product,
+data, security and production boundaries are unchanged.
+
+### **15.2. Finding register**
+
+| ID | Severity | Finding | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| V3-001 | BLOCKER | New consolidation ID was incompatible with supported Upgrade | Reuse/reopen `adh-dh-00-delivery`; managed IDs remain 82 | RESOLVED |
+| V3-002 | MAJOR | Consolidation provenance could include partial in-progress work | 26 valid closed implementation ledgers define ranges; `adh-dh-02-1` and `adh-dh-03-6` ranges are excluded | RESOLVED |
+| V3-003 | MAJOR | Local preflight could duplicate the paid Gate | Local proof is conflict-specific; SourceCraft `merge-risky` owns full exact-head proof | RESOLVED |
+| V3-004 | QUESTION | Merge-mode owner decision was open | OD-10 recorded from explicit speed/main instruction | RESOLVED |
+| V3-005 | ALREADY_COVERED | Faster work must not weaken RLS/auth/secret evidence | §0.5 retains one relevant risk proof and exact-head Gate | RESOLVED |
+
+Open blocker findings: **0**. Open major findings: **0**.
+
+### **15.3. Pass 1 — Logic / Completeness**
+
+The correction changes only cadence and delivery. All DH-00…DH-09 outcomes,
+acceptance, rollback and stops remain mapped. Closed v1 evidence is reused
+rather than repeated. Consolidation has an observable outcome: one reviewed
+canonical `main` containing only completed task results and approved plan state.
+
+Result: `PASS`, blockers 0, major 0.
+
+### **15.4. Pass 2 — Architecture / Data / Security**
+
+Application profile remains `multi-tenant / outbox-plus-queue / pii /
+own-saas / platform-admin enabled`. RLS, capability checks, SecretRef,
+redaction, safe outbound, migrations and synthetic-only boundaries are not
+relaxed. SourceCraft `merge-risky` still performs exact-head, secret,
+`verify:quick`, selected unit/integration and optional build proof. No release,
+production DB, server or real feed action enters the graph.
+
+Result: `PASS`, blockers 0, major 0.
+
+### **15.5. Pass 3 — Dependencies / Autonomy**
+
+The v1 DAG remains cycle-free because v3 adds/removes no managed ID and changes
+no dependency edge. Upgrade reopens only `adh-dh-00-delivery`; its existing
+DH-00 prerequisites are closed, so it becomes immediately ready and reopens
+only parent DH-00. DH-01 remains historical `PR_ONLY`; DH-00 and open
+DH-02…DH-09 use `MERGE_AFTER_GATE`.
+
+Critical path becomes: v3 approval → dry-run Upgrade → consolidation merge →
+resume W1–W5. If an ordinary conflict appears, it is resolved inside the
+consolidation task and proven by the same candidate Gate. If resolution would
+change a closed task’s acceptance or require an architecture decision, the
+task stops and independent safe ready work remains available.
+
+Result: `PASS`, cycles 0, unknown HARD dependencies 0.
+
+### **15.6. Pass 4 — Executability / Evidence / Delivery**
+
+After approval the inventory keeps exactly 10 epics, 72 tasks and 82 managed
+IDs. Upgrade preflight uses `FromPlanVersion=v1`, reopens only
+`adh-dh-00-delivery`, and must PASS dry-run before mutation. Open/in-progress
+task cards receive §0.5 minimal checks; closed task cards and ledgers remain
+historical evidence. Consolidation produces a PR, exact head, one Gate run,
+merge SHA, superseded PR records and `DELIVERY_STATE.yaml` pointer.
+
+Result: `PASS`, ambiguous definitions of done 0.
+
+### **15.7. Audit scorecard**
+
+```text
+Logic/completeness: blockers=0; major=0
+Architecture/data/security: blockers=0; major=0
+Dependency/autonomy: cycles=0; managed IDs unchanged=82; edges unchanged
+Executability/evidence: epic acceptance=10/10; verification=10/10
+Closed implementation ledgers inspected=26/26 valid
+Owner decisions before approval open=0
+Unknown critical prerequisites=0
+Production actions in implementation graph=0
+```
+
+### **15.8. NIGHT RUN READINESS**
+
+```text
+Independent ready waves after consolidation: W1-W5
+Critical path: consolidation → remaining contracts/tasks → pilot readiness
+Single external point: one manual SourceCraft RISKY Gate per merge candidate
+Fallback: record/release a locally blocked task and continue independent ready work
+Production-only stops: release, production DB/server, real feed/PII, new secret
+Result: READY_WITH_LIMITS
+```
+
+The limits are intentional: paid SourceCraft Gate availability and later
+real-data/legal prerequisites cannot be removed safely. They no longer cause
+repeated local full-suite runs or an owner stop before every epic merge.
+
+### **15.9. Readiness verdict**
+
+Exact `v3` satisfies the Architect gate and is
+`READY_FOR_OWNER_APPROVAL`. This is not approval. Inventory generation,
+Beads Upgrade, consolidation merge and Developer handoff remain forbidden until
+the owner says exactly «План утверждён» or «План утвержден».
