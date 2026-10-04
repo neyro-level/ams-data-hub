@@ -79,7 +79,7 @@ export function getAuth() {
         },
         plugins: [
           twoFactor({
-            issuer: "AMS Data Hub",
+            issuer: productIdentity.appName,
             accountLockout: {
               enabled: true,
               maxFailedAttempts: 10,

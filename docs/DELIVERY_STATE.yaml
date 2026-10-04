@@ -29,6 +29,9 @@ local_preflight:
   prisma_validate: PASS
   typecheck: PASS
   rls_coverage: PASS
+  config_guards: PASS
+  lint: PASS
+  architecture_check: PASS
   selected_test_files: 9
   selected_tests: 39
   result: PASS

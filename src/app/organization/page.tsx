@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentOrganizationSelection } from "../../modules/identity-access/server.ts";
 import { Button } from "../../components/ui/button.tsx";
+import { productIdentity } from "../../platform/config/product-identity.ts";
 import { selectOrganizationAction } from "./actions.ts";
 
 export const metadata: Metadata = {
@@ -17,7 +18,7 @@ export default async function OrganizationSelectionPage() {
   return (
     <main className="theme-app grid min-h-screen place-items-center bg-[var(--background)] px-4 py-10 text-app-foreground">
       <section className="w-full max-w-xl rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm sm:p-8">
-        <p className="text-sm font-semibold text-app-primary">AMS Data Hub</p>
+        <p className="text-sm font-semibold text-app-primary">{productIdentity.appName}</p>
         <h1 className="mt-2 text-2xl font-semibold">Выберите организацию</h1>
         <p className="mt-2 text-sm text-app-secondary">
           У вашей учётной записи несколько рабочих областей. Выбор сохранится для текущей сессии.
