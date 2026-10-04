@@ -16,3 +16,16 @@ export const { listSourcesForAdmin, getSourceAdminData } = createSourceRegistryQ
 
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { adapterProfileRegistry } from "./domain/adapter-profile-registry.ts";
+export {
+  normalizedContentHash,
+  runIndependentSourceImports,
+  runSourceImport,
+  type GoodRevisionReceipt,
+  type ImportPipelineDependencies,
+  type ImportPipelineStage,
+  type MutationPlan,
+  type RawArtifactReceipt,
+  type SourceImportResult,
+  type SourceImportTarget,
+  type StagingReceipt,
+} from "./application/import-pipeline.ts";
