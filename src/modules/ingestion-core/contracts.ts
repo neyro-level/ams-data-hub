@@ -61,6 +61,8 @@ export const requestManualSourceRunInputSchema = sourceKeySchema.extend({
 }).strict();
 
 export type SourceSchedulePolicy = z.infer<typeof sourceSchedulePolicySchema>;
+export type SourceDatasetType = z.infer<typeof sourceDatasetTypeSchema>;
+export type SourceTransportType = "HTTPS_XML";
 export type SourceScope = z.infer<typeof sourceScopeSchema>;
 export type SourceKey = z.infer<typeof sourceKeySchema>;
 export type CreateSourceInput = z.infer<typeof createSourceInputSchema>;
