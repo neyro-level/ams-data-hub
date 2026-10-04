@@ -4,9 +4,16 @@ import { createProjectPublicContactCommands } from "./application/project-public
 import { getProjectPublicContact, listProjectPublicContactsForAdmin } from "./application/project-public-contact-queries.ts";
 import { ProjectStateError } from "./domain/project-state-error.ts";
 import { PrismaProjectPublicContactRepository } from "./infrastructure/prisma-project-public-contact-repository.ts";
+import { createEntityEditorialCommands } from "./application/entity-editorial-commands.ts";
+import { listProjectEditorialPublic } from "./application/entity-editorial-queries.ts";
+import { PrismaEntityEditorialRepository } from "./infrastructure/prisma-entity-editorial-repository.ts";
 
 export const projectPublicContactCommands = createProjectPublicContactCommands({
   createRepository: (transaction) => new PrismaProjectPublicContactRepository(transaction),
 });
 
-export { getProjectPublicContact, listProjectPublicContactsForAdmin, ProjectStateError };
+export const entityEditorialCommands = createEntityEditorialCommands({
+  createRepository: (transaction) => new PrismaEntityEditorialRepository(transaction),
+});
+
+export { getProjectPublicContact, listProjectPublicContactsForAdmin, listProjectEditorialPublic, ProjectStateError };

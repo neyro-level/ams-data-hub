@@ -121,6 +121,14 @@ enum CatalogProvenanceSource {
   MANUAL_ADMIN
 }
 
+enum ProjectEditorialEntityType {
+  DEVELOPER
+  DEVELOPMENT
+  BUILDING
+  INVENTORY
+  AGENT
+}
+
 model User {
   id                String                  @id
   name              String
@@ -308,6 +316,8 @@ model Project {
   publicUrlIdReservations PublicUrlIdReservation[]
   catalogSubscription     ProjectCatalogSubscription?
   publicContact           ProjectPublicContact?
+  entityEditorial         EntityEditorial[]
+  entityMediaOrderPolicy  EntityMediaOrderPolicy[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -347,6 +357,42 @@ model ProjectPublicContact {
 
   @@id([organizationId, projectId])
   @@index([projectId])
+}
+
+model EntityEditorial {
+  organizationId    String
+  projectId         String
+  entityType        ProjectEditorialEntityType
+  entityUid         String                     @db.VarChar(26)
+  shortDescription  String?                    @db.VarChar(500)
+  description       String?                    @db.VarChar(4000)
+  faq               Json
+  presentationNotes String?                    @db.VarChar(2000)
+  mediaOrder         String[]                   @default([])
+  mediaOrderPolicyVersion Int?
+  version            Int                        @default(1)
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                   @updatedAt @db.Timestamptz(3)
+  project            Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId, entityType, entityUid])
+  @@index([projectId, entityType])
+}
+
+model EntityMediaOrderPolicy {
+  organizationId           String
+  projectId                String
+  entityType               ProjectEditorialEntityType
+  entityUid                String                     @db.VarChar(26)
+  sourceMediaOrder         String[]                   @default([])
+  isImageOrderChangeAllowed Boolean                    @default(false)
+  version                  Int                        @default(1)
+  createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                   @updatedAt @db.Timestamptz(3)
+  project                  Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId, entityType, entityUid])
+  @@index([projectId, entityType])
 }
 
 model ProjectCatalogSubscription {

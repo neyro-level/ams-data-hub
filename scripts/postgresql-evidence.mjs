@@ -68,11 +68,14 @@ export const postgresqlEvidenceManifest = Object.freeze({
     DH04: {
       suites: [
         "tests/integration/project-public-contact.integration.test.ts",
+        "tests/integration/project-editorial.integration.test.ts",
       ],
       scenarios: [
         "public fallback contacts are project-scoped and tenant reads cannot cross project context",
         "contact writes are platform-admin-only, optimistic and audited without contact values",
         "the public mapping returns only the explicitly approved contact fields",
+        "project editorial mapping excludes raw HTML, private notes and foreign-project state",
+        "feed media order remains authoritative unless the source policy explicitly permits a current-version override",
       ],
     },
   },

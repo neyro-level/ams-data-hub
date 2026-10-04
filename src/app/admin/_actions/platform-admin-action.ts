@@ -43,6 +43,10 @@ function mapError(error: unknown) {
     PROJECT_STATE_ADMIN_ACCESS_DENIED: "Недостаточно прав для изменения данных проекта.",
     PROJECT_PUBLIC_CONTACT_REFERENCE_INVALID: "Проект для публичного контакта недоступен.",
     PROJECT_PUBLIC_CONTACT_STALE: "Публичный контакт уже изменён. Обновите страницу.",
+    PROJECT_EDITORIAL_REFERENCE_INVALID: "Проект для редакционных данных недоступен.",
+    PROJECT_EDITORIAL_STALE: "Редакционные данные уже изменены. Обновите страницу.",
+    PROJECT_EDITORIAL_MEDIA_ORDER_LOCKED: "Источник запретил менять порядок изображений.",
+    PROJECT_EDITORIAL_MEDIA_ORDER_INVALID: "Порядок должен содержать тот же набор изображений, что и источник.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
   };
