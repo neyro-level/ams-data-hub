@@ -28,7 +28,11 @@ function run(relativePath, args = []) {
     stdio: "inherit",
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.status !== 0) {
+    throw Object.assign(new Error(`E2E lifecycle command failed: ${relativePath}`), {
+      exitCode: result.status ?? 1,
+    });
+  }
 }
 
 let cleanupStarted = false;

@@ -65,10 +65,20 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "every manual catalog mutation records immutable versions and field provenance",
       ],
     },
+    DH04: {
+      suites: [
+        "tests/integration/project-public-contact.integration.test.ts",
+      ],
+      scenarios: [
+        "public fallback contacts are project-scoped and tenant reads cannot cross project context",
+        "contact writes are platform-admin-only, optimistic and audited without contact values",
+        "the public mapping returns only the explicitly approved contact fields",
+      ],
+    },
   },
 });
 
-const requiredContracts = ["E02", "E03", "E04", "E05", "DH03"];
+const requiredContracts = ["E02", "E03", "E04", "E05", "DH03", "DH04"];
 const forbiddenEvidenceKeys = /(database|dsn|host|password|payload|token|url|user(name)?)/i;
 
 export function requiredPostgresqlEvidenceSuites(manifest = postgresqlEvidenceManifest) {

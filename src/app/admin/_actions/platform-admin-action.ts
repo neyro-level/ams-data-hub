@@ -2,6 +2,7 @@ import { IdentityAdminError } from "../../../modules/identity-access/contracts.t
 import { PlatformOperationsAdminError } from "../../../modules/platform-operations/contracts.ts";
 import { ProjectRegistryError } from "../../../modules/project-registry/index.ts";
 import { SharedCatalogError } from "../../../modules/shared-catalog/server.ts";
+import { ProjectStateError } from "../../../modules/project-state/server.ts";
 import { defineAction } from "../../../platform/actions/define-action.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 
@@ -14,6 +15,8 @@ function mapError(error: unknown) {
         : error instanceof ProjectRegistryError
           ? error.code
           : error instanceof SharedCatalogError
+          ? error.code
+          : error instanceof ProjectStateError
             ? error.code
           : "PLATFORM_ADMIN_ACTION_FAILED";
 
@@ -37,6 +40,9 @@ function mapError(error: unknown) {
     SHARED_CATALOG_NOT_FOUND_OR_STALE: "Запись уже изменена. Обновите страницу и повторите действие.",
     SHARED_CATALOG_CONFLICT: "Запись с таким названием или алиасом уже существует.",
     SHARED_CATALOG_REFERENCE_INVALID: "Выбранная связанная запись недоступна.",
+    PROJECT_STATE_ADMIN_ACCESS_DENIED: "Недостаточно прав для изменения данных проекта.",
+    PROJECT_PUBLIC_CONTACT_REFERENCE_INVALID: "Проект для публичного контакта недоступен.",
+    PROJECT_PUBLIC_CONTACT_STALE: "Публичный контакт уже изменён. Обновите страницу.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
   };

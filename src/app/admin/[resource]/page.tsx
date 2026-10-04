@@ -38,6 +38,7 @@ import {
   getProjectRegistryFormOptions,
   listProjects,
 } from "../../../modules/project-registry/server.ts";
+import { listProjectPublicContactsForAdmin } from "../../../modules/project-state/server.ts";
 import { parseCatalogAdminQuery } from "../../../modules/shared-catalog/contracts.ts";
 import { getCatalogAdminData } from "../../../modules/shared-catalog/server.ts";
 import { AdminResourceNav } from "../_components/AdminResourceNav.tsx";
@@ -227,6 +228,7 @@ export default async function AdminResourcePageRoute({
       listProjects(state.principal, listQuery),
       getProjectRegistryFormOptions(state.principal),
     ]);
+    const contacts = await listProjectPublicContactsForAdmin(state.principal, result.items.map((item) => item.id));
     const rows: PlatformAdminDisplayRow[] = result.items.map((item) => ({
       id: item.id,
       primary: item.name,
@@ -243,7 +245,7 @@ export default async function AdminResourcePageRoute({
         <AdminResourceNav currentPath={currentPath} />
         <Filters query={query} resource={resource} />
         <PlatformAdminTable pageSize={result.pageSize} query={query} resource={resource} rows={rows} sortOptions={defaultSortOptions} total={result.total} />
-        <ProjectsAdminForms items={result.items} options={options} />
+        <ProjectsAdminForms contacts={contacts} items={result.items} options={options} />
       </div>
     );
   }

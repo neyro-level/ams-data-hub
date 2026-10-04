@@ -307,6 +307,7 @@ model Project {
   members        ProjectMember[]
   publicUrlIdReservations PublicUrlIdReservation[]
   catalogSubscription     ProjectCatalogSubscription?
+  publicContact           ProjectPublicContact?
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -329,6 +330,23 @@ model ProjectMember {
   @@unique([organizationId, projectId, userId])
   @@index([userId])
   @@index([organizationId, projectId])
+}
+
+model ProjectPublicContact {
+  organizationId String
+  projectId      String
+  phone          String   @db.VarChar(40)
+  email          String?  @db.VarChar(320)
+  addressPublic  String?  @db.VarChar(500)
+  messengers     Json
+  hours          String?  @db.VarChar(500)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId])
+  @@index([projectId])
 }
 
 model ProjectCatalogSubscription {

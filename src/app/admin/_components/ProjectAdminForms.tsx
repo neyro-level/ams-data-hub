@@ -3,7 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm, type Resolver } from "react-hook-form";
+import { Controller, useForm, type Resolver } from "react-hook-form";
+import { z } from "zod";
 import {
   createProjectInputSchema,
   projectServiceStateSchema,
@@ -14,7 +15,8 @@ import {
   type ProjectListItem,
   type UpdateProjectInput,
 } from "../../../modules/project-registry/index.ts";
-import { createProjectAction, updateProjectAction } from "../_actions/projects.ts";
+import type { ProjectPublicContactAdminItem } from "../../../modules/project-state/index.ts";
+import { createProjectAction, replaceProjectPublicContactAction, updateProjectAction } from "../_actions/projects.ts";
 import { applyFieldErrors, AreaInput, feedbackFrom, FormField, SectionCard, SelectInput, SubmitRow, TextInput, type Feedback } from "./platform-admin-form-primitives.tsx";
 
 const statusLabels = {
@@ -32,7 +34,89 @@ const serviceStateOptions = projectServiceStateSchema.options.map((value) => ({
   label: serviceStateLabels[value],
 }));
 
-function ProjectEditCard({ item, options }: { item: ProjectListItem; options: ProjectFormOptions }) {
+const contactFormSchema = z.object({
+  phone: z.string().trim().min(5, "Укажите телефон").max(40),
+  email: z.union([z.literal(""), z.email("Укажите корректный email")]),
+  addressPublic: z.string().trim().max(500),
+  messengersText: z.string().trim().superRefine((value, context) => {
+    const links = value.split(/\r?\n/).map((link) => link.trim()).filter(Boolean);
+    if (links.length > 10) context.addIssue({ code: "custom", message: "Не более 10 ссылок" });
+    links.forEach((link, index) => {
+      try {
+        const url = new URL(link);
+        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error("protocol");
+      } catch {
+        context.addIssue({ code: "custom", message: `Строка ${index + 1}: укажите полный http(s)-адрес` });
+      }
+    });
+  }),
+  hours: z.string().trim().max(500),
+});
+type ContactFormInput = z.infer<typeof contactFormSchema>;
+
+function ProjectContactForm({ item, contact }: { item: ProjectListItem; contact?: ProjectPublicContactAdminItem }) {
+  const router = useRouter();
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const form = useForm<ContactFormInput>({
+    resolver: zodResolver(contactFormSchema) as Resolver<ContactFormInput>,
+    defaultValues: {
+      phone: contact?.phone ?? "",
+      email: contact?.email ?? "",
+      addressPublic: contact?.addressPublic ?? "",
+      messengersText: contact?.messengers.join("\n") ?? "",
+      hours: contact?.hours ?? "",
+    },
+  });
+  const submit = form.handleSubmit(async (values) => {
+    const result = await replaceProjectPublicContactAction({
+      organizationId: item.organizationId,
+      projectId: item.id,
+      version: contact?.version ?? 0,
+      phone: values.phone,
+      email: values.email,
+      addressPublic: values.addressPublic,
+      messengers: values.messengersText.split(/\r?\n/).map((link) => link.trim()).filter(Boolean),
+      hours: values.hours,
+    });
+    if (!result.ok) {
+      applyFieldErrors(result.fieldErrors, form.setError);
+      setFeedback(feedbackFrom(result));
+      return;
+    }
+    setFeedback({ kind: "success", message: "Публичный контакт сохранён" });
+    router.refresh();
+  });
+  return (
+    <form className="grid gap-4 border-t border-app-border pt-4 md:grid-cols-2" onSubmit={submit}>
+      <div className="md:col-span-2">
+        <h3 className="font-semibold text-app-foreground">Публичный контакт</h3>
+        <p className="text-sm text-app-secondary">Единственный fallback-контакт агентства для публичной выдачи.</p>
+      </div>
+      <FormField error={form.formState.errors.phone?.message} label="Телефон" required>
+        <Controller control={form.control} name="phone" render={({ field }) => <TextInput autoComplete="tel" {...field} />} />
+      </FormField>
+      <FormField error={form.formState.errors.email?.message} label="Email">
+        <Controller control={form.control} name="email" render={({ field }) => <TextInput autoComplete="email" type="email" {...field} />} />
+      </FormField>
+      <div className="md:col-span-2">
+        <FormField error={form.formState.errors.addressPublic?.message} label="Публичный адрес">
+          <Controller control={form.control} name="addressPublic" render={({ field }) => <AreaInput rows={2} {...field} />} />
+        </FormField>
+      </div>
+      <FormField error={form.formState.errors.messengersText?.message} helper="Одна полная http(s)-ссылка в строке." label="Мессенджеры">
+        <Controller control={form.control} name="messengersText" render={({ field }) => <AreaInput rows={3} placeholder="https://t.me/example" {...field} />} />
+      </FormField>
+      <FormField error={form.formState.errors.hours?.message} label="Часы работы">
+        <Controller control={form.control} name="hours" render={({ field }) => <AreaInput rows={3} placeholder="Пн–Пт, 09:00–18:00" {...field} />} />
+      </FormField>
+      <div className="md:col-span-2">
+        <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Сохранить контакт" onRefresh={() => router.refresh()} pendingLabel="Сохраняем..." />
+      </div>
+    </form>
+  );
+}
+
+function ProjectEditCard({ item, options, contact }: { item: ProjectListItem; options: ProjectFormOptions; contact?: ProjectPublicContactAdminItem }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const form = useForm<UpdateProjectInput>({
@@ -63,6 +147,7 @@ function ProjectEditCard({ item, options }: { item: ProjectListItem; options: Pr
   });
   return (
     <SectionCard title={item.name} description={`${item.organizationName} · ${statusLabels[item.status]}`}>
+      <div className="space-y-4">
       <form className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
         <input type="hidden" {...form.register("projectId")} />
         <input type="hidden" {...form.register("version", { valueAsNumber: true })} />
@@ -101,11 +186,13 @@ function ProjectEditCard({ item, options }: { item: ProjectListItem; options: Pr
           <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Сохранить" onRefresh={() => router.refresh()} pendingLabel="Сохраняем..." />
         </div>
       </form>
+      <ProjectContactForm contact={contact} item={item} key={`${item.id}:${contact?.version ?? 0}`} />
+      </div>
     </SectionCard>
   );
 }
 
-export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[]; options: ProjectFormOptions }) {
+export function ProjectsAdminForms({ items, options, contacts }: { items: ProjectListItem[]; options: ProjectFormOptions; contacts: ProjectPublicContactAdminItem[] }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
   const form = useForm<CreateProjectInput>({
@@ -184,7 +271,7 @@ export function ProjectsAdminForms({ items, options }: { items: ProjectListItem[
         </form>
       </SectionCard>
       <div className="grid gap-4 xl:grid-cols-2">
-        {items.map((item) => <ProjectEditCard item={item} key={item.id} options={options} />)}
+        {items.map((item) => <ProjectEditCard contact={contacts.find((contact) => contact.projectId === item.id)} item={item} key={item.id} options={options} />)}
       </div>
     </div>
   );
