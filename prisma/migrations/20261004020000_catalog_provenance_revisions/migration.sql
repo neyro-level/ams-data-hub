@@ -91,7 +91,7 @@ DECLARE
 BEGIN
   FOREACH table_name IN ARRAY ARRAY['CatalogChangeSet', 'CatalogEntityVersion', 'FactProvenance']
   LOOP
-    EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO PUBLIC USING (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''platform-staff'', ''job'', ''system-job''))', table_name || '_read', table_name);
+    EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO PUBLIC USING (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''job'', ''system-job''))', table_name || '_read', table_name);
     EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO PUBLIC WITH CHECK (current_setting(''app.principal_kind'', true) = ''platform-admin'')', table_name || '_insert', table_name);
   END LOOP;
 END

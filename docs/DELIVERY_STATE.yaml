@@ -27,8 +27,10 @@ local_preflight:
   diff_check: PASS
   prisma_generate: PASS
   prisma_validate: PASS
-  selected_test_files: 8
-  selected_tests: 36
+  typecheck: PASS
+  rls_coverage: PASS
+  selected_test_files: 9
+  selected_tests: 39
   result: PASS
 production:
   authorized: false

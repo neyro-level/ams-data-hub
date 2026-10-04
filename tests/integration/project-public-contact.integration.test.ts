@@ -18,7 +18,8 @@ function tenant(organizationId: string): TenantUserPrincipal {
     userId: `contact-tenant-${randomUUID()}`,
     organizationId,
     membershipId: `contact-membership-${randomUUID()}`,
-    role: "ORG_OWNER",
+    role: "ORG_ADMIN",
+    projectIds: "*",
     correlationId: randomUUID(),
   };
 }
@@ -85,7 +86,7 @@ describe("project public contacts", () => {
       await client.query("select set_config('app.principal_kind', 'tenant-user', true)");
       await client.query("select set_config('app.actor_id', 'contact-reader', true)");
       await client.query("select set_config('app.organization_id', $1, true)", [setup.organizationId]);
-      await client.query("select set_config('app.project_id', $1, true)", [setup.firstProjectId]);
+      await client.query("select set_config('app.project_ids', $1, true)", [setup.firstProjectId]);
       const visible = await client.query<{ projectId: string; phone: string }>('select "projectId", "phone" from "ProjectPublicContact" order by "projectId"');
       expect(visible.rows).toEqual([{ projectId: setup.firstProjectId, phone: "+7 900 111-11-11" }]);
       const forbidden = await client.query('update "ProjectPublicContact" set "phone" = $1 where "projectId" = $2', ["+7 900 999-99-99", setup.firstProjectId]);

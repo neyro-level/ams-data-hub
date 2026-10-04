@@ -49,7 +49,7 @@ export function createDatabaseAuthorizationContext(
       return {
         principalKind: principal.kind,
         actorId: principal.jobName,
-      organizationId: principal.organizationId,
+        organizationId: principal.organizationId,
         projectIds: principal.projectIds,
         correlationId: principal.correlationId,
       };
@@ -87,6 +87,20 @@ export function createSystemJobDatabaseAuthorizationContext(input: {
     organizationId: null,
     projectIds: "*",
     correlationId: input.correlationId,
+  };
+}
+
+export function createProjectDatabaseAuthorizationContext(
+  principal: PrincipalContext,
+  projectId: string,
+): DatabaseAuthorizationContext {
+  const context = createDatabaseAuthorizationContext(principal);
+  return {
+    ...context,
+    projectIds:
+      context.projectIds === "*" || context.projectIds.includes(projectId)
+        ? [projectId]
+        : [],
   };
 }
 
@@ -136,7 +150,7 @@ export async function runInProjectPrincipalDatabaseTransaction<TResult>(
   execute: (transaction: DatabaseTransaction) => Promise<TResult>,
 ): Promise<TResult> {
   return runInAuthorizedDatabaseTransaction(
-    { ...createDatabaseAuthorizationContext(principal), projectId },
+    createProjectDatabaseAuthorizationContext(principal, projectId),
     execute,
   );
 }

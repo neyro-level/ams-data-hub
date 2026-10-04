@@ -51,14 +51,14 @@ ALTER TABLE "PublicUrlIdReservation" FORCE ROW LEVEL SECURITY;
 CREATE POLICY "PublicUrlIdReservation_rls" ON "PublicUrlIdReservation"
   FOR ALL TO PUBLIC
   USING (
-    current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+    current_setting('app.principal_kind', true) = 'platform-admin'
     OR (
       current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
       AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
     )
   )
   WITH CHECK (
-    current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+    current_setting('app.principal_kind', true) = 'platform-admin'
     OR (
       current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
       AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')

@@ -221,11 +221,12 @@ ALTER TABLE "ProjectUrlTombstone" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "ProjectUrlTombstone" FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY "ProjectUrlPolicy_rls" ON "ProjectUrlPolicy" FOR SELECT TO PUBLIC USING (
-  current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+  current_setting('app.principal_kind', true) = 'platform-admin'
   OR (
     current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "ProjectUrlPolicy_admin_write" ON "ProjectUrlPolicy" FOR ALL TO PUBLIC
@@ -233,11 +234,12 @@ CREATE POLICY "ProjectUrlPolicy_admin_write" ON "ProjectUrlPolicy" FOR ALL TO PU
   WITH CHECK (current_setting('app.principal_kind', true) = 'platform-admin');
 
 CREATE POLICY "ProjectUrlEntry_rls" ON "ProjectUrlEntry" FOR SELECT TO PUBLIC USING (
-  current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+  current_setting('app.principal_kind', true) = 'platform-admin'
   OR (
     current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "ProjectUrlEntry_admin_write" ON "ProjectUrlEntry" FOR ALL TO PUBLIC
@@ -245,22 +247,24 @@ CREATE POLICY "ProjectUrlEntry_admin_write" ON "ProjectUrlEntry" FOR ALL TO PUBL
   WITH CHECK (current_setting('app.principal_kind', true) = 'platform-admin');
 
 CREATE POLICY "ProjectRedirect_rls" ON "ProjectRedirect" FOR SELECT TO PUBLIC USING (
-  current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+  current_setting('app.principal_kind', true) = 'platform-admin'
   OR (
     current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "ProjectRedirect_admin_insert" ON "ProjectRedirect" FOR INSERT TO PUBLIC
   WITH CHECK (current_setting('app.principal_kind', true) = 'platform-admin');
 
 CREATE POLICY "ProjectUrlTombstone_rls" ON "ProjectUrlTombstone" FOR SELECT TO PUBLIC USING (
-  current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+  current_setting('app.principal_kind', true) = 'platform-admin'
   OR (
     current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "ProjectUrlTombstone_admin_insert" ON "ProjectUrlTombstone" FOR INSERT TO PUBLIC

@@ -8,7 +8,7 @@ import {
 import { SharedCatalogError } from "../domain/shared-catalog-error.ts";
 
 function requireSubscriptionReader(principal: PrincipalContext, organizationId: string) {
-  if (principal.kind === "platform-admin" || principal.kind === "platform-staff") return;
+  if (principal.kind === "platform-admin") return;
   if (principal.organizationId !== organizationId) {
     throw new SharedCatalogError("SHARED_CATALOG_SUBSCRIPTION_ACCESS_DENIED");
   }

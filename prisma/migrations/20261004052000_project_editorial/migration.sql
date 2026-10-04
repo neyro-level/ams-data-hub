@@ -47,11 +47,12 @@ ALTER TABLE "EntityMediaOrderPolicy" FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY "EntityEditorial_rls" ON "EntityEditorial"
   FOR SELECT TO PUBLIC USING (
-    current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+    current_setting('app.principal_kind', true) = 'platform-admin'
     OR (
       current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
       AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-      AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+      AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+        OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
     )
   );
 CREATE POLICY "EntityEditorial_admin_write" ON "EntityEditorial"
@@ -61,11 +62,12 @@ CREATE POLICY "EntityEditorial_admin_write" ON "EntityEditorial"
 
 CREATE POLICY "EntityMediaOrderPolicy_rls" ON "EntityMediaOrderPolicy"
   FOR SELECT TO PUBLIC USING (
-    current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+    current_setting('app.principal_kind', true) = 'platform-admin'
     OR (
       current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
       AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-      AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+      AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+        OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
     )
   );
 CREATE POLICY "EntityMediaOrderPolicy_job_write" ON "EntityMediaOrderPolicy"
@@ -73,12 +75,14 @@ CREATE POLICY "EntityMediaOrderPolicy_job_write" ON "EntityMediaOrderPolicy"
   USING (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
   WITH CHECK (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   );
 
 GRANT SELECT, INSERT, UPDATE ON TABLE "EntityEditorial", "EntityMediaOrderPolicy" TO ams_data_hub_web;

@@ -12,7 +12,7 @@ function admin(): PlatformAdminPrincipal {
   return { kind: "platform-admin", userId: `source-admin-${randomUUID()}`, correlationId: randomUUID() };
 }
 function tenant(organizationId: string): TenantUserPrincipal {
-  return { kind: "tenant-user", userId: `source-tenant-${randomUUID()}`, organizationId, membershipId: `source-member-${randomUUID()}`, role: "ORG_OWNER", correlationId: randomUUID() };
+  return { kind: "tenant-user", userId: `source-tenant-${randomUUID()}`, organizationId, membershipId: `source-member-${randomUUID()}`, role: "ORG_ADMIN", projectIds: "*", correlationId: randomUUID() };
 }
 describe("source registry", () => {
   it("stores a SecretRef instead of an endpoint and isolates source lifecycle per project", async () => {
@@ -77,7 +77,7 @@ describe("source registry", () => {
         await client.query("select set_config('app.principal_kind', 'tenant-user', true)");
         await client.query("select set_config('app.actor_id', 'source-tenant', true)");
         await client.query("select set_config('app.organization_id', $1, true)", [setup.organizationId]);
-        await client.query("select set_config('app.project_id', $1, true)", [setup.firstProjectId]);
+        await client.query("select set_config('app.project_ids', $1, true)", [setup.firstProjectId]);
         expect((await client.query('select count(*)::int AS count from "Source"')).rows[0].count).toBe(0);
         expect((await client.query('select count(*)::int AS count from "SourceCredentialRef"')).rows[0].count).toBe(0);
         await client.query("rollback");
@@ -87,14 +87,14 @@ describe("source registry", () => {
         await client.query("select set_config('app.principal_kind', 'job', true)");
         await client.query("select set_config('app.actor_id', 'source-job', true)");
         await client.query("select set_config('app.organization_id', $1, true)", [setup.organizationId]);
-        await client.query("select set_config('app.project_id', $1, true)", [setup.firstProjectId]);
+        await client.query("select set_config('app.project_ids', $1, true)", [setup.firstProjectId]);
         expect((await client.query('select count(*)::int AS count from "Source"')).rows[0].count).toBe(1);
         await client.query("rollback");
         await client.query("begin");
         await client.query("select set_config('app.principal_kind', 'job', true)");
         await client.query("select set_config('app.actor_id', 'source-job', true)");
         await client.query("select set_config('app.organization_id', $1, true)", [setup.organizationId]);
-        await client.query("select set_config('app.project_id', $1, true)", [setup.secondProjectId]);
+        await client.query("select set_config('app.project_ids', $1, true)", [setup.secondProjectId]);
         expect((await client.query('select count(*)::int AS count from "Source"')).rows[0].count).toBe(0);
         await client.query("rollback");
       } finally {

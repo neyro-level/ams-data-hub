@@ -14,11 +14,11 @@ function admin(): PlatformAdminPrincipal {
 }
 
 function tenant(organizationId: string): TenantUserPrincipal {
-  return { kind: "tenant-user", userId: `editorial-tenant-${randomUUID()}`, organizationId, membershipId: `editorial-member-${randomUUID()}`, role: "ORG_OWNER", correlationId: randomUUID() };
+  return { kind: "tenant-user", userId: `editorial-tenant-${randomUUID()}`, organizationId, membershipId: `editorial-member-${randomUUID()}`, role: "ORG_ADMIN", projectIds: "*", correlationId: randomUUID() };
 }
 
 function job(organizationId: string): JobPrincipal {
-  return { kind: "job", jobName: `editorial-job-${randomUUID()}`, organizationId, correlationId: randomUUID() };
+  return { kind: "job", jobName: `editorial-job-${randomUUID()}`, organizationId, projectIds: "*", correlationId: randomUUID() };
 }
 
 describe("project editorial", () => {
@@ -83,7 +83,7 @@ describe("project editorial", () => {
       await client.query("select set_config('app.principal_kind', 'tenant-user', true)");
       await client.query("select set_config('app.actor_id', 'editorial-reader', true)");
       await client.query("select set_config('app.organization_id', $1, true)", [setup.organizationId]);
-      await client.query("select set_config('app.project_id', $1, true)", [setup.firstProjectId]);
+      await client.query("select set_config('app.project_ids', $1, true)", [setup.firstProjectId]);
       const visible = await client.query<{ projectId: string }>('select "projectId" from "EntityEditorial"');
       expect(visible.rows).toEqual([{ projectId: setup.firstProjectId }]);
       const forbidden = await client.query('update "EntityEditorial" set "description" = $1 where "projectId" = $2', ["forbidden", setup.firstProjectId]);

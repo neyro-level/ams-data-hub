@@ -96,11 +96,12 @@ ALTER TABLE "SourceManualRunRequest" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "SourceManualRunRequest" FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY "Source_rls" ON "Source" FOR SELECT TO PUBLIC USING (
-  current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+  current_setting('app.principal_kind', true) = 'platform-admin'
   OR (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "Source_admin_write" ON "Source" FOR ALL TO PUBLIC
@@ -112,7 +113,8 @@ CREATE POLICY "SourceCredentialRef_rls" ON "SourceCredentialRef" FOR SELECT TO P
   OR (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "SourceCredentialRef_admin_write" ON "SourceCredentialRef" FOR ALL TO PUBLIC
@@ -124,7 +126,8 @@ CREATE POLICY "SourceManualRunRequest_rls" ON "SourceManualRunRequest" FOR SELEC
   OR (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
 );
 CREATE POLICY "SourceManualRunRequest_admin_insert" ON "SourceManualRunRequest" FOR INSERT TO PUBLIC
@@ -133,12 +136,14 @@ CREATE POLICY "SourceManualRunRequest_job_update" ON "SourceManualRunRequest" FO
   USING (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   )
   WITH CHECK (
     current_setting('app.principal_kind', true) = 'job'
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-    AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+    AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+      OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
   );
 
 GRANT SELECT, INSERT, UPDATE ON TABLE "Source", "SourceCredentialRef" TO ams_data_hub_web;

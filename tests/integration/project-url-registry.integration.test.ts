@@ -14,7 +14,7 @@ function admin(): PlatformAdminPrincipal {
 }
 
 function tenant(organizationId: string): TenantUserPrincipal {
-  return { kind: "tenant-user", userId: `url-tenant-${randomUUID()}`, organizationId, membershipId: `url-member-${randomUUID()}`, role: "ORG_OWNER", correlationId: randomUUID() };
+  return { kind: "tenant-user", userId: `url-tenant-${randomUUID()}`, organizationId, membershipId: `url-member-${randomUUID()}`, role: "ORG_ADMIN", projectIds: "*", correlationId: randomUUID() };
 }
 
 describe("project URL registry", () => {

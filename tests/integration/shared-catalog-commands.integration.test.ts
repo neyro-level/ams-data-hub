@@ -111,7 +111,7 @@ describe("shared catalog commands", () => {
 
     const tenant: TenantUserPrincipal = {
       kind: "tenant-user", userId: `tenant-${suffix}`, organizationId: `org-${suffix}`,
-      membershipId: `member-${suffix}`, role: "ORG_OWNER", correlationId: randomUUID(),
+      membershipId: `member-${suffix}`, role: "ORG_ADMIN", projectIds: "*", correlationId: randomUUID(),
     };
     await expect(commands.createDeveloper(tenant, {
       name: `Запрещено ${suffix}`, lifecycle: "ACTIVE", aliases: [],

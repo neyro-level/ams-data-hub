@@ -7,7 +7,7 @@ export function requireProjectStateAdmin(principal: PrincipalContext): PlatformA
 }
 
 export function requireProjectContactReader(principal: PrincipalContext, organizationId: string): void {
-  if (principal.kind === "platform-admin" || principal.kind === "platform-staff") return;
+  if (principal.kind === "platform-admin") return;
   if (principal.organizationId !== organizationId) {
     throw new ProjectStateError("PROJECT_PUBLIC_CONTACT_ACCESS_DENIED");
   }

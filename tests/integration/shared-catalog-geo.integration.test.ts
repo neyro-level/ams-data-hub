@@ -21,7 +21,8 @@ function tenantUser(): TenantUserPrincipal {
     userId: `catalog-tenant-${randomUUID()}`,
     organizationId: `catalog-org-${randomUUID()}`,
     membershipId: `catalog-member-${randomUUID()}`,
-    role: "ORG_OWNER",
+    role: "ORG_ADMIN",
+    projectIds: "*",
     correlationId: randomUUID(),
   };
 }

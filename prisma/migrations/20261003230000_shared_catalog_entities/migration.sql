@@ -140,9 +140,9 @@ DECLARE
 BEGIN
   FOREACH table_name IN ARRAY ARRAY['Developer', 'DeveloperAlias', 'Development', 'DevelopmentAlias', 'Building', 'BuildingAlias']
   LOOP
-    EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO PUBLIC USING (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''platform-staff'', ''tenant-user'', ''api-client'', ''job'', ''system-job''))', table_name || '_read', table_name);
-    EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO PUBLIC WITH CHECK (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''platform-staff''))', table_name || '_insert', table_name);
-    EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE TO PUBLIC USING (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''platform-staff'')) WITH CHECK (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''platform-staff''))', table_name || '_update', table_name);
+    EXECUTE format('CREATE POLICY %I ON %I FOR SELECT TO PUBLIC USING (current_setting(''app.principal_kind'', true) IN (''platform-admin'', ''tenant-user'', ''api-client'', ''job'', ''system-job''))', table_name || '_read', table_name);
+    EXECUTE format('CREATE POLICY %I ON %I FOR INSERT TO PUBLIC WITH CHECK (current_setting(''app.principal_kind'', true) = ''platform-admin'')', table_name || '_insert', table_name);
+    EXECUTE format('CREATE POLICY %I ON %I FOR UPDATE TO PUBLIC USING (current_setting(''app.principal_kind'', true) = ''platform-admin'') WITH CHECK (current_setting(''app.principal_kind'', true) = ''platform-admin'')', table_name || '_update', table_name);
   END LOOP;
 END
 $policies$;

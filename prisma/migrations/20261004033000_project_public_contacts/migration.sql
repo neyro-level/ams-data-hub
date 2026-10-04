@@ -24,11 +24,12 @@ ALTER TABLE "ProjectPublicContact" FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY "ProjectPublicContact_rls" ON "ProjectPublicContact"
   FOR SELECT TO PUBLIC USING (
-    current_setting('app.principal_kind', true) IN ('platform-admin', 'platform-staff')
+    current_setting('app.principal_kind', true) = 'platform-admin'
     OR (
       current_setting('app.principal_kind', true) IN ('tenant-user', 'api-client', 'job')
       AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
-      AND "projectId" = NULLIF(current_setting('app.project_id', true), '')
+      AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
+        OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
     )
   );
 

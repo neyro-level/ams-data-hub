@@ -23,7 +23,7 @@ CREATE TABLE "ProjectMember" (
   "updatedAt" TIMESTAMPTZ(3) NOT NULL,
   CONSTRAINT "ProjectMember_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "ProjectMember_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "ProjectMember_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "ProjectMember_organizationId_projectId_fkey" FOREIGN KEY ("organizationId", "projectId") REFERENCES "Project"("organizationId", "id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "ProjectMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE UNIQUE INDEX "ProjectMember_organizationId_projectId_userId_key" ON "ProjectMember"("organizationId", "projectId", "userId");
