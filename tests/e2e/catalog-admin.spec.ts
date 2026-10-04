@@ -77,6 +77,7 @@ test("platform admin manages the shared catalog without horizontal overflow", as
 
   await expect(page.getByRole("heading", { name: "Каталог", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Застройщики", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "История изменений", exact: true })).toBeVisible();
   await expect(page.getByText("Быстро добавить корпуса")).toBeVisible();
 
   const developerForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Создать застройщика" }) });

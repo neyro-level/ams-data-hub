@@ -103,6 +103,24 @@ enum CatalogSelectionDecision {
   EXCLUDE
 }
 
+enum CatalogEntityType {
+  DEVELOPER
+  DEVELOPMENT
+  BUILDING
+}
+
+enum CatalogChangeKind {
+  CREATE
+  UPDATE
+  RELINK
+  MERGE
+  MERGE_REASSIGN
+}
+
+enum CatalogProvenanceSource {
+  MANUAL_ADMIN
+}
+
 model User {
   id                String                  @id
   name              String
@@ -697,4 +715,53 @@ model BuildingAlias {
 
   @@id([buildingUid, normalizedValue])
   @@index([normalizedValue])
+}
+
+model CatalogChangeSet {
+  id             String                  @id @default(cuid())
+  actorId        String                  @db.VarChar(191)
+  action         String                  @db.VarChar(120)
+  source         CatalogProvenanceSource @default(MANUAL_ADMIN)
+  correlationId  String                  @db.VarChar(191)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(3)
+  entityVersions CatalogEntityVersion[]
+
+  @@index([createdAt])
+  @@index([correlationId])
+}
+
+model CatalogEntityVersion {
+  id          String            @id @default(cuid())
+  changeSetId String
+  entityType  CatalogEntityType
+  entityUid   String            @db.VarChar(26)
+  version     Int
+  changeKind  CatalogChangeKind
+  snapshot    Json
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  changeSet   CatalogChangeSet  @relation(fields: [changeSetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  provenance  FactProvenance[]
+
+  @@unique([entityType, entityUid, version])
+  @@unique([id, changeSetId, entityType, entityUid])
+  @@index([changeSetId])
+  @@index([entityType, entityUid, createdAt])
+}
+
+model FactProvenance {
+  id              String                  @id @default(cuid())
+  changeSetId     String
+  entityVersionId String
+  entityType      CatalogEntityType
+  entityUid       String                  @db.VarChar(26)
+  fieldPath       String                  @db.VarChar(160)
+  valueSnapshot   Json
+  source          CatalogProvenanceSource @default(MANUAL_ADMIN)
+  actorId         String                  @db.VarChar(191)
+  recordedAt      DateTime                @default(now()) @db.Timestamptz(3)
+  entityVersion   CatalogEntityVersion    @relation(fields: [entityVersionId, changeSetId, entityType, entityUid], references: [id, changeSetId, entityType, entityUid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([entityVersionId, fieldPath])
+  @@index([changeSetId])
+  @@index([entityType, entityUid, fieldPath, recordedAt])
 }

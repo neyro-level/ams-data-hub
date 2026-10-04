@@ -61,10 +61,37 @@ export async function getCatalogAdminData(
       transaction.development.findMany({ where: { mergedIntoUid: null }, orderBy: { name: "asc" }, select: { uid: true, name: true } }),
     ]);
 
+    const historyTargets = [
+      ...developers.map((item) => ({ entityType: "DEVELOPER" as const, entityUid: item.uid })),
+      ...developments.map((item) => ({ entityType: "DEVELOPMENT" as const, entityUid: item.uid })),
+      ...buildings.map((item) => ({ entityType: "BUILDING" as const, entityUid: item.uid })),
+    ];
+    const history = historyTargets.length === 0 ? [] : await transaction.catalogEntityVersion.findMany({
+      where: { OR: historyTargets },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 50,
+      include: {
+        changeSet: { select: { action: true, source: true, actorId: true } },
+        provenance: { orderBy: { fieldPath: "asc" }, select: { fieldPath: true } },
+      },
+    });
+
     return {
       developers: developers.map((item) => ({ uid: item.uid, name: item.name, lifecycle: item.lifecycle, version: item.version, aliases: item.aliases.map((alias) => alias.value), developmentCount: item._count.developments, updatedAt: item.updatedAt.toISOString() })),
       developments: developments.map((item) => ({ uid: item.uid, developerUid: item.developerUid, developerName: item.developer.name, cityUid: item.cityUid, cityName: item.city.name, districtUid: item.districtUid, districtName: item.district?.name ?? null, name: item.name, lifecycle: item.lifecycle, version: item.version, aliases: item.aliases.map((alias) => alias.value), buildingCount: item._count.buildings, updatedAt: item.updatedAt.toISOString() })),
       buildings: buildings.map((item) => ({ uid: item.uid, developmentUid: item.developmentUid, developmentName: item.development.name, label: item.label, floors: item.floors, commissioningYear: item.commissioningYear, commissioningQuarter: item.commissioningQuarter, constructionStatus: item.constructionStatus, material: item.material, housingClass: item.housingClass, lifecycle: item.lifecycle, version: item.version, aliases: item.aliases.map((alias) => alias.value), updatedAt: item.updatedAt.toISOString() })),
+      history: history.map((item) => ({
+        id: item.id,
+        entityType: item.entityType,
+        entityUid: item.entityUid,
+        version: item.version,
+        changeKind: item.changeKind,
+        action: item.changeSet.action,
+        source: item.changeSet.source,
+        actorId: item.changeSet.actorId,
+        changedFields: item.provenance.map((fact) => fact.fieldPath),
+        createdAt: item.createdAt.toISOString(),
+      })),
       options: { developers: developerOptions, developments: developmentOptions, regions, cities, districts },
     };
   });

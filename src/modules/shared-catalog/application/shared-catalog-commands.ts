@@ -31,6 +31,24 @@ function requireResult(result: CatalogWriteResult | null): CatalogWriteResult {
   return result;
 }
 
+function publicWriteResult(result: CatalogWriteResult): { uid: string; version: number } {
+  return { uid: result.uid, version: result.version };
+}
+
+async function appendManualRevision(
+  repository: SharedCatalogRepository,
+  actor: { userId: string; correlationId: string },
+  action: string,
+  result: CatalogWriteResult,
+): Promise<void> {
+  await repository.appendRevision({
+    actorId: actor.userId,
+    action,
+    correlationId: actor.correlationId,
+    entities: result.changedEntities,
+  });
+}
+
 export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDependencies) {
   const authorize = (principal: PrincipalContext) => {
     requireSharedCatalogAdmin(principal);
@@ -49,13 +67,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedName: normalizeGeoName(input.name),
         normalizedAliases: normalizedAliases(input.aliases),
       });
+      await appendManualRevision(repository, actor, "developer.create", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "developer.create", entityType: "Developer",
         entityId: result.uid, beforeMarker: null,
         afterMarker: { name: input.name, lifecycle: input.lifecycle, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -71,13 +90,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedName: normalizeGeoName(input.name),
         normalizedAliases: normalizedAliases(input.aliases),
       }));
+      await appendManualRevision(repository, actor, "developer.update", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "developer.update", entityType: "Developer",
         entityId: result.uid, beforeMarker: { version: input.version },
         afterMarker: { name: input.name, lifecycle: input.lifecycle, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -94,13 +114,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedName: normalizeGeoName(input.name),
         normalizedAliases: normalizedAliases(input.aliases),
       });
+      await appendManualRevision(repository, actor, "development.create", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "development.create", entityType: "Development",
         entityId: result.uid, beforeMarker: null,
         afterMarker: { name: input.name, developerUid: input.developerUid, cityUid: input.cityUid, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -116,13 +137,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedName: normalizeGeoName(input.name),
         normalizedAliases: normalizedAliases(input.aliases),
       }));
+      await appendManualRevision(repository, actor, "development.update", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "development.update", entityType: "Development",
         entityId: result.uid, beforeMarker: { version: input.version },
         afterMarker: { name: input.name, developerUid: input.developerUid, cityUid: input.cityUid, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -139,13 +161,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedLabel: normalizeGeoName(input.label),
         normalizedAliases: normalizedAliases(input.aliases),
       });
+      await appendManualRevision(repository, actor, "building.create", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "building.create", entityType: "Building",
         entityId: result.uid, beforeMarker: null,
         afterMarker: { label: input.label, developmentUid: input.developmentUid, constructionStatus: input.constructionStatus, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -161,13 +184,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         normalizedLabel: normalizeGeoName(input.label),
         normalizedAliases: normalizedAliases(input.aliases),
       }));
+      await appendManualRevision(repository, actor, "building.update", result);
       await repository.appendAudit({
         actorId: actor.userId, action: "building.update", entityType: "Building",
         entityId: result.uid, beforeMarker: { version: input.version },
         afterMarker: { label: input.label, developmentUid: input.developmentUid, constructionStatus: input.constructionStatus, version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -178,7 +202,7 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
     execute: async ({ principal, input, transaction }) => {
       const actor = requireSharedCatalogAdmin(principal);
       const repository = dependencies.createRepository(transaction);
-      const created = [];
+      const created: CatalogWriteResult[] = [];
       for (const label of input.labels) {
         const result = await repository.createBuilding({
           uid: createUlid(), developmentUid: input.developmentUid, label,
@@ -195,7 +219,13 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         });
         created.push(result);
       }
-      return { count: created.length, buildings: created };
+      await repository.appendRevision({
+        actorId: actor.userId,
+        action: "building.create-batch",
+        correlationId: actor.correlationId,
+        entities: created.flatMap((result) => result.changedEntities),
+      });
+      return { count: created.length, buildings: created.map(publicWriteResult) };
     },
   });
 
@@ -207,6 +237,7 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
       const actor = requireSharedCatalogAdmin(principal);
       const repository = dependencies.createRepository(transaction);
       const result = requireResult(await repository.merge(input));
+      await appendManualRevision(repository, actor, `${input.entityType.toLowerCase()}.merge`, result);
       await repository.appendAudit({
         actorId: actor.userId, action: `${input.entityType.toLowerCase()}.merge`,
         entityType: input.entityType, entityId: input.sourceUid,
@@ -214,7 +245,7 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
         afterMarker: { mergedIntoUid: input.targetUid, lifecycle: "ARCHIVED", version: result.version },
         correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 
@@ -226,13 +257,14 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
       const actor = requireSharedCatalogAdmin(principal);
       const repository = dependencies.createRepository(transaction);
       const result = requireResult(await repository.relink(input));
+      await appendManualRevision(repository, actor, `${input.entityType.toLowerCase()}.relink`, result);
       await repository.appendAudit({
         actorId: actor.userId, action: `${input.entityType.toLowerCase()}.relink`,
         entityType: input.entityType, entityId: input.uid,
         beforeMarker: { version: input.version },
         afterMarker: { version: result.version }, correlationId: actor.correlationId,
       });
-      return result;
+      return publicWriteResult(result);
     },
   });
 

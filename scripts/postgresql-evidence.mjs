@@ -52,6 +52,8 @@ export const postgresqlEvidenceManifest = Object.freeze({
       suites: [
         "tests/integration/shared-catalog-geo.integration.test.ts",
         "tests/integration/shared-catalog-commands.integration.test.ts",
+        "tests/integration/catalog-subscriptions.integration.test.ts",
+        "tests/integration/catalog-provenance-revisions.integration.test.ts",
       ],
       scenarios: [
         "required shared regions and cities are seeded with normalized names and aliases",
@@ -59,6 +61,8 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "platform operators can maintain districts while shared entity UIDs remain immutable",
         "developer, development and building writes are command-owned and audited atomically",
         "catalog relink and merge commands preserve references and reject tenant writes",
+        "two projects reuse shared entities through isolated subscriptions",
+        "every manual catalog mutation records immutable versions and field provenance",
       ],
     },
   },

@@ -29,7 +29,7 @@ describe("catalog admin UI contract", () => {
     const workspace = readFileSync("src/app/admin/_components/CatalogAdminWorkspace.tsx", "utf8");
     const forms = readFileSync("src/app/admin/_components/CatalogAdminForms.tsx", "utf8");
     const table = readFileSync("src/app/admin/_components/CatalogEntityTable.tsx", "utf8");
-    for (const label of ["Застройщики", "Жилые комплексы", "Корпуса и литеры", "Все регионы", "Все города", "Все статусы"]) {
+    for (const label of ["Застройщики", "Жилые комплексы", "Корпуса и литеры", "Все регионы", "Все города", "Все статусы", "История изменений", "Ручной ввод"]) {
       expect(workspace).toContain(label);
     }
     expect(forms).toContain("Быстро добавить корпуса");

@@ -72,6 +72,9 @@ describe("shared catalog commands", () => {
     const count = await runInPrincipalDatabaseTransaction(principal, (transaction) =>
       transaction.developer.count({ where: { normalizedName: `rollback ${suffix}` } }));
     expect(count).toBe(0);
+    const revisions = await runInPrincipalDatabaseTransaction(principal, (transaction) =>
+      transaction.catalogChangeSet.count({ where: { correlationId: principal.correlationId } }));
+    expect(revisions).toBe(0);
   });
 
   it("relinks and merges dependants atomically and rejects tenant writes", async () => {

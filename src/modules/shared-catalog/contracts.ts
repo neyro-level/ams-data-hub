@@ -228,6 +228,18 @@ export interface CatalogAdminData {
   developers: CatalogAdminDeveloper[];
   developments: CatalogAdminDevelopment[];
   buildings: CatalogAdminBuilding[];
+  history: Array<{
+    id: string;
+    entityType: "DEVELOPER" | "DEVELOPMENT" | "BUILDING";
+    entityUid: string;
+    version: number;
+    changeKind: "CREATE" | "UPDATE" | "RELINK" | "MERGE" | "MERGE_REASSIGN";
+    action: string;
+    source: "MANUAL_ADMIN";
+    actorId: string;
+    changedFields: string[];
+    createdAt: string;
+  }>;
   options: {
     developers: Array<{ uid: string; name: string }>;
     developments: Array<{ uid: string; name: string }>;

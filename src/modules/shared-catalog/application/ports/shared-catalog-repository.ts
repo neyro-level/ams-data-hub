@@ -12,6 +12,24 @@ import type {
 export interface CatalogWriteResult {
   uid: string;
   version: number;
+  changedEntities: CatalogChangedEntity[];
+}
+
+export type CatalogEntityType = "DEVELOPER" | "DEVELOPMENT" | "BUILDING";
+export type CatalogChangeKind = "CREATE" | "UPDATE" | "RELINK" | "MERGE" | "MERGE_REASSIGN";
+
+export interface CatalogChangedEntity {
+  entityType: CatalogEntityType;
+  uid: string;
+  version: number;
+  changeKind: CatalogChangeKind;
+}
+
+export interface CatalogRevisionInput {
+  actorId: string;
+  action: string;
+  correlationId: string;
+  entities: CatalogChangedEntity[];
 }
 
 export interface CatalogAuditInput {
@@ -33,5 +51,6 @@ export interface SharedCatalogRepository {
   updateBuilding(input: UpdateBuildingInput & { normalizedLabel: string; normalizedAliases: string[] }): Promise<CatalogWriteResult | null>;
   merge(input: MergeSharedCatalogEntityInput): Promise<CatalogWriteResult | null>;
   relink(input: RelinkSharedCatalogEntityInput): Promise<CatalogWriteResult | null>;
+  appendRevision(input: CatalogRevisionInput): Promise<void>;
   appendAudit(input: CatalogAuditInput): Promise<void>;
 }

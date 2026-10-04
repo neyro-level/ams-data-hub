@@ -11,6 +11,10 @@ const entityMigration = await readFile(
   path.join(root, "prisma", "migrations", "20261003230000_shared_catalog_entities", "migration.sql"),
   "utf8",
 );
+const historyMigration = await readFile(
+  path.join(root, "prisma", "migrations", "20261004020000_catalog_provenance_revisions", "migration.sql"),
+  "utf8",
+);
 
 const failures = [];
 for (const model of ["Region", "RegionAlias", "City", "CityAlias", "District", "DistrictAlias"]) {
@@ -40,10 +44,18 @@ for (const model of ["Developer", "DeveloperAlias", "Development", "DevelopmentA
 for (const table of ["Developer", "Development", "Building"]) {
   if (!entityMigration.includes(`CREATE TRIGGER "${table}_uid_immutable"`)) failures.push(`missing immutable uid trigger for ${table}`);
 }
-if ([geoMigration, entityMigration].some((sql) => sql.includes("GRANT DELETE"))) failures.push("runtime roles must not hard-delete shared catalog entities");
+for (const model of ["CatalogChangeSet", "CatalogEntityVersion", "FactProvenance"]) {
+  if (!schema.includes(`model ${model} {`)) failures.push(`missing Prisma model ${model}`);
+  if (!historyMigration.includes(`ALTER TABLE "${model}" ENABLE ROW LEVEL SECURITY`)) failures.push(`missing RLS for ${model}`);
+  if (!historyMigration.includes(`CREATE TRIGGER "${model}_immutable"`)) failures.push(`missing immutable history trigger for ${model}`);
+}
+if (!historyMigration.includes("'MANUAL_ADMIN'") || !historyMigration.includes("CatalogProvenanceSource")) {
+  failures.push("manual provenance source is missing");
+}
+if ([geoMigration, entityMigration, historyMigration].some((sql) => sql.includes("GRANT DELETE"))) failures.push("runtime roles must not hard-delete shared catalog entities");
 if (!geoMigration.includes("TO ams_data_hub_worker, ams_data_hub_backup") || !entityMigration.includes("TO ams_data_hub_worker, ams_data_hub_backup")) {
   failures.push("worker and backup read grants are missing");
 }
 
 if (failures.length > 0) throw new Error(`Shared catalog schema guard failed:\n${failures.join("\n")}`);
-process.stdout.write("shared_catalog_schema=PASS regions=4 seeded_cities=3 entities=developer,development,building\n");
+process.stdout.write("shared_catalog_schema=PASS regions=4 seeded_cities=3 entities=developer,development,building history=immutable\n");
