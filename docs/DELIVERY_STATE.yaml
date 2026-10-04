@@ -3,10 +3,10 @@ project: ams-data-hub
 canonical_git: sourcecraft
 plan:
   id: AMS-DATA-HUB-IMPLEMENTATION-2026-01
-  version: v3
+  version: v4
   status: APPROVED
   source: docs/AMS Data Hub Master Plan v1.md
-  source_sha256: 59709fc19322fffed93484422392ebf6a8ab2975ae282424e7c4c4d9109ebbfa
+  source_sha256: 2d4a2e86ef8ba30965786d8e3e5675b29a8d949d485caed9060f69f70be53750
 consolidation:
   task_id: adh-dh-00-delivery
   status: MERGE_AFTER_GATE
@@ -38,3 +38,28 @@ local_preflight:
 production:
   authorized: false
   release_run: NOT_RUN
+  touched: false
+data_safety:
+  status: PASS
+  environment: isolated-local
+  postgres_major: 18
+  source_database: ams_data_hub_test
+  restore_database: ams_data_hub_restore_test
+  evidence_command: pnpm test:data-safety-drill
+  evidence_pointer: .local/evidence/data-safety-drill.json
+  ledger_pointer: adh-dh-02-7
+  jobs_frozen_after_restore: true
+  reconcile_conflicts: 0
+  unfreeze_after_reconcile: true
+  cleanup: PASS
+external_gates:
+  timeweb_s3_provider_denial:
+    status: DEFERRED_TO_PREPRODUCTION
+    owner_task: adh-dh-09-4
+    real_adapter_enabled: false
+dh_02_delivery:
+  task_id: adh-dh-02-delivery
+  status: MERGE_AFTER_GATE
+  source_branch: work/data-hub-dh-02-delivery
+  target_branch: main
+  exact_merge_and_gate_evidence: beads://adh-dh-02-delivery#EXECUTION_LEDGER_V1

@@ -22,6 +22,8 @@
     "test": "pnpm test:unit",
     "test:unit": "vitest run",
     "test:integration": "node scripts/run-integration-tests.mjs",
+    "test:s3-isolation": "node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs scripts/verify-timeweb-s3-isolation.ts",
+    "test:data-safety-drill": "node --env-file=.env.local scripts/run-data-safety-drill.mjs",
     "test:safe-outbound": "vitest run tests/safe-outbound.test.ts",
     "test:secret-redaction": "vitest run tests/secret-redaction.test.ts",
     "test:data-contracts": "vitest run tests/data-contracts.test.ts tests/identity-schema-contract.test.ts",
@@ -80,6 +82,8 @@
   "dependencies": {
     "@ams-data-hub/data-contracts": "workspace:*",
     "@ams-data-hub/realty-contracts": "workspace:*",
+    "@aws-sdk/client-s3": "3.1100.0",
+    "@aws-sdk/s3-request-presigner": "3.1100.0",
     "@base-ui/react": "1.8.0",
     "@better-auth/prisma-adapter": "1.7.7",
     "@fontsource/manrope": "5.2.8",

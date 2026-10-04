@@ -80,6 +80,20 @@ write intervals. PID existence is not accepted as health evidence.
 
 ## Recovery and restore
 
+### Isolated restore drill
+
+`pnpm test:data-safety-drill` is the only local restore command. It accepts
+only the guarded loopback `*_test` target, freezes mutating jobs before the
+logical dump, restores into a distinct `*_restore_test` database, verifies
+PostgreSQL 18 and identity invariants, keeps jobs frozen through reconcile and
+unfreezes only after a zero-conflict report. The command deletes the temporary
+dump and restore database in `finally`; its secret-free evidence remains in
+`.local/evidence/data-safety-drill.json`.
+
+Production and managed-provider restore are never inferred from this command.
+They require the release procedure, provider backup/retention evidence, an
+isolated target and a separate owner-approved cutover.
+
 1. Confirm exact SHA, branch and database target.
 2. Check live/ready endpoints, worker heartbeat and outbox health.
 3. Roll back application artifacts to the recorded prior digest set.

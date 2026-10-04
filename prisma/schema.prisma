@@ -61,6 +61,12 @@ enum ProjectStatus {
   DISABLED
 }
 
+enum MediaRightsBasis {
+  OWNED
+  LICENSED
+  PUBLIC_DOMAIN
+}
+
 enum NotificationCategory {
   SYSTEM
   PROJECT
@@ -325,6 +331,7 @@ model Organization {
   outboxEvents    OutboxEvent[]
   jobRuns         JobRun[]
   notifications   Notification[]
+  mediaAssets     MediaAsset[]
 }
 
 model Member {
@@ -360,6 +367,7 @@ model Project {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   notifications  Notification[]
   members        ProjectMember[]
+  mediaAssets     MediaAsset[]
   publicUrlIdReservations PublicUrlIdReservation[]
   catalogSubscription     ProjectCatalogSubscription?
   publicContact           ProjectPublicContact?
@@ -778,6 +786,38 @@ model RetentionRun {
   createdAt           DateTime           @default(now())
 
   @@index([status, startedAt])
+}
+
+model DataSafetyState {
+  id             String    @id
+  jobsFrozen     Boolean   @default(true)
+  freezeReason   String?
+  frozenAt       DateTime? @db.Timestamptz(3)
+  reconciledAt   DateTime? @db.Timestamptz(3)
+  unfrozenAt     DateTime? @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt
+}
+
+model MediaAsset {
+  id               String           @id @default(cuid())
+  organizationId   String
+  projectId        String
+  sha256            String           @db.Char(64)
+  storageKey        String
+  contentType       String           @db.VarChar(127)
+  byteSize          Int
+  originalFileName String           @db.VarChar(255)
+  rightsBasis       MediaRightsBasis
+  source            String           @db.VarChar(2048)
+  license           String?          @db.VarChar(255)
+  uploadedBy        String
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  project          Project          @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([projectId, sha256])
+  @@index([organizationId, createdAt])
+  @@index([storageKey])
 }
 
 model PublicUrlIdReservation {

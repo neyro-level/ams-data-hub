@@ -10,6 +10,7 @@ export const TENANT_OWNED_MODELS = [
   "OutboxEvent",
   "JobRun",
   "PublicUrlIdReservation",
+  "MediaAsset",
   "ProjectCatalogSubscription",
   "ProjectCatalogSubscriptionCity",
   "ProjectCatalogSubscriptionSelection",
