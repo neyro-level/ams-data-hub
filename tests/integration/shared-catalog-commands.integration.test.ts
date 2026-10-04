@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { readTestDatabaseTarget } from "../../scripts/verify-test-database-env.mjs";
 import type { CatalogAuditInput } from "../../src/modules/shared-catalog/application/ports/shared-catalog-repository.ts";
 import { createSharedCatalogCommands } from "../../src/modules/shared-catalog/application/shared-catalog-commands.ts";
+import { getCatalogAdminData } from "../../src/modules/shared-catalog/application/shared-catalog-queries.ts";
 import { PrismaSharedCatalogRepository } from "../../src/modules/shared-catalog/infrastructure/prisma-shared-catalog-repository.ts";
 import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -132,5 +133,48 @@ describe("shared catalog commands", () => {
     } finally {
       await client.end();
     }
+  });
+
+  it("creates a building batch with one audit per row and rolls back on conflict", async () => {
+    const principal = platformAdmin();
+    const commands = createSharedCatalogCommands({ createRepository: (transaction) => new PrismaSharedCatalogRepository(transaction) });
+    const city = await runInPrincipalDatabaseTransaction(principal, (transaction) => transaction.city.findFirstOrThrow({ where: { normalizedName: "краснодар" }, select: { uid: true } }));
+    const suffix = randomUUID().slice(0, 8);
+    const developer = await commands.createDeveloper(principal, { name: `Пакет ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const development = await commands.createDevelopment(principal, { developerUid: developer.uid, cityUid: city.uid, name: `Пакетный ЖК ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const result = await commands.createBuildingsBatch(principal, { developmentUid: development.uid, labels: ["Корпус 1", "Корпус 2", "Литер А"], constructionStatus: "PLANNED", lifecycle: "ACTIVE" });
+    expect(result.count).toBe(3);
+    const state = await runInPrincipalDatabaseTransaction(principal, async (transaction) => ({
+      buildings: await transaction.building.count({ where: { developmentUid: development.uid } }),
+      audits: await transaction.auditEvent.count({ where: { correlationId: principal.correlationId, action: "building.create" } }),
+    }));
+    expect(state).toEqual({ buildings: 3, audits: 3 });
+
+    await expect(commands.createBuildingsBatch(principal, { developmentUid: development.uid, labels: ["Новый", "Корпус 1"], constructionStatus: "PLANNED", lifecycle: "ACTIVE" })).rejects.toThrow("SHARED_CATALOG_CONFLICT");
+    const rolledBack = await runInPrincipalDatabaseTransaction(principal, (transaction) => transaction.building.count({ where: { developmentUid: development.uid, normalizedLabel: "новый" } }));
+    expect(rolledBack).toBe(0);
+  });
+
+  it("filters every catalog list by region", async () => {
+    const principal = platformAdmin();
+    const commands = createSharedCatalogCommands({ createRepository: (transaction) => new PrismaSharedCatalogRepository(transaction) });
+    const [includedCity, excludedCity] = await runInPrincipalDatabaseTransaction(principal, async (transaction) => Promise.all([
+      transaction.city.findFirstOrThrow({ where: { region: { code: "RU-KDA" } }, select: { uid: true, regionUid: true } }),
+      transaction.city.findFirstOrThrow({ where: { region: { code: "RU-SEV" } }, select: { uid: true, regionUid: true } }),
+    ]));
+    const suffix = randomUUID().slice(0, 8);
+    const includedDeveloper = await commands.createDeveloper(principal, { name: `Регион А ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const excludedDeveloper = await commands.createDeveloper(principal, { name: `Регион Б ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const includedDevelopment = await commands.createDevelopment(principal, { developerUid: includedDeveloper.uid, cityUid: includedCity.uid, name: `ЖК А ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const excludedDevelopment = await commands.createDevelopment(principal, { developerUid: excludedDeveloper.uid, cityUid: excludedCity.uid, name: `ЖК Б ${suffix}`, lifecycle: "ACTIVE", aliases: [] });
+    const includedBuilding = await commands.createBuilding(principal, { developmentUid: includedDevelopment.uid, label: `Корпус А ${suffix}`, floors: null, commissioningYear: null, commissioningQuarter: null, constructionStatus: "PLANNED", material: null, housingClass: null, lifecycle: "ACTIVE", aliases: [] });
+    await commands.createBuilding(principal, { developmentUid: excludedDevelopment.uid, label: `Корпус Б ${suffix}`, floors: null, commissioningYear: null, commissioningQuarter: null, constructionStatus: "PLANNED", material: null, housingClass: null, lifecycle: "ACTIVE", aliases: [] });
+
+    const data = await getCatalogAdminData(principal, {
+      q: suffix, lifecycle: "ALL", regionUid: includedCity.regionUid, cityUid: "", developerUid: "",
+    });
+    expect(data.developers.map((item) => item.uid)).toEqual([includedDeveloper.uid]);
+    expect(data.developments.map((item) => item.uid)).toEqual([includedDevelopment.uid]);
+    expect(data.buildings.map((item) => item.uid)).toEqual([includedBuilding.uid]);
   });
 });

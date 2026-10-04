@@ -4,6 +4,7 @@ import { defineCommand } from "../../../platform/commands/define-command.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import {
   createBuildingInputSchema,
+  createBuildingsBatchInputSchema,
   createDeveloperInputSchema,
   createDevelopmentInputSchema,
   mergeSharedCatalogEntityInputSchema,
@@ -170,6 +171,34 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
     },
   });
 
+  const createBuildingsBatch = defineCommand({
+    name: "shared-catalog.building.create-batch",
+    input: createBuildingsBatchInputSchema,
+    authorize,
+    execute: async ({ principal, input, transaction }) => {
+      const actor = requireSharedCatalogAdmin(principal);
+      const repository = dependencies.createRepository(transaction);
+      const created = [];
+      for (const label of input.labels) {
+        const result = await repository.createBuilding({
+          uid: createUlid(), developmentUid: input.developmentUid, label,
+          normalizedLabel: normalizeGeoName(label), floors: null,
+          commissioningYear: null, commissioningQuarter: null,
+          constructionStatus: input.constructionStatus, material: null,
+          housingClass: null, lifecycle: input.lifecycle, aliases: [], normalizedAliases: [],
+        });
+        await repository.appendAudit({
+          actorId: actor.userId, action: "building.create", entityType: "Building",
+          entityId: result.uid, beforeMarker: null,
+          afterMarker: { label, developmentUid: input.developmentUid, constructionStatus: input.constructionStatus, version: result.version },
+          correlationId: actor.correlationId,
+        });
+        created.push(result);
+      }
+      return { count: created.length, buildings: created };
+    },
+  });
+
   const mergeEntity = defineCommand({
     name: "shared-catalog.entity.merge",
     input: mergeSharedCatalogEntityInputSchema,
@@ -210,7 +239,7 @@ export function createSharedCatalogCommands(dependencies: SharedCatalogCommandDe
   return {
     createDeveloper, updateDeveloper,
     createDevelopment, updateDevelopment,
-    createBuilding, updateBuilding,
+    createBuilding, updateBuilding, createBuildingsBatch,
     mergeEntity, relinkEntity,
   };
 }

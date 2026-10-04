@@ -38,6 +38,8 @@ import {
   getProjectRegistryFormOptions,
   listProjects,
 } from "../../../modules/project-registry/server.ts";
+import { parseCatalogAdminQuery } from "../../../modules/shared-catalog/contracts.ts";
+import { getCatalogAdminData } from "../../../modules/shared-catalog/server.ts";
 import { AdminResourceNav } from "../_components/AdminResourceNav.tsx";
 import {
   MembershipsAdminForms,
@@ -47,6 +49,7 @@ import {
 import { OperationsAdminForms } from "../_components/OperationsAdminForms.tsx";
 import { PlatformAdminTable, type PlatformAdminDisplayRow } from "../_components/PlatformAdminTable.tsx";
 import { ProjectsAdminForms } from "../_components/ProjectAdminForms.tsx";
+import { CatalogAdminWorkspace } from "../_components/CatalogAdminWorkspace.tsx";
 
 const defaultSortOptions: Array<{ field: PlatformAdminSortField; label: string }> = [
   { field: "name", label: "Запись" },
@@ -147,6 +150,18 @@ export default async function AdminResourcePageRoute({
   const listQuery = toPlatformAdminListQuery(query);
   const definition = getPlatformAdminResourceDefinition(resource);
   const currentPath = `/admin/${resource}/`;
+
+  if (resource === "catalog") {
+    const catalogQuery = parseCatalogAdminQuery(rawSearchParams);
+    const data = await getCatalogAdminData(state.principal, catalogQuery);
+    return (
+      <div className="space-y-6">
+        <PageHeader title={definition.label} description={definition.description} />
+        <AdminResourceNav currentPath={currentPath} />
+        <CatalogAdminWorkspace data={data} query={catalogQuery} />
+      </div>
+    );
+  }
 
   if (resource === "organizations") {
     const [summary, result] = await Promise.all([

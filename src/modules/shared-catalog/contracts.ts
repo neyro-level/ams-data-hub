@@ -69,6 +69,13 @@ export const updateBuildingInputSchema = createBuildingInputSchema.extend({
   version: versionSchema,
 }).strict();
 
+export const createBuildingsBatchInputSchema = z.object({
+  developmentUid: ulidSchema,
+  labels: z.array(nameSchema).min(1).max(50),
+  constructionStatus: constructionStatusSchema.default("PLANNED"),
+  lifecycle: sharedCatalogLifecycleSchema.default("ACTIVE"),
+}).strict();
+
 export const mergeSharedCatalogEntityInputSchema = z.object({
   entityType: z.enum(["DEVELOPER", "DEVELOPMENT", "BUILDING"]),
   sourceUid: ulidSchema,
@@ -102,5 +109,88 @@ export type CreateDevelopmentInput = z.infer<typeof createDevelopmentInputSchema
 export type UpdateDevelopmentInput = z.infer<typeof updateDevelopmentInputSchema>;
 export type CreateBuildingInput = z.infer<typeof createBuildingInputSchema>;
 export type UpdateBuildingInput = z.infer<typeof updateBuildingInputSchema>;
+export type CreateBuildingsBatchInput = z.infer<typeof createBuildingsBatchInputSchema>;
 export type MergeSharedCatalogEntityInput = z.infer<typeof mergeSharedCatalogEntityInputSchema>;
 export type RelinkSharedCatalogEntityInput = z.infer<typeof relinkSharedCatalogEntityInputSchema>;
+
+export const catalogAdminQuerySchema = z.object({
+  q: z.string().trim().max(160).default(""),
+  lifecycle: z.enum(["ALL", "ACTIVE", "INACTIVE", "ARCHIVED"]).default("ALL"),
+  regionUid: z.union([z.literal(""), ulidSchema]).default(""),
+  cityUid: z.union([z.literal(""), ulidSchema]).default(""),
+  developerUid: z.union([z.literal(""), ulidSchema]).default(""),
+}).strict();
+
+export type CatalogAdminQuery = z.infer<typeof catalogAdminQuerySchema>;
+
+export interface CatalogAdminDeveloper {
+  uid: string;
+  name: string;
+  lifecycle: z.infer<typeof sharedCatalogLifecycleSchema>;
+  version: number;
+  aliases: string[];
+  developmentCount: number;
+  updatedAt: string;
+}
+
+export interface CatalogAdminDevelopment {
+  uid: string;
+  developerUid: string;
+  developerName: string;
+  cityUid: string;
+  cityName: string;
+  districtUid: string | null;
+  districtName: string | null;
+  name: string;
+  lifecycle: z.infer<typeof sharedCatalogLifecycleSchema>;
+  version: number;
+  aliases: string[];
+  buildingCount: number;
+  updatedAt: string;
+}
+
+export interface CatalogAdminBuilding {
+  uid: string;
+  developmentUid: string;
+  developmentName: string;
+  label: string;
+  floors: number | null;
+  commissioningYear: number | null;
+  commissioningQuarter: number | null;
+  constructionStatus: z.infer<typeof constructionStatusSchema>;
+  material: string | null;
+  housingClass: string | null;
+  lifecycle: z.infer<typeof sharedCatalogLifecycleSchema>;
+  version: number;
+  aliases: string[];
+  updatedAt: string;
+}
+
+export interface CatalogAdminData {
+  developers: CatalogAdminDeveloper[];
+  developments: CatalogAdminDevelopment[];
+  buildings: CatalogAdminBuilding[];
+  options: {
+    developers: Array<{ uid: string; name: string }>;
+    developments: Array<{ uid: string; name: string }>;
+    regions: Array<{ uid: string; name: string }>;
+    cities: Array<{ uid: string; regionUid: string; name: string }>;
+    districts: Array<{ uid: string; cityUid: string; name: string }>;
+  };
+}
+
+function firstQueryValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function parseCatalogAdminQuery(
+  input: Record<string, string | string[] | undefined>,
+): CatalogAdminQuery {
+  return catalogAdminQuerySchema.parse({
+    q: firstQueryValue(input.q),
+    lifecycle: firstQueryValue(input.lifecycle),
+    regionUid: firstQueryValue(input.regionUid),
+    cityUid: firstQueryValue(input.cityUid),
+    developerUid: firstQueryValue(input.developerUid),
+  });
+}

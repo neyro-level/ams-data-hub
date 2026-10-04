@@ -1,16 +1,20 @@
 import { expect, test } from "@playwright/test";
-import { productIdentity } from "../../src/platform/config/product-identity.ts";
+import { readFileSync } from "node:fs";
+
+const productIdentity = JSON.parse(readFileSync("project.identity.json", "utf8")).identity as {
+  productName: string;
+};
 
 test("public Data Hub page has no horizontal overflow", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: productIdentity.appName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: productIdentity.productName })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
 });
 
 test("the privacy policy stays available and visibly requires legal review", async ({ page }) => {
   await page.goto("/politika/");
-  await expect(page.locator("header").getByRole("link", { name: new RegExp(productIdentity.appName) })).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: new RegExp(productIdentity.productName) })).toBeVisible();
   await expect(page.getByText("Требует юридической проверки владельцем")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
