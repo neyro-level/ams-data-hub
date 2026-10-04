@@ -78,7 +78,8 @@ describe("DH-03 shared catalog acceptance", () => {
       userId: `acceptance-tenant-${suffix}`,
       organizationId: setup.organizationId,
       membershipId: `acceptance-membership-${suffix}`,
-      role: "ORG_OWNER",
+      role: "ORG_ADMIN",
+      projectIds: "*",
       correlationId: randomUUID(),
     };
     const first = await getProjectCatalogSnapshotSelection(tenant, {
