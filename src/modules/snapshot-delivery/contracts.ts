@@ -168,6 +168,15 @@ export interface DeliveryRun extends CurrentSnapshotManifest {
   failedAt: Date | null;
   staleAt: Date | null;
   safeErrorCode: string | null;
+  ackIdempotencyKeyHash: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface ProjectAckCredential {
+  organizationId: string;
+  projectId: string;
+  currentTokenHash: string;
+  nextTokenHash: string | null;
+  version: number;
 }

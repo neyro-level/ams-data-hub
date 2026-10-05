@@ -23,6 +23,7 @@ type StoredDeliveryRun = {
   failedAt: Date | null;
   staleAt: Date | null;
   safeErrorCode: string | null;
+  ackIdempotencyKeyHash: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -112,5 +113,87 @@ export class PrismaSnapshotDeliveryRepository implements SnapshotDeliveryReposit
       data: { status: "STALE", staleAt: occurredAt },
     });
     return result.count;
+  }
+
+  async getAckCredential(organizationId: string, projectId: string) {
+    return this.transaction.projectAckCredential.findUnique({
+      where: { organizationId_projectId: { organizationId, projectId } },
+      select: { organizationId: true, projectId: true, currentTokenHash: true, nextTokenHash: true, version: true },
+    });
+  }
+
+  async saveAckCredential(input: {
+    organizationId: string;
+    projectId: string;
+    currentTokenHash: string;
+    nextTokenHash: string | null;
+    expectedVersion: number;
+    rotatedAt: Date | null;
+  }) {
+    if (input.expectedVersion === 0) {
+      return this.transaction.projectAckCredential.create({
+        data: {
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          currentTokenHash: input.currentTokenHash,
+          nextTokenHash: input.nextTokenHash,
+          rotatedAt: input.rotatedAt,
+        },
+        select: { organizationId: true, projectId: true, currentTokenHash: true, nextTokenHash: true, version: true },
+      });
+    }
+    const updated = await this.transaction.projectAckCredential.updateMany({
+      where: { organizationId: input.organizationId, projectId: input.projectId, version: input.expectedVersion },
+      data: {
+        currentTokenHash: input.currentTokenHash,
+        nextTokenHash: input.nextTokenHash,
+        rotatedAt: input.rotatedAt,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new Error("ACK_CREDENTIAL_STALE");
+    const credential = await this.getAckCredential(input.organizationId, input.projectId);
+    if (!credential) throw new Error("ACK_CREDENTIAL_NOT_FOUND");
+    return credential;
+  }
+
+  async acknowledgeApplied(input: {
+    organizationId: string;
+    projectId: string;
+    publishSequence: number;
+    idempotencyKeyHash: string;
+    acknowledgedAt: Date;
+  }): Promise<{ run: DeliveryRun; idempotent: boolean }> {
+    const existing = await this.getRun(input.organizationId, input.projectId, input.publishSequence);
+    if (!existing) throw new Error("ACK_DELIVERY_RUN_NOT_FOUND");
+    if (existing.status === "ACKNOWLEDGED") {
+      if (existing.ackIdempotencyKeyHash !== input.idempotencyKeyHash) throw new Error("ACK_REPLAY_REJECTED");
+      return { run: existing, idempotent: true };
+    }
+    if (existing.status !== "APPLIED") throw new Error("ACK_DELIVERY_NOT_APPLIED");
+    const updated = await this.transaction.deliveryRun.updateMany({
+      where: {
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        publishSequence: input.publishSequence,
+        status: "APPLIED",
+        ackIdempotencyKeyHash: null,
+      },
+      data: {
+        status: "ACKNOWLEDGED",
+        acknowledgedAt: input.acknowledgedAt,
+        ackIdempotencyKeyHash: input.idempotencyKeyHash,
+      },
+    });
+    if (updated.count !== 1) {
+      const concurrent = await this.getRun(input.organizationId, input.projectId, input.publishSequence);
+      if (concurrent?.status === "ACKNOWLEDGED" && concurrent.ackIdempotencyKeyHash === input.idempotencyKeyHash) {
+        return { run: concurrent, idempotent: true };
+      }
+      throw new Error("ACK_REPLAY_REJECTED");
+    }
+    const run = await this.getRun(input.organizationId, input.projectId, input.publishSequence);
+    if (!run) throw new Error("ACK_DELIVERY_RUN_NOT_FOUND");
+    return { run, idempotent: false };
   }
 }

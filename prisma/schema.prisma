@@ -434,6 +434,7 @@ model Project {
   agentConsentBatches     AgentConsentBatch[]
   currentSnapshotManifest ProjectCurrentSnapshotManifest?
   deliveryRuns            DeliveryRun[]
+  ackCredential           ProjectAckCredential?
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -457,28 +458,44 @@ model ProjectCurrentSnapshotManifest {
 }
 
 model DeliveryRun {
-  id              String            @id @default(cuid())
-  organizationId  String
-  projectId       String
-  publishSequence Int
-  manifestKey     String            @db.VarChar(512)
-  manifestSha256  String            @db.VarChar(64)
-  status          DeliveryRunStatus @default(PENDING)
-  publishedAt     DateTime          @db.Timestamptz(3)
-  notifiedAt      DateTime?         @db.Timestamptz(3)
-  downloadedAt    DateTime?         @db.Timestamptz(3)
-  appliedAt       DateTime?         @db.Timestamptz(3)
-  acknowledgedAt  DateTime?         @db.Timestamptz(3)
-  failedAt        DateTime?         @db.Timestamptz(3)
-  staleAt         DateTime?         @db.Timestamptz(3)
-  safeErrorCode   String?           @db.VarChar(120)
-  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime          @updatedAt @db.Timestamptz(3)
-  project         Project           @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  id                    String            @id @default(cuid())
+  organizationId        String
+  projectId             String
+  publishSequence       Int
+  manifestKey           String            @db.VarChar(512)
+  manifestSha256        String            @db.VarChar(64)
+  status                DeliveryRunStatus @default(PENDING)
+  publishedAt           DateTime          @db.Timestamptz(3)
+  notifiedAt            DateTime?         @db.Timestamptz(3)
+  downloadedAt          DateTime?         @db.Timestamptz(3)
+  appliedAt             DateTime?         @db.Timestamptz(3)
+  acknowledgedAt        DateTime?         @db.Timestamptz(3)
+  failedAt              DateTime?         @db.Timestamptz(3)
+  staleAt               DateTime?         @db.Timestamptz(3)
+  safeErrorCode         String?           @db.VarChar(120)
+  ackIdempotencyKeyHash String?           @db.VarChar(64)
+  createdAt             DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
+  project               Project           @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([organizationId, projectId, publishSequence])
   @@index([status, createdAt])
   @@index([projectId, publishSequence])
+}
+
+model ProjectAckCredential {
+  organizationId   String
+  projectId        String
+  currentTokenHash String    @db.VarChar(255)
+  nextTokenHash    String?   @db.VarChar(255)
+  version          Int       @default(1)
+  rotatedAt        DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  project          Project   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId])
+  @@index([projectId])
 }
 
 model ProjectMember {

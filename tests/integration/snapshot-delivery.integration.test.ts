@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/index.ts";
 import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
@@ -81,6 +82,31 @@ describe("snapshot delivery persistence", () => {
       const repository = new PrismaSnapshotDeliveryRepository(transaction);
       await expect(repository.getCurrentManifest(setup.organizationId, setup.projectAId)).resolves.toMatchObject({ publishSequence: 1 });
       await expect(repository.getCurrentManifest(setup.organizationId, setup.projectBId)).resolves.toBeNull();
+    });
+  });
+
+  it("persists only an ACK token hash and rejects a different replay key", async () => {
+    const principal = admin();
+    const suffix = randomUUID().slice(0, 8);
+    await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
+      const organization = await transaction.organization.create({ data: { name: `ACK Org ${suffix}`, slug: `ack-org-${suffix}` } });
+      const project = await transaction.project.create({ data: { organizationId: organization.id, name: `ACK ${suffix}`, slug: `ack-${suffix}` } });
+      const repository = new PrismaSnapshotDeliveryRepository(transaction);
+      await repository.publishCurrentAndCreateRun({
+        organizationId: organization.id, projectId: project.id, publishSequence: 7,
+        manifestKey: `snapshots/${project.id}/${"c".repeat(64)}`, manifestSha256: "c".repeat(64),
+        publishedAt: new Date("2026-10-05T00:00:00.000Z"),
+      });
+      await repository.transitionRun({ organizationId: organization.id, projectId: project.id, publishSequence: 7, expectedStatuses: ["PENDING"], nextStatus: "DOWNLOADED", occurredAt: new Date("2026-10-05T00:01:00.000Z") });
+      await repository.transitionRun({ organizationId: organization.id, projectId: project.id, publishSequence: 7, expectedStatuses: ["DOWNLOADED"], nextStatus: "APPLIED", occurredAt: new Date("2026-10-05T00:02:00.000Z") });
+      const service = createSnapshotAckService({ repository, now: () => new Date("2026-10-05T00:03:00.000Z") });
+      const token = "integration-project-token-value-00001";
+      const credential = await service.initializeCredential({ organizationId: organization.id, projectId: project.id, token });
+      expect(credential.currentTokenHash).not.toContain(token);
+      const request = { organizationId: organization.id, projectId: project.id, publishSequence: 7, token, idempotencyKey: "integration-ack-00000001" };
+      await expect(service.acknowledge(request)).resolves.toMatchObject({ idempotent: false, run: { status: "ACKNOWLEDGED" } });
+      await expect(service.acknowledge(request)).resolves.toMatchObject({ idempotent: true });
+      await expect(service.acknowledge({ ...request, idempotencyKey: "integration-ack-00000002" })).rejects.toThrow("ACK_REPLAY_REJECTED");
     });
   });
 });
