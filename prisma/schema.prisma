@@ -87,6 +87,18 @@ enum MediaRightsBasis {
   PUBLIC_DOMAIN
 }
 
+enum MediaSourceKind {
+  LISTING_IMAGE
+  AGENT_PHOTO
+  DEVELOPMENT_IMAGE
+  OTHER
+}
+
+enum MediaMirrorStatus {
+  MIRRORED
+  WARNING
+}
+
 enum NotificationCategory {
   SYSTEM
   PROJECT
@@ -431,6 +443,7 @@ model Project {
   notifications            Notification[]
   members                  ProjectMember[]
   mediaAssets              MediaAsset[]
+  mediaSources             MediaSource[]
   publicUrlIdReservations  PublicUrlIdReservation[]
   catalogSubscription      ProjectCatalogSubscription?
   publicContact            ProjectPublicContact?
@@ -845,6 +858,7 @@ model Source {
   manualRunRequests   SourceManualRunRequest[]
   inventoryIdentities InventoryIdentity[]
   agentSourceEvidence AgentSourceEvidence[]
+  mediaSources        MediaSource[]
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, sourceKey])
@@ -1142,10 +1156,42 @@ model MediaAsset {
   createdAt        DateTime         @default(now()) @db.Timestamptz(3)
   organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   project          Project          @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+  mediaSources     MediaSource[]
 
   @@unique([projectId, sha256])
   @@index([organizationId, createdAt])
   @@index([storageKey])
+}
+
+model MediaSource {
+  id                        String            @id @default(cuid())
+  organizationId            String
+  projectId                 String
+  sourceId                  String
+  sourceRevisionId          String            @db.VarChar(128)
+  entityType                String            @db.VarChar(64)
+  entityUid                 String            @db.VarChar(240)
+  kind                      MediaSourceKind
+  position                  Int
+  sourceUrl                 String            @db.VarChar(2048)
+  canonicalSourceUrl        String            @db.VarChar(2048)
+  isImageOrderChangeAllowed Boolean           @default(false)
+  status                    MediaMirrorStatus
+  warningCode               String?           @db.VarChar(80)
+  assetId                   String?
+  firstSeenAt               DateTime          @db.Timestamptz(3)
+  lastAttemptAt             DateTime          @db.Timestamptz(3)
+  mirroredAt                DateTime?         @db.Timestamptz(3)
+  createdAt                 DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime          @updatedAt @db.Timestamptz(3)
+  project                   Project           @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source                    Source            @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+  asset                     MediaAsset?       @relation(fields: [assetId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, sourceId, entityType, entityUid, kind, canonicalSourceUrl])
+  @@index([projectId, entityType, entityUid, position])
+  @@index([projectId, status, lastAttemptAt])
+  @@index([assetId])
 }
 
 model PublicUrlIdReservation {

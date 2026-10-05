@@ -11,6 +11,7 @@ export const TENANT_OWNED_MODELS = [
   "JobRun",
   "PublicUrlIdReservation",
   "MediaAsset",
+  "MediaSource",
   "ProjectCatalogSubscription",
   "ProjectCatalogSubscriptionCity",
   "ProjectCatalogSubscriptionSelection",
