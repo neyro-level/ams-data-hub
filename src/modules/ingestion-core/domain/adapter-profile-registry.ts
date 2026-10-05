@@ -2,6 +2,7 @@ import type { SourceDatasetType, SourceTransportType } from "../contracts.ts";
 import { SourceRegistryError } from "./source-registry-error.ts";
 import type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
 import { vladisVt24Profile } from "./profiles/vladis-vt24-v1.ts";
+import { joyworkMarketplaceProfiles } from "./profiles/joywork-marketplace-profiles.ts";
 
 export type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
 
@@ -98,6 +99,16 @@ const yrlRealty2010Adapter = Object.freeze<SourceAdapterDescriptor>({
   transportTypes: Object.freeze(["HTTPS_XML"]),
 });
 
+const avitoXmlV3Adapter = Object.freeze<SourceAdapterDescriptor>({
+  key: "avito-xml-v3", version: "1.0.0", capabilities: Object.freeze(["XML_STREAMING", "RAW_ATTRIBUTES"]),
+  datasetTypes: Object.freeze(["MIXED_REALTY", "RESALE", "NEW_BUILD", "HOUSE", "LAND", "COMMERCIAL", "AGENT"]), transportTypes: Object.freeze(["HTTPS_XML"]),
+});
+
+const cianXmlV2Adapter = Object.freeze<SourceAdapterDescriptor>({
+  key: "cian-xml-v2", version: "1.0.0", capabilities: Object.freeze(["XML_STREAMING", "RAW_ATTRIBUTES"]),
+  datasetTypes: Object.freeze(["MIXED_REALTY", "RESALE", "NEW_BUILD", "HOUSE", "LAND", "COMMERCIAL", "AGENT"]), transportTypes: Object.freeze(["HTTPS_XML"]),
+});
+
 const defaultRealtyProfile = Object.freeze<SourceProfileDescriptor>({
   key: "default-v1",
   version: "1.0.0",
@@ -109,6 +120,6 @@ const defaultRealtyProfile = Object.freeze<SourceProfileDescriptor>({
 });
 
 export const adapterProfileRegistry = createAdapterProfileRegistry({
-  adapters: [yrlRealty2010Adapter],
-  profiles: [defaultRealtyProfile, vladisVt24Profile],
+  adapters: [yrlRealty2010Adapter, avitoXmlV3Adapter, cianXmlV2Adapter],
+  profiles: [defaultRealtyProfile, vladisVt24Profile, ...joyworkMarketplaceProfiles],
 });

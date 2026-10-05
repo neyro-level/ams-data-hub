@@ -29,6 +29,8 @@ Beads и execution ledger. Он не заменяет продуктовый bac
 | `research/VLADIS_VT24_CALIBRATION_2026-10-05.md` | обезличенное evidence трёх реальных тестовых прогонов профиля Vladis/VT24 и калиброванная safety policy |
 | `research/NEWBUILDING_AGGREGATOR_PILOT_2026-10-05.md` | обезличенное evidence пилота пяти карточек новостроек, 25 media files и gap matrix shared-каталога |
 | `research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md` | secret-free evidence реального non-production provider proof: A→B denied, B→B pass и полный cleanup |
+| `sources/MARKETPLACE_XML_FORMATS_V1.md` | контракты Yandex Realty, Домклик, Avito v3 и CIAN v2, общий canonical draft и bootstrap safety |
+| `research/JOYWORK_MARKETPLACE_FEEDS_2026-10-05.md` | обезличенное evidence структурной проверки четырёх тестовых XML-фидов |
 
 [`docs/adr/README.md`](adr/README.md) фиксирует стабильные IDs и статус
 труднообратимых решений. Каталог
