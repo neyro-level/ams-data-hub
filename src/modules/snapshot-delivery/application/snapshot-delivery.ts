@@ -35,7 +35,14 @@ export interface PublishSnapshotInput {
 
 async function storeSnapshot(input: PublishSnapshotInput, storage: ProjectSnapshotStorage): Promise<CurrentSnapshotManifest> {
   const { composition, manifest, organizationId } = input;
-  if (composition.manifest.projectId !== manifest.projectId || composition.manifest.publishSequence !== manifest.publishSequence) {
+  const { signature: _signature, ...unsignedManifest } = manifest;
+  void _signature;
+  const signedPayload = canonicalJsonBytes(unsignedManifest as CanonicalJsonValue);
+  if (
+    composition.manifest.projectId !== manifest.projectId
+    || composition.manifest.publishSequence !== manifest.publishSequence
+    || !Buffer.from(composition.manifestPayload).equals(Buffer.from(signedPayload))
+  ) {
     throw new Error("SNAPSHOT_DELIVERY_MANIFEST_MISMATCH");
   }
   await Promise.all(composition.files.map((file) => storage.put({
@@ -96,9 +103,6 @@ export function createSnapshotDeliveryService(dependencies: SnapshotDeliveryDepe
     },
     recordApplied(run: DeliveryRun) {
       return transition(run, ["DOWNLOADED"], "APPLIED");
-    },
-    recordAcknowledged(run: DeliveryRun) {
-      return transition(run, ["APPLIED"], "ACKNOWLEDGED");
     },
     recordFailed(run: DeliveryRun, safeErrorCode: string) {
       return transition(run, ["PENDING", "NOTIFIED", "DOWNLOADED", "APPLIED"], "FAILED", safeErrorCode);

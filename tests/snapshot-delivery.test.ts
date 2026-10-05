@@ -219,9 +219,23 @@ describe("snapshot delivery", () => {
     await expect(service.recordApplied(run)).rejects.toThrow("DELIVERY_TRANSITION_CONFLICT");
     run = await service.recordDownloaded(run);
     run = await service.recordApplied(run);
-    run = await service.recordAcknowledged(run);
-    expect(run.status).toBe("ACKNOWLEDGED");
-    await expect(service.recordFailed(run, "TOO_LATE")).rejects.toThrow("DELIVERY_TRANSITION_CONFLICT");
+    expect(run.status).toBe("APPLIED");
+    await expect(service.recordDownloaded(run)).rejects.toThrow("DELIVERY_TRANSITION_CONFLICT");
+  });
+
+  it("rejects a signed manifest that does not match the composed artifacts", async () => {
+    const repository = new MemoryDeliveryRepository();
+    const service = createSnapshotDeliveryService({
+      repository,
+      createProjectStorage: (projectId) => new ProjectSnapshotStorage(projectId, new MemoryObjectStorage()),
+      now: () => new Date("2026-10-05T00:00:02.000Z"),
+    });
+    const snapshot = await fixture();
+    await expect(service.stageArtifacts({
+      organizationId: "org-1",
+      composition: snapshot.composition,
+      manifest: { ...snapshot.manifest, catalogRevision: "tampered-catalog" },
+    })).rejects.toThrow("SNAPSHOT_DELIVERY_MANIFEST_MISMATCH");
   });
 
   it("marks unacknowledged runs stale only after 24 hours and leaves ACK and FAILED terminal", async () => {
