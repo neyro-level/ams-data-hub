@@ -11,6 +11,17 @@ export {
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { isSourceEligibleForAutomaticRun } from "./domain/source-schedule.ts";
 export {
+  analyzeImportSafety,
+  BOOTSTRAP_SOURCE_SAFETY_POLICY,
+  importIssueSchema,
+  importIssueSeveritySchema,
+  reviewSuspiciousImport,
+  type ImportIssue,
+  type SafetyAnalysisResult,
+  type SafetyDisposition,
+  type SourceSafetyPolicy,
+} from "./domain/safety-engine.ts";
+export {
   reconcileMissingInventory,
   reconcileSeenInventory,
   type InventoryIdentityState,

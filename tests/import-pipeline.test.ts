@@ -93,4 +93,28 @@ describe("source import pipeline", () => {
     expect(normalizedContentHash(normalizedA)).toBe(normalizedContentHash(normalizedB));
     expect(createHash("sha256").update("raw-a").digest("hex")).not.toBe(normalizedContentHash(normalizedA));
   });
+
+  it("never applies a SUSPICIOUS import without an explicit approval result", async () => {
+    const state = { lastGood: new Map<string, GoodRevisionReceipt>(), failures: [] as string[], applied: [] as string[] };
+    const rawBySource = { alpha: JSON.stringify({ offers: [{ id: "1", price: 10 }] }) };
+    const dependencies = fixtureDependencies(state, rawBySource);
+    dependencies.safetyAnalyzer.analyze = async () => ({
+      disposition: "SUSPICIOUS",
+      reasonCodes: ["DROP_THRESHOLD_EXCEEDED"],
+      metrics: { recordCount: 1, previousGoodRecordCount: 10, invalidPercent: 0, dropPercent: 90, growthPercent: 0, criticalIssueCount: 0 },
+    });
+    await expect(runSourceImport(target("alpha"), dependencies)).resolves.toEqual({
+      state: "FAILED", sourceId: "alpha", failedStage: "SAFETY_ANALYSIS", code: "IMPORT_REQUIRES_APPROVAL",
+    });
+    expect(state.applied).toEqual([]);
+
+    dependencies.safetyAnalyzer.analyze = async () => ({
+      disposition: "APPROVED",
+      reasonCodes: ["DROP_THRESHOLD_EXCEEDED"],
+      metrics: { recordCount: 1, previousGoodRecordCount: 10, invalidPercent: 0, dropPercent: 90, growthPercent: 0, criticalIssueCount: 0 },
+      review: { reviewedBy: "owner-fixture", reviewedAt: "2026-10-05T04:00:00.000Z", reason: "Synthetic review" },
+    });
+    await expect(runSourceImport(target("alpha"), dependencies)).resolves.toMatchObject({ state: "GOOD" });
+    expect(state.applied).toEqual(["alpha"]);
+  });
 });

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { SafetyAnalysisResult } from "../domain/safety-engine.ts";
 
 export type ImportPipelineStage =
   | "SAFE_INTAKE"
@@ -49,7 +50,7 @@ export interface ImportPipelineDependencies<TRaw, TParsed, TNormalized, TResolve
   validator: { validate(parsed: TParsed, target: SourceImportTarget): Promise<void> };
   normalizer: { normalize(parsed: TParsed, target: SourceImportTarget): Promise<TNormalized> };
   identityResolver: { resolve(normalized: TNormalized, target: SourceImportTarget): Promise<TResolved> };
-  safetyAnalyzer: { analyze(resolved: TResolved, target: SourceImportTarget): Promise<void> };
+  safetyAnalyzer: { analyze(resolved: TResolved, target: SourceImportTarget): Promise<void | SafetyAnalysisResult> };
   stagingStore: { write(resolved: TResolved, target: SourceImportTarget): Promise<StagingReceipt> };
   mutationPlanner: { plan(staging: StagingReceipt, target: SourceImportTarget): Promise<MutationPlan> };
   repository: {
@@ -119,7 +120,9 @@ export async function runSourceImport<TRaw, TParsed, TNormalized, TResolved>(
     stage = "IDENTITY_RESOLUTION";
     const resolved = await dependencies.identityResolver.resolve(normalized, target);
     stage = "SAFETY_ANALYSIS";
-    await dependencies.safetyAnalyzer.analyze(resolved, target);
+    const safety = await dependencies.safetyAnalyzer.analyze(resolved, target);
+    if (safety?.disposition === "SUSPICIOUS") throw new Error("IMPORT_REQUIRES_APPROVAL");
+    if (safety?.disposition === "REJECTED") throw new Error("IMPORT_REJECTED_BY_SAFETY_POLICY");
     stage = "STAGING";
     const staging = await dependencies.stagingStore.write(resolved, target);
     stage = "MUTATION_PLAN";
