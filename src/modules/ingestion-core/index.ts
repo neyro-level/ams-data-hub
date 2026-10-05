@@ -11,6 +11,17 @@ export {
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { isSourceEligibleForAutomaticRun } from "./domain/source-schedule.ts";
 export {
+  reconcileMissingInventory,
+  reconcileSeenInventory,
+  type InventoryIdentityState,
+  type InventoryLifecycleDecision,
+  type InventoryLifecycleEventType,
+  type InventoryLifecyclePolicy,
+  type InventoryLifecycleStatus,
+  type InventoryMissingRunContext,
+  type InventorySeenInput,
+} from "./domain/inventory-lifecycle.ts";
+export {
   normalizeArea,
   normalizeCadastralNumber,
   normalizeDescription,
