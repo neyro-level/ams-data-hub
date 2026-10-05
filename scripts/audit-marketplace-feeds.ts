@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { safeOutboundRequest } from "../src/platform/http/safe-outbound.ts";
 import {
   findDuplicateExternalIds,
   normalizeMarketplaceRecord,
@@ -22,35 +23,17 @@ const inputs = [
   { label: "CIAN_V2", env: "FEED_AUDIT_CIAN_URL", parse: parseCianV2Feed },
 ] as const;
 
-async function readBounded(response: Response): Promise<Uint8Array> {
-  if (!response.body) throw new Error("FEED_RESPONSE_BODY_MISSING");
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.byteLength;
-    if (bytes > MAX_BYTES) {
-      await reader.cancel("FEED_AUDIT_LIMIT_EXCEEDED");
-      throw new Error("FEED_AUDIT_LIMIT_EXCEEDED");
-    }
-    chunks.push(value);
-  }
-  const result = new Uint8Array(bytes);
-  let offset = 0;
-  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
-  return result;
-}
-
 async function audit(input: typeof inputs[number]) {
   const rawUrl = process.env[input.env];
   if (!rawUrl) return { format: input.label, status: "SKIPPED_ENV_MISSING" };
-  const url = new URL(rawUrl);
-  if (url.protocol !== "https:" || url.username || url.password) throw new Error(`${input.label}_URL_UNSAFE`);
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`${input.label}_HTTP_${response.status}`);
-  const bytes = await readBounded(response);
+  const response = await safeOutboundRequest(rawUrl, {
+    purpose: "feed",
+    allowedContentTypes: ["application/xml", "text/xml", "application/octet-stream", "text/plain"],
+    timeoutMs: 30_000,
+    maxBytes: MAX_BYTES,
+    maxRedirects: 0,
+  });
+  const bytes = response.body;
   const records: RecordValue[] = [];
   for await (const record of input.parse([bytes] as never)) records.push(record);
   const drafts: CanonicalFeedDraft[] = [];

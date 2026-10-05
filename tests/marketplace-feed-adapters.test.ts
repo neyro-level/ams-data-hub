@@ -69,6 +69,13 @@ describe("marketplace XML format adapters", () => {
     expect(await collect(parseDomclickYrlFeed([`<realty-feed xmlns="${namespace}"><generation-date>2026-10-05T12:00:00+03:00</generation-date></realty-feed>`]))).toEqual([]);
   });
 
+  it("bounds CIAN root metadata used for the version signature", async () => {
+    const xml = "<Feed><Feed_Version>2</Feed_Version><Metadata><One/><Two/></Metadata></Feed>";
+    await expect(collect(parseCianV2Feed([xml], {
+      limits: { maxElementsPerRecord: 3 },
+    }))).rejects.toMatchObject({ code: "MARKETPLACE_XML_RECORD_TOO_COMPLEX" });
+  });
+
   it("normalizes all formats to the same field vocabulary and preserves format provenance", async () => {
     const records: [MarketplaceXmlRecord | YrlRawOffer, MarketplaceFeedFormat][] = [
       [(await collect(parseJoyworkYandexFeed([yrl])))[0]!, "YRL_2010"],

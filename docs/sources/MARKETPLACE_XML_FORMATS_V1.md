@@ -43,7 +43,9 @@ price/currency, area, coordinates, phones, image URLs и raw field provenance.
   непустых тестовых прогона каждого профиля и подтверждение enum mappings.
 - Локальный bounded audit запускается через `pnpm audit:marketplace-feeds`.
   URL передаются только process-local переменными `FEED_AUDIT_*_URL`; отчёт не
-  печатает endpoint, объявления или PII.
+  печатает endpoint, объявления или PII. Сетевой доступ проходит через общий
+  Safe Outbound с повторной DNS-проверкой, запретом приватных адресов, нулём
+  redirect и лимитом 32 MiB.
 
 ## Основание форматов
 

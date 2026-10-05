@@ -96,6 +96,8 @@ export async function* parseMarketplaceXmlRecords(
   let rootSeen = false;
   let rootDepth = 0;
   let rootChildStack: YrlRawElement[] | null = null;
+  let rootMetadataElementCount = 0;
+  let rootMetadataCharacterCount = 0;
   let recordDepth = 0;
   let recordLine = 0;
   let recordColumn = 0;
@@ -137,6 +139,11 @@ export async function* parseMarketplaceXmlRecords(
       recordStack = [element(parser, tag, limits)];
       return;
     }
+    if (!options.validateDocument) return;
+    rootMetadataElementCount += 1;
+    if (rootMetadataElementCount > limits.maxElementsPerRecord) {
+      fail(parser, "MARKETPLACE_XML_RECORD_TOO_COMPLEX");
+    }
     if (depth === rootDepth + 1) {
       rootChildStack = [element(parser, tag, limits)];
     } else if (rootChildStack) {
@@ -154,6 +161,9 @@ export async function* parseMarketplaceXmlRecords(
     if (recordStack) {
       recordCharacterCount += value.length;
       if (recordCharacterCount > limits.maxRecordCharacters) fail(parser, "MARKETPLACE_XML_RECORD_TOO_COMPLEX");
+    } else {
+      rootMetadataCharacterCount += value.length;
+      if (rootMetadataCharacterCount > limits.maxRecordCharacters) fail(parser, "MARKETPLACE_XML_RECORD_TOO_COMPLEX");
     }
     current.text += value;
   };
