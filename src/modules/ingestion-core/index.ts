@@ -28,6 +28,10 @@ export {
   vladisVt24Configuration,
   vladisVt24Profile,
 } from "./domain/profiles/vladis-vt24-v1.ts";
+export {
+  extractVladisAgentEvidence,
+  type ExtractedAgentEvidence,
+} from "./domain/profiles/vladis-agent-extraction.ts";
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { isSourceEligibleForAutomaticRun } from "./domain/source-schedule.ts";
 export {

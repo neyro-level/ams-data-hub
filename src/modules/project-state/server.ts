@@ -15,6 +15,8 @@ import { PrismaListingDevelopmentLinkRepository } from "./infrastructure/prisma-
 import { createAgentCommands } from "./application/agent-commands.ts";
 import { createAgentQueries } from "./application/agent-queries.ts";
 import { PrismaAgentRepository } from "./infrastructure/prisma-agent-repository.ts";
+import { createFeedAgentMatchingCommands } from "./application/feed-agent-matching.ts";
+import { PrismaAgentMatchingRepository } from "./infrastructure/prisma-agent-matching-repository.ts";
 
 export const projectPublicContactCommands = createProjectPublicContactCommands({
   createRepository: (transaction) => new PrismaProjectPublicContactRepository(transaction),
@@ -42,6 +44,10 @@ export const agentCommands = createAgentCommands({
 
 export const listAgentsForAdmin = createAgentQueries({
   createRepository: (transaction) => new PrismaAgentRepository(transaction),
+});
+
+export const feedAgentMatchingCommands = createFeedAgentMatchingCommands({
+  createRepository: (transaction) => new PrismaAgentMatchingRepository(transaction),
 });
 
 export { getProjectPublicContact, listProjectPublicContactsForAdmin, listProjectEditorialPublic, ProjectStateError };

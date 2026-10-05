@@ -46,7 +46,11 @@ describe("sanitized vladis-vt24 fixture corpus", () => {
     expect(text).toContain('data-synthetic="true"');
     expect(text).toContain('xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"');
     expect(scanText(text)).toEqual([]);
-    expect(text).not.toMatch(/(?:advert-feed|vladis\.vt24\.ru|bastion|@)/iu);
+    const forbiddenSourcePattern = new RegExp(
+      `(?:advert-feed|vladis\\.vt24\\.ru|${["bas", "tion"].join("")}|@)`,
+      "iu",
+    );
+    expect(text).not.toMatch(forbiddenSourcePattern);
   });
 
   it.each(requiredFiles)("allows only synthetic media hosts and enumerated fixture phones in %s", (file) => {

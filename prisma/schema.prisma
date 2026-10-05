@@ -445,6 +445,7 @@ model Project {
   sourceManualRunRequests  SourceManualRunRequest[]
   agents                   Agent[]
   agentExternalIdentities  AgentExternalIdentity[]
+  agentSourceEvidence      AgentSourceEvidence[]
   agentMatchReviews        AgentMatchReview[]
   agentMergeEvents         AgentMergeEvent[]
   agentConsentBatches      AgentConsentBatch[]
@@ -564,6 +565,7 @@ model Agent {
   updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
   project               Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   externalIdentities    AgentExternalIdentity[]
+  sourceEvidence        AgentSourceEvidence[]
   consentBatch          AgentConsentBatch?         @relation(fields: [organizationId, projectId, consentBatchId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([organizationId, projectId, uid])
@@ -613,6 +615,34 @@ model AgentExternalIdentity {
   @@index([projectId, phoneNorm])
   @@index([projectId, emailNorm])
   @@index([agentUid])
+}
+
+model AgentSourceEvidence {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  projectId          String
+  sourceId           String
+  agentUid           String?  @db.VarChar(26)
+  evidenceKey        String   @db.Char(64)
+  fullNameRaw        String?  @db.VarChar(240)
+  normalizedFullName String?  @db.VarChar(240)
+  phoneRaw           String?  @db.VarChar(80)
+  phoneNorm          String?  @db.VarChar(40)
+  photoSourceUrl     String?  @db.VarChar(2048)
+  categoryRaw        String?  @db.VarChar(120)
+  firstSeenAt        DateTime @db.Timestamptz(3)
+  lastSeenAt         DateTime @db.Timestamptz(3)
+  sourceRevisionId   String   @db.VarChar(128)
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+  project            Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source             Source   @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+  agent              Agent?   @relation(fields: [organizationId, projectId, agentUid], references: [organizationId, projectId, uid], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, sourceId, evidenceKey])
+  @@index([projectId, phoneNorm])
+  @@index([agentUid, lastSeenAt])
+  @@index([sourceId, sourceRevisionId])
 }
 
 model AgentMatchReview {
@@ -814,6 +844,7 @@ model Source {
   credentialRef       SourceCredentialRef?
   manualRunRequests   SourceManualRunRequest[]
   inventoryIdentities InventoryIdentity[]
+  agentSourceEvidence AgentSourceEvidence[]
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, sourceKey])
