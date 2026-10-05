@@ -41,6 +41,7 @@ describe("vladis-vt24-v1 profile", () => {
     expect(resolveProfileAlias(aliases, "таунхаус")).toBe("TOWNHOUSE");
     expect(resolveProfileAlias(aliases, "гараж")).toBe("GARAGE_BOX");
     expect(resolveProfileAlias(aliases, "box")).toBe("GARAGE_BOX");
+    expect(resolveProfileAlias(aliases, "коммерческая")).toBe("COMMERCIAL");
     expect(resolveProfileAlias(aliases, "неизвестно")).toBeUndefined();
   });
 
@@ -48,6 +49,7 @@ describe("vladis-vt24-v1 profile", () => {
     expect(resolveVladisTransaction("продажа")).toBe("SALE");
     expect(resolveVladisTransaction("аренда", "сутки")).toBe("RENT_SHORT");
     expect(resolveVladisTransaction("аренда", "месяц")).toBe("RENT_LONG");
+    expect(resolveVladisTransaction("аренда", "month")).toBe("RENT_LONG");
     expect(resolveVladisTransaction("аренда")).toBe("UNKNOWN");
     expect(resolveVladisDealKind("primary-sale")).toBe("PRIMARY_SALE");
     expect(resolveVladisDealKind(undefined)).toBe("UNKNOWN");
@@ -63,17 +65,32 @@ describe("vladis-vt24-v1 profile", () => {
     });
   });
 
-  it("keeps unresolved calibration inputs explicit and non-mutating", () => {
+  it("keeps calibrated text and phone decisions explicit and non-mutating", () => {
     expect(vladisVt24Configuration.suspiciousText).toEqual({
-      calibrationStatus: "PENDING_RUNS_2_3",
-      patternSources: [],
+      calibrationStatus: "CALIBRATED",
+      patternSources: [String.raw`(?:сгенерирован|нейросет|искусственн(?:ый|ого|ым)\s+интеллект|chatgpt|\bgpt\b)`],
       severity: "WARNING",
       autoEdit: false,
     });
     expect(vladisVt24Configuration.sharedOfficePhones).toEqual({
-      calibrationStatus: "PENDING_OQ_04",
+      calibrationStatus: "CALIBRATED",
       e164Values: [],
       excludeFromAutomaticIdentity: true,
+    });
+    expect(vladisVt24Configuration.safetyPolicy).toEqual({
+      calibrationStatus: "CALIBRATED",
+      maxDropPercent: 20,
+      allowEmpty: false,
+      requireManualApprovalAboveDrop: true,
+      deactivationEnabled: true,
+      inactiveAfterMissingGoodRuns: 2,
+      inactiveAfterMissingHours: 24,
+      sourceOverdueAfterHours: 24,
+      ackStaleAfterHours: 24,
+      minRecordCount: 777,
+      maxRecordCount: 1458,
+      maxGrowthPercent: 50,
+      maxInvalidPercent: 1,
     });
     expect(matchesConfiguredPattern(vladisVt24Configuration.cadastralPlaceholders.patternSources, "00:00:0000000:0"))
       .toBe(true);

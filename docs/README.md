@@ -26,6 +26,7 @@ Beads и execution ledger. Он не заменяет продуктовый bac
 | `OPERATIONS.md` | local runtime, deploy, rollback, backup/restore и incident recovery |
 | `DELIVERY_STATE.yaml` | machine-readable pointers на фактические delivery и restore proofs |
 | `DH-00_CANON_MAPPING.md` | доказательство нормализации и переноса legacy-документов |
+| `research/VLADIS_VT24_CALIBRATION_2026-10-05.md` | обезличенное evidence трёх реальных тестовых прогонов профиля Vladis/VT24 и калиброванная safety policy |
 
 [`docs/adr/README.md`](adr/README.md) фиксирует стабильные IDs и статус
 труднообратимых решений. Каталог
