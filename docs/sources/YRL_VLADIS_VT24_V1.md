@@ -1,8 +1,8 @@
 # YRL Vladis/VT24 SourceProfile v1
 
-Status: IMPLEMENTED_WITH_CALIBRATION_LIMITS  
-Profile key: `vladis-vt24-v1`  
-Profile version: `1.0.0`  
+Status: IMPLEMENTED_WITH_CALIBRATION_LIMITS
+Profile key: `vladis-vt24-v1`
+Profile version: `1.0.0`
 Adapter: `yrl-realty-2010@1.0.0`
 
 ## Source contract
