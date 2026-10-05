@@ -30,6 +30,8 @@ Beads и execution ledger. Он не заменяет продуктовый bac
 [`docs/adr/README.md`](adr/README.md) фиксирует стабильные IDs и статус
 труднообратимых решений. Каталог
 [`docs/contracts/SNAPSHOT_V1.md`](contracts/SNAPSHOT_V1.md) фиксирует contract
-эталонного snapshot-потребителя. Остальные contracts создаются только вместе
-с реальным Exit Bundle. Mutable epic/PR/SHA evidence хранится в Beads ledger;
+эталонного snapshot-потребителя, а
+[`PROJECT_EXIT_BUNDLE_V1.md`](contracts/PROJECT_EXIT_BUNDLE_V1.md) — typed
+handoff foundation. Полный exporter появляется только вместе с реальным Exit
+Bundle. Mutable epic/PR/SHA evidence хранится в Beads ledger;
 `DELIVERY_STATE.yaml` содержит только machine-readable proof pointers.

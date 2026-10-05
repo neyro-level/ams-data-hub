@@ -19,6 +19,8 @@ reference foundation to the product-owned Data Hub application.
 | ADR-012 | Active, amended | Private-cache headers, error and observability guards stay active; PWA/contact clauses were retired by DH-00.5 |
 | ADR-013 | Superseded | Clean-room starter derivation is outside the product-owned Data Hub lifecycle |
 | ADR-014 | Active | Final conformance, handover and rollback evidence |
+| ADR-015 | Active | Per-project snapshot storage isolation |
+| ADR-016 | Active | Pinned vendored schemas for independent handoff builds |
 
 Superseded ADRs remain tracked as historical decisions until the template-trace
 cleanup task removes obsolete verifier coupling. Their IDs must never be reused.
