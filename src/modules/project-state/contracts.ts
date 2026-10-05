@@ -187,6 +187,24 @@ export interface ProjectRedirectDto {
   createdAt: Date;
 }
 
+export const listingDevelopmentLinkStatusSchema = z.enum(["CANDIDATE", "CONFIRMED", "REJECTED"]);
+
+export const createListingDevelopmentCandidateInputSchema = projectPublicContactQuerySchema.extend({
+  inventoryUid: ulidSchema,
+  developmentUid: ulidSchema.nullable().default(null),
+  candidateReason: z.string().trim().min(1).max(500),
+  candidateConfidence: z.number().min(0).max(1).nullable().default(null),
+  sourceRevisionId: identifierSchema.nullable().default(null),
+}).strict();
+
+export const decideListingDevelopmentLinkInputSchema = projectPublicContactQuerySchema.extend({
+  linkId: identifierSchema,
+  version: z.number().int().positive(),
+  decision: z.enum(["CONFIRMED", "REJECTED"]),
+}).strict();
+
+export type CreateListingDevelopmentCandidateInput = z.infer<typeof createListingDevelopmentCandidateInputSchema>;
+export type DecideListingDevelopmentLinkInput = z.infer<typeof decideListingDevelopmentLinkInputSchema>;
 export const agentRoleSchema = z.enum(["AGENT", "LAWYER", "MORTGAGE_BROKER", "MANAGER", "OTHER"]);
 export const agentOriginSchema = z.enum(["FEED", "MANUAL"]);
 export const agentStatusSchema = z.enum(["ACTIVE", "HIDDEN", "DEPARTED"]);

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06" data-synthetic="true">
+  <generation-date>2026-10-04T14:00:00+03:00</generation-date>
+  <offer internal-id="synthetic-invalid-cadastral-1"><type>продажа</type><category>lot</category>
+    <location><locality-name>Синтетический Район</locality-name><address>участок Тестовый, 16</address></location>
+    <cadastral-number>INVALID-SYNTHETIC</cadastral-number>
+  </offer>
+</realty-feed>

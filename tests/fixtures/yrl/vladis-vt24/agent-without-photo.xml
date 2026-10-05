@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06" data-synthetic="true">
+  <generation-date>2026-10-04T13:40:00+03:00</generation-date>
+  <offer internal-id="synthetic-agent-no-photo-1"><type>продажа</type><category>комната</category>
+    <location><locality-name>Тестоград</locality-name><address>ул. Демонстрационная, 12</address></location>
+    <sales-agent><name>Агент Тестовый Два</name><phone>+7 959 000-00-02</phone><category>agency</category></sales-agent>
+  </offer>
+  <offer internal-id="synthetic-shared-office-1"><type>продажа</type><category>квартира</category>
+    <location><locality-name>Тестоград</locality-name><address>ул. Демонстрационная, 13</address></location>
+    <sales-agent><name>Агент Макетный Три</name><phone>+7 959 000-00-99</phone><category>agency</category></sales-agent>
+  </offer>
+  <offer internal-id="synthetic-shared-office-2"><type>продажа</type><category>квартира</category>
+    <location><locality-name>Тестоград</locality-name><address>ул. Демонстрационная, 14</address></location>
+    <sales-agent><name>Агент Макетный Четыре</name><phone>+7 959 000-00-99</phone><category>agency</category></sales-agent>
+  </offer>
+</realty-feed>

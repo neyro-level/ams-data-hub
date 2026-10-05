@@ -1,10 +1,9 @@
 import type { SourceDatasetType, SourceTransportType } from "../contracts.ts";
 import { SourceRegistryError } from "./source-registry-error.ts";
+import type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
+import { vladisVt24Profile } from "./profiles/vladis-vt24-v1.ts";
 
-export type SourceAdapterCapability =
-  | "XML_STREAMING"
-  | "XML_NAMESPACES"
-  | "RAW_ATTRIBUTES";
+export type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
 
 export interface SourceAdapterDescriptor {
   key: string;
@@ -12,17 +11,6 @@ export interface SourceAdapterDescriptor {
   capabilities: readonly SourceAdapterCapability[];
   datasetTypes: readonly SourceDatasetType[];
   transportTypes: readonly SourceTransportType[];
-}
-
-export interface SourceProfileDescriptor {
-  key: string;
-  version: string;
-  compatibleAdapters: readonly {
-    key: string;
-    versions: readonly string[];
-  }[];
-  requiredCapabilities: readonly SourceAdapterCapability[];
-  datasetTypes: readonly SourceDatasetType[];
 }
 
 export interface SourceDescriptorSelection {
@@ -122,5 +110,5 @@ const defaultRealtyProfile = Object.freeze<SourceProfileDescriptor>({
 
 export const adapterProfileRegistry = createAdapterProfileRegistry({
   adapters: [yrlRealty2010Adapter],
-  profiles: [defaultRealtyProfile],
+  profiles: [defaultRealtyProfile, vladisVt24Profile],
 });
