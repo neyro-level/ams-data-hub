@@ -1,6 +1,6 @@
 # YRL Vladis/VT24 SourceProfile v1
 
-Status: IMPLEMENTED_WITH_CALIBRATION_LIMITS
+Status: CALIBRATED
 Profile key: `vladis-vt24-v1`
 Profile version: `1.0.0`
 Adapter: `yrl-realty-2010@1.0.0`
@@ -12,7 +12,7 @@ Adapter: `yrl-realty-2010@1.0.0`
 - Namespace: `http://webmaster.yandex.ru/schemas/feed/realty/2010-06`.
 - Dataset type: `MIXED_REALTY`.
 - Offer identity: `offer@internal-id`.
-- Identity stability: requires proof on repeated runs 2–3.
+- Identity stability: verified on three live test-mode reads on 2026-10-05.
 - Required adapter capabilities: streaming XML, XML namespaces, raw attributes.
 
 The adapter stays producer-neutral. Every rule below belongs to this versioned profile.
@@ -29,9 +29,10 @@ The adapter stays producer-neutral. Every rule below belongs to this versioned p
 | `дача` | `COTTAGE` |
 | `таунхаус` | `TOWNHOUSE` |
 | `гараж`, `box` | `GARAGE_BOX` |
+| `коммерческая` | `COMMERCIAL` |
 | `продажа` | `SALE` |
 | `аренда` + `день`/`сутки` | `RENT_SHORT` |
-| `аренда` + `месяц`/`год` | `RENT_LONG` |
+| `аренда` + `месяц`/`month`/`год` | `RENT_LONG` |
 | `secondary-sale` | `SECONDARY_SALE` |
 | `primary-sale` | `PRIMARY_SALE` |
 | `assignment` | `ASSIGNMENT` |
@@ -57,16 +58,22 @@ Listing images use `picture`; agent photos use `sales-agent/photo`. Media identi
 - `EXACT` location precision is disabled.
 - Default precision for every property type is `STREET`.
 - Explicit `DISTRICT` override is allowed only for `HOUSE`, `HOUSE_PART`, `LAND`, `COTTAGE`, `TOWNHOUSE`, and `GARAGE_BOX`.
-- Empty imports are forbidden; the bootstrap maximum drop is 20%.
-- Automatic deactivation remains disabled.
+- Empty imports are forbidden; the maximum drop is 20% with manual approval above the threshold.
+- Calibrated count bounds are 777–1458, maximum growth is 50%, and maximum invalid records are 1%.
+- Automatic deactivation is enabled after two missing GOOD runs and 24 hours.
 - Raw timestamps and offsets are preserved; normalized storage uses UTC.
 
-## Calibration limits
+## Calibration decisions
 
-- OQ-04 is open: the shared-office phone list is empty until owner/operator review. Such phones are excluded from automatic identity when later configured.
-- OQ-05 is open: suspicious-text patterns and false-positive thresholds wait for runs 2–3. Findings remain `WARNING`; AI auto-edit is forbidden.
-- No real feed, credentials, PII, or production authorization is contained in this document.
+- OQ-04 is closed: the pilot uses employee phones from XML; the shared-office phone list is empty by owner decision. Same-phone/different-name evidence still goes to review.
+- OQ-05 is closed: the calibrated AI-generation disclosure pattern had zero hits in three live reads. Findings remain `WARNING`; AI auto-edit is forbidden.
+- The exact endpoint and employee PII are not stored in this document. Production remains unauthorized.
 
 ## Sanitized evidence
 
-The synthetic fixture corpus is in `tests/fixtures/yrl/vladis-vt24/` and contains all 16 required cases, including malformed and truncated XML. Contract checks are in `tests/vladis-vt24-fixtures.test.ts` and `tests/ingestion-source-profile.test.ts`.
+The synthetic fixture corpus is in `tests/fixtures/yrl/vladis-vt24/` and contains all 16 required cases, including malformed and truncated XML. Contract checks are in `tests/vladis-vt24-fixtures.test.ts` and `tests/vladis-vt24-profile.test.ts`.
+
+Live test-mode evidence is summarized in
+`docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md` and reproduced by the
+opt-in `pnpm calibrate:vladis-feed` runner with `VLADIS_FEED_URL` supplied at
+runtime.

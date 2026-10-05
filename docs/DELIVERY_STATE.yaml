@@ -54,9 +54,165 @@ data_safety:
   cleanup: PASS
 external_gates:
   timeweb_s3_provider_denial:
-    status: DEFERRED_TO_PREPRODUCTION
+    status: PASS
     owner_task: adh-dh-09-4
+    evidence_pointer: repo://docs/research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md
+    ledger_pointer: beads://adh-dh-09-4#EXECUTION_LEDGER_V1
+    environment: nonproduction
+    credential_a_read_bucket_b: DENIED
+    credential_b_read_bucket_b: PASS
+    fixture_cleanup: PASS
+    temporary_resource_cleanup: PASS
     real_adapter_enabled: false
+e32_evidence:
+  source_pointer: repo://docs/00_CONSTITUTION.MD.md#70-epic-e32-bastion-pilot-release-gate
+  status: PARTIAL
+  proof_blocks:
+    data:
+      status: REAL_SOURCE_PARSE_PASS_LIFECYCLE_SYNTHETIC
+      ledger_pointers:
+        - beads://adh-dh-06-6#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-7#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/integration/inventory-lifecycle.integration.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+        - repo://docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md
+    privacy_content:
+      status: SYNTHETIC_PASS_REAL_SOURCE_PENDING
+      ledger_pointers:
+        - beads://adh-dh-05-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/canonical-inventory.test.ts
+        - repo://tests/snapshot-composer.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+    agent:
+      status: REAL_SOURCE_EXTRACTION_PASS_CONSENT_PENDING
+      ledger_pointers:
+        - beads://adh-dh-04-5#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/agent-contract.test.ts
+        - repo://tests/agent-matching.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+        - repo://docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md
+    media:
+      status: SYNTHETIC_PASS
+      ledger_pointers:
+        - beads://adh-dh-07-4#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/media-mirror.test.ts
+        - repo://tests/integration/media-mirror.integration.test.ts
+    safety:
+      status: REAL_SOURCE_CALIBRATED_PASS
+      ledger_pointers:
+        - beads://adh-dh-02-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-5#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-7#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/safe-outbound.test.ts
+        - repo://tests/yrl-2010-parser.test.ts
+        - repo://tests/import-pipeline.test.ts
+        - repo://tests/safety-engine.test.ts
+        - repo://scripts/calibrate-vladis-feed.test.ts
+        - repo://docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md
+    delivery_isolation:
+      status: PROVIDER_DENIAL_PASS
+      ledger_pointers:
+        - beads://adh-dh-05-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-09-4#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-delivery.test.ts
+        - repo://tests/integration/snapshot-delivery.integration.test.ts
+        - repo://tests/source-registry-contract.test.ts
+        - repo://scripts/verify-timeweb-s3-isolation.ts
+        - repo://docs/research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md
+    snapshot:
+      status: SYNTHETIC_PASS
+      ledger_pointers:
+        - beads://adh-dh-05-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-7#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-composer.test.ts
+        - repo://tests/snapshot-signing.test.ts
+        - repo://tests/snapshot-delivery.test.ts
+        - repo://tests/snapshot-verifier.test.ts
+    planned_key_rotation:
+      status: SYNTHETIC_PASS_RUNTIME_BINDING_PENDING
+      ledger_pointers:
+        - beads://adh-dh-05-2#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-signing.test.ts
+        - repo://docs/OPERATIONS.md#snapshot-signing-key-rotation
+    runtime_independence:
+      status: CLEAN_COPY_LOCAL_MODE_PASS
+      outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+      external_commit: 42faeb2f5e9fa4e72561ff4aa06a2029156d2d15
+      external_pr: https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
+    portability:
+      status: CONTRACT_AND_EXTERNAL_CONSUMER_PASS
+      ledger_pointers:
+        - beads://adh-dh-08-4#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/exit-bundle.test.ts
+        - repo://docs/contracts/PROJECT_EXIT_BUNDLE_V1.md
+      outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+  integration_drill:
+    task_id: adh-dh-09-2
+    status: PASS
+    hub_artifact_pointers:
+      - repo://packages/snapshot-verifier/src/index.ts
+      - repo://packages/data-contracts/src/project-exit-bundle.ts
+      - repo://docs/contracts/SNAPSHOT_V1.md
+      - repo://docs/contracts/PROJECT_EXIT_BUNDLE_V1.md
+    hub_test_pointers:
+      - repo://tests/snapshot-verifier.test.ts
+      - repo://tests/exit-bundle.test.ts
+      - repo://tests/project-exit-bundle-contract.test.ts
+    external_site:
+      repository: https://git.sourcecraft.dev/integrator-p/bastion-lugansk-next.git
+      consumer_ref: 42faeb2f5e9fa4e72561ff4aa06a2029156d2d15
+      pull_request: https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
+      consumer_contract_discovery: PASS
+      clean_copy_build: PASS
+      runtime_smoke: SOURCE_LOCAL_TOTAL_1_PASS
+      hub_and_s3_runtime_env_present: false
+      database_endpoint: UNREACHABLE_LOOPBACK_PLACEHOLDER
+      deployed: false
+    required_external_follow_up: COMPLETE
+  source_calibration:
+    task_id: adh-dh-09-3
+    status: PASS
+    owner_decision_pointer: beads://adh-dh-09.1#OWNER_DECISION_V1
+    evidence_pointers:
+      - repo://scripts/calibrate-vladis-feed.test.ts
+      - repo://docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md
+      - repo://docs/sources/YRL_VLADIS_VT24_V1.md
+    runs: 3
+    offer_counts: [972, 972, 972]
+    stable_external_ids: true
+    xml_employee_phone_count: 35
+    shared_office_phone_count: 0
+    deactivation_enabled: true
+  final_gate:
+    status: READY_FOR_EXACT_HEAD_RISKY_GATE
+    evidence_pointers:
+      - beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+      - https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
+    candidate_sha_pointer: beads://adh-dh-09-4#EXECUTION_LEDGER_V1
+    image_contract_pointer: repo://tests/release-contract.test.ts
+    rollback_rehearsal: CONTRACT_PASS_NO_ROLLOUT
+    release_performed: false
 dh_02_delivery:
   task_id: adh-dh-02-delivery
   status: MERGE_AFTER_GATE

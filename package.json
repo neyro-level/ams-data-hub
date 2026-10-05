@@ -30,6 +30,7 @@
     "test:runtime-infrastructure": "vitest run tests/runtime-infrastructure.test.ts tests/permanent-worker-guard.test.ts tests/db-bootstrap-roles.test.ts",
     "test:shared-catalog-schema": "vitest run tests/shared-catalog-schema.test.ts",
     "test:vladis-fixtures": "vitest run tests/vladis-vt24-fixtures.test.ts",
+    "calibrate:vladis-feed": "vitest run scripts/calibrate-vladis-feed.test.ts",
     "verify:rls-coverage": "node scripts/verify-rls-coverage.mjs",
     "test:security": "vitest run tests/principal.test.ts tests/data-hub-contracts.test.ts",
     "test:e2e": "pnpm build && node scripts/run-e2e-tests.mjs",

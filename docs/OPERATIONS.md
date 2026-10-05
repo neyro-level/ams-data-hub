@@ -80,6 +80,23 @@ write intervals. PID existence is not accepted as health evidence.
 
 ## Recovery and restore
 
+### Timeweb S3 project isolation proof
+
+Before the first real project adapter enablement, provision two temporary
+non-production private buckets and two distinct least-privilege credentials.
+Run `pnpm test:s3-isolation` only with the explicit
+`TIMEWEB_S3_ISOLATION_TEST=nonproduction` guard. Acceptance requires
+credential A to receive `AccessDenied` for bucket B, credential B to read the
+synthetic fixture unchanged, and the fixture to be deleted in `finally`.
+
+Delete the temporary provider policies, users and buckets after the proof and
+remove temporary credential pairs from Secret Master. Evidence must contain
+only verdicts and fixture hashes, never credentials or provider resource IDs.
+The 2026-10-05 run is recorded in
+`research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`; it passed with complete
+cleanup. This proof does not enable the application adapter and is not a
+production release.
+
 ### Isolated restore drill
 
 `pnpm test:data-safety-drill` is the only local restore command. It accepts

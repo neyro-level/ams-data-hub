@@ -21,7 +21,7 @@ const DISTRICT_OVERRIDE_PROPERTY_TYPES = Object.freeze([
 export const vladisVt24Configuration = Object.freeze<SourceProfileConfiguration>({
   acceptedNamespaces: Object.freeze(["http://webmaster.yandex.ru/schemas/feed/realty/2010-06"]),
   externalOfferIdPath: "offer@internal-id",
-  identityStability: "REQUIRES_RUN_2_3_PROOF",
+  identityStability: "VERIFIED",
   categoryAliases: Object.freeze([
     { source: "квартира", target: "APARTMENT" },
     { source: "комната", target: "ROOM" },
@@ -32,6 +32,7 @@ export const vladisVt24Configuration = Object.freeze<SourceProfileConfiguration>
     { source: "таунхаус", target: "TOWNHOUSE" },
     { source: "гараж", target: "GARAGE_BOX" },
     { source: "box", target: "GARAGE_BOX" },
+    { source: "коммерческая", target: "COMMERCIAL" },
   ]),
   transactionAliases: Object.freeze([
     { source: "продажа", target: "SALE" },
@@ -45,6 +46,7 @@ export const vladisVt24Configuration = Object.freeze<SourceProfileConfiguration>
     { source: "день", target: "DAY" },
     { source: "сутки", target: "DAY" },
     { source: "месяц", target: "MONTH" },
+    { source: "month", target: "MONTH" },
     { source: "год", target: "YEAR" },
   ]),
   unitAliases: Object.freeze([
@@ -82,13 +84,15 @@ export const vladisVt24Configuration = Object.freeze<SourceProfileConfiguration>
     patternSources: Object.freeze(["^00:00:0+:0+$"]),
   }),
   suspiciousText: Object.freeze({
-    calibrationStatus: "PENDING_RUNS_2_3",
-    patternSources: Object.freeze([]),
+    calibrationStatus: "CALIBRATED",
+    patternSources: Object.freeze([
+      String.raw`(?:сгенерирован|нейросет|искусственн(?:ый|ого|ым)\s+интеллект|chatgpt|\bgpt\b)`,
+    ]),
     severity: "WARNING",
     autoEdit: false,
   }),
   sharedOfficePhones: Object.freeze({
-    calibrationStatus: "PENDING_OQ_04",
+    calibrationStatus: "CALIBRATED",
     e164Values: Object.freeze([]),
     excludeFromAutomaticIdentity: true,
   }),
@@ -110,12 +114,20 @@ export const vladisVt24Configuration = Object.freeze<SourceProfileConfiguration>
     districtOverrideAllowedFor: DISTRICT_OVERRIDE_PROPERTY_TYPES,
   }),
   timePolicy: Object.freeze({ storageTimezone: "UTC", preserveRawTimestampAndOffset: true }),
-  safetyBootstrap: Object.freeze({
+  safetyPolicy: Object.freeze({
+    calibrationStatus: "CALIBRATED",
     maxDropPercent: 20,
     allowEmpty: false,
-    deactivationEnabled: false,
+    requireManualApprovalAboveDrop: true,
+    deactivationEnabled: true,
+    inactiveAfterMissingGoodRuns: 2,
+    inactiveAfterMissingHours: 24,
     sourceOverdueAfterHours: 24,
     ackStaleAfterHours: 24,
+    minRecordCount: 777,
+    maxRecordCount: 1458,
+    maxGrowthPercent: 50,
+    maxInvalidPercent: 1,
   }),
 });
 

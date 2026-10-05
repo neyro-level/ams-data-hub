@@ -96,12 +96,20 @@ export interface SourceProfileConfiguration {
     storageTimezone: "UTC";
     preserveRawTimestampAndOffset: true;
   };
-  safetyBootstrap: {
-    maxDropPercent: 20;
-    allowEmpty: false;
-    deactivationEnabled: false;
-    sourceOverdueAfterHours: 24;
-    ackStaleAfterHours: 24;
+  safetyPolicy: {
+    calibrationStatus: "BOOTSTRAP" | "CALIBRATED";
+    maxDropPercent: number;
+    allowEmpty: boolean;
+    requireManualApprovalAboveDrop: boolean;
+    deactivationEnabled: boolean;
+    inactiveAfterMissingGoodRuns: number;
+    inactiveAfterMissingHours: number;
+    sourceOverdueAfterHours: number;
+    ackStaleAfterHours: number;
+    minRecordCount: number | null;
+    maxRecordCount: number | null;
+    maxGrowthPercent: number | null;
+    maxInvalidPercent: number | null;
   };
 }
 
