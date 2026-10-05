@@ -57,6 +57,107 @@ external_gates:
     status: DEFERRED_TO_PREPRODUCTION
     owner_task: adh-dh-09-4
     real_adapter_enabled: false
+e32_evidence:
+  source_pointer: repo://docs/00_CONSTITUTION.MD.md#70-epic-e32-bastion-pilot-release-gate
+  status: PARTIAL
+  proof_blocks:
+    data:
+      status: SYNTHETIC_PASS_REAL_SOURCE_PENDING
+      ledger_pointers:
+        - beads://adh-dh-06-6#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-7#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/integration/inventory-lifecycle.integration.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+    privacy_content:
+      status: SYNTHETIC_PASS_REAL_SOURCE_PENDING
+      ledger_pointers:
+        - beads://adh-dh-05-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/canonical-inventory.test.ts
+        - repo://tests/snapshot-composer.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+    agent:
+      status: SYNTHETIC_PASS_REAL_CONSENT_PENDING
+      ledger_pointers:
+        - beads://adh-dh-04-5#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-07-6#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/agent-contract.test.ts
+        - repo://tests/agent-matching.test.ts
+        - repo://tests/source-profile-e2e.test.ts
+    media:
+      status: SYNTHETIC_PASS
+      ledger_pointers:
+        - beads://adh-dh-07-4#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/media-mirror.test.ts
+        - repo://tests/integration/media-mirror.integration.test.ts
+    safety:
+      status: SYNTHETIC_PASS_CALIBRATION_PENDING
+      ledger_pointers:
+        - beads://adh-dh-02-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-5#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-7#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/safe-outbound.test.ts
+        - repo://tests/yrl-2010-parser.test.ts
+        - repo://tests/import-pipeline.test.ts
+        - repo://tests/safety-engine.test.ts
+    delivery_isolation:
+      status: PARTIAL_PROVIDER_DENIAL_PENDING
+      ledger_pointers:
+        - beads://adh-dh-05-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-06-1#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-delivery.test.ts
+        - repo://tests/integration/snapshot-delivery.integration.test.ts
+        - repo://tests/source-registry-contract.test.ts
+      pending_task_pointer: beads://adh-dh-09-4
+    snapshot:
+      status: SYNTHETIC_PASS
+      ledger_pointers:
+        - beads://adh-dh-05-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-2#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-3#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-4#EXECUTION_LEDGER_V1
+        - beads://adh-dh-05-7#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-composer.test.ts
+        - repo://tests/snapshot-signing.test.ts
+        - repo://tests/snapshot-delivery.test.ts
+        - repo://tests/snapshot-verifier.test.ts
+    planned_key_rotation:
+      status: SYNTHETIC_PASS_RUNTIME_BINDING_PENDING
+      ledger_pointers:
+        - beads://adh-dh-05-2#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/snapshot-signing.test.ts
+        - repo://docs/OPERATIONS.md#snapshot-signing-key-rotation
+    runtime_independence:
+      status: PENDING_EXTERNAL_DRILL
+      pending_task_pointer: beads://adh-dh-09-2
+    portability:
+      status: CONTRACT_PASS_EXTERNAL_DRILL_PENDING
+      ledger_pointers:
+        - beads://adh-dh-08-4#EXECUTION_LEDGER_V1
+      artifact_pointers:
+        - repo://tests/exit-bundle.test.ts
+        - repo://docs/contracts/PROJECT_EXIT_BUNDLE_V1.md
+      pending_task_pointer: beads://adh-dh-09-2
+  final_gate:
+    status: NOT_PASSED
+    pending_task_pointers:
+      - beads://adh-dh-09-2
+      - beads://adh-dh-09-3
+      - beads://adh-dh-09-4
 dh_02_delivery:
   task_id: adh-dh-02-delivery
   status: MERGE_AFTER_GATE
