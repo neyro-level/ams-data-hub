@@ -142,20 +142,40 @@ e32_evidence:
         - repo://tests/snapshot-signing.test.ts
         - repo://docs/OPERATIONS.md#snapshot-signing-key-rotation
     runtime_independence:
-      status: PENDING_EXTERNAL_DRILL
-      pending_task_pointer: beads://adh-dh-09-2
+      status: BLOCKED_EXTERNAL_SITE_CONSUMER_MISSING
+      outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
     portability:
-      status: CONTRACT_PASS_EXTERNAL_DRILL_PENDING
+      status: CONTRACT_PASS_EXTERNAL_SITE_CONSUMER_MISSING
       ledger_pointers:
         - beads://adh-dh-08-4#EXECUTION_LEDGER_V1
       artifact_pointers:
         - repo://tests/exit-bundle.test.ts
         - repo://docs/contracts/PROJECT_EXIT_BUNDLE_V1.md
-      pending_task_pointer: beads://adh-dh-09-2
+      outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+  integration_drill:
+    task_id: adh-dh-09-2
+    status: BLOCKED_EXTERNAL_SITE_CONSUMER_MISSING
+    hub_artifact_pointers:
+      - repo://packages/snapshot-verifier/src/index.ts
+      - repo://packages/data-contracts/src/project-exit-bundle.ts
+      - repo://docs/contracts/SNAPSHOT_V1.md
+      - repo://docs/contracts/PROJECT_EXIT_BUNDLE_V1.md
+    hub_test_pointers:
+      - repo://tests/snapshot-verifier.test.ts
+      - repo://tests/exit-bundle.test.ts
+      - repo://tests/project-exit-bundle-contract.test.ts
+    external_site:
+      repository: https://git.sourcecraft.dev/integrator-p/bastion-lugansk-next.git
+      inspected_ref: 1c55abf2379bd83d540d60353f25a986173b20cd
+      consumer_contract_discovery: NOT_FOUND
+      working_tree_mutated: false
+      deployed: false
+    required_external_follow_up: SITE_TEAM_LOCAL_MODE_CONSUMER_AND_CLEAN_MACHINE_DRILL
   final_gate:
     status: NOT_PASSED
+    blocking_evidence_pointers:
+      - beads://adh-dh-09-2#EXECUTION_LEDGER_V1
     pending_task_pointers:
-      - beads://adh-dh-09-2
       - beads://adh-dh-09-3
       - beads://adh-dh-09-4
 dh_02_delivery:
