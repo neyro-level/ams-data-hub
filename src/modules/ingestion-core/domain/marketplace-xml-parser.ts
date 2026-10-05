@@ -51,6 +51,7 @@ export interface MarketplaceXmlParserOptions {
   recordElement: string;
   caseSensitive?: boolean;
   validateRoot?: (attributes: readonly YrlRawAttribute[]) => boolean;
+  validatePreamble?: (rootChildren: readonly YrlRawElement[]) => boolean;
   validateDocument?: (rootChildren: readonly YrlRawElement[]) => boolean;
   encoding?: "utf-8" | "windows-1251";
   limits?: Partial<MarketplaceXmlLimits>;
@@ -129,6 +130,9 @@ export async function* parseMarketplaceXmlRecords(
       return;
     }
     if (depth === rootDepth + 1 && sameName(tag.local, options.recordElement, caseSensitive)) {
+      if (options.validatePreamble && !options.validatePreamble(rootChildren)) {
+        fail(parser, "MARKETPLACE_XML_SIGNATURE_INVALID");
+      }
       recordCount += 1;
       if (recordCount > limits.maxRecords) fail(parser, "MARKETPLACE_XML_RECORD_LIMIT_EXCEEDED");
       recordDepth = depth;
@@ -139,7 +143,7 @@ export async function* parseMarketplaceXmlRecords(
       recordStack = [element(parser, tag, limits)];
       return;
     }
-    if (!options.validateDocument) return;
+    if (!options.validatePreamble && !options.validateDocument) return;
     rootMetadataElementCount += 1;
     if (rootMetadataElementCount > limits.maxElementsPerRecord) {
       fail(parser, "MARKETPLACE_XML_RECORD_TOO_COMPLEX");

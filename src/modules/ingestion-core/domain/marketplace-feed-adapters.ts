@@ -231,10 +231,12 @@ export function parseCianV2Feed(
   input: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>,
   options: Pick<MarketplaceXmlParserOptions, "encoding" | "limits"> = {},
 ): AsyncGenerator<MarketplaceXmlRecord, void, undefined> {
+  const hasVersion2 = (rootChildren: readonly YrlRawElement[]) => rootChildren.some((candidate) =>
+    candidate.localName.toLocaleLowerCase("en-US") === "feed_version" && text(candidate) === "2");
   const parse = (source: AsyncIterable<Uint8Array | string> | Iterable<Uint8Array | string>, encoding: "utf-8" | "windows-1251") => parseMarketplaceXmlRecords(source, {
     rootElement: "Feed", recordElement: "Object", caseSensitive: false, ...options, encoding,
-    validateDocument: (rootChildren) => rootChildren.some((candidate) =>
-      candidate.localName.toLocaleLowerCase("en-US") === "feed_version" && text(candidate) === "2"),
+    validatePreamble: hasVersion2,
+    validateDocument: hasVersion2,
   });
   if (options.encoding) return parse(input, options.encoding);
   return (async function* () {

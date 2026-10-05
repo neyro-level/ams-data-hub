@@ -51,6 +51,7 @@ describe("marketplace XML format adapters", () => {
     expect(await collect(parseCianV2Feed([cian]))).toHaveLength(1);
     await expect(collect(parseAvitoV3Feed(["<Ads formatVersion=\"2\" target=\"Avito.ru\"></Ads>"]))).rejects.toMatchObject({ code: "MARKETPLACE_XML_SIGNATURE_INVALID" });
     await expect(collect(parseCianV2Feed(["<feed><feed_version>1</feed_version></feed>"]))).rejects.toMatchObject({ code: "MARKETPLACE_XML_SIGNATURE_INVALID" });
+    await expect(collect(parseCianV2Feed(["<Feed><Object><ExternalId>early</ExternalId></Object><Feed_Version>2</Feed_Version></Feed>"]))).rejects.toMatchObject({ code: "MARKETPLACE_XML_SIGNATURE_INVALID" });
   });
 
   it("auto-detects the Windows-1251 encoding allowed by CIAN v2", async () => {
