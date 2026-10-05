@@ -54,8 +54,15 @@ data_safety:
   cleanup: PASS
 external_gates:
   timeweb_s3_provider_denial:
-    status: DEFERRED_TO_PREPRODUCTION
+    status: PASS
     owner_task: adh-dh-09-4
+    evidence_pointer: repo://docs/research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md
+    ledger_pointer: beads://adh-dh-09-4#EXECUTION_LEDGER_V1
+    environment: nonproduction
+    credential_a_read_bucket_b: DENIED
+    credential_b_read_bucket_b: PASS
+    fixture_cleanup: PASS
+    temporary_resource_cleanup: PASS
     real_adapter_enabled: false
 e32_evidence:
   source_pointer: repo://docs/00_CONSTITUTION.MD.md#70-epic-e32-bastion-pilot-release-gate
@@ -115,16 +122,18 @@ e32_evidence:
         - repo://scripts/calibrate-vladis-feed.test.ts
         - repo://docs/research/VLADIS_VT24_CALIBRATION_2026-10-05.md
     delivery_isolation:
-      status: PARTIAL_PROVIDER_DENIAL_PENDING
+      status: PROVIDER_DENIAL_PASS
       ledger_pointers:
         - beads://adh-dh-05-3#EXECUTION_LEDGER_V1
         - beads://adh-dh-05-4#EXECUTION_LEDGER_V1
         - beads://adh-dh-06-1#EXECUTION_LEDGER_V1
+        - beads://adh-dh-09-4#EXECUTION_LEDGER_V1
       artifact_pointers:
         - repo://tests/snapshot-delivery.test.ts
         - repo://tests/integration/snapshot-delivery.integration.test.ts
         - repo://tests/source-registry-contract.test.ts
-      pending_task_pointer: beads://adh-dh-09-4
+        - repo://scripts/verify-timeweb-s3-isolation.ts
+        - repo://docs/research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md
     snapshot:
       status: SYNTHETIC_PASS
       ledger_pointers:
@@ -193,9 +202,10 @@ e32_evidence:
     status: NOT_PASSED
     blocking_evidence_pointers:
       - beads://adh-dh-09-2#EXECUTION_LEDGER_V1
-    pending_task_pointers:
-      - beads://adh-dh-09-3
-      - beads://adh-dh-09-4
+    candidate_sha_pointer: beads://adh-dh-09-4#EXECUTION_LEDGER_V1
+    image_contract_pointer: repo://tests/release-contract.test.ts
+    rollback_rehearsal: CONTRACT_PASS_NO_ROLLOUT
+    release_performed: false
 dh_02_delivery:
   task_id: adh-dh-02-delivery
   status: MERGE_AFTER_GATE

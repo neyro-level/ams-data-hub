@@ -19,6 +19,8 @@
 
 - [ ] Clean canonical SourceCraft `main`; exact SHA recorded.
 - [ ] Один green exact-head RISKY gate; push/PR остаются zero-CI.
+- [x] Non-production Timeweb S3 A→B denial proof and temporary-resource cleanup
+      recorded in `research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`.
 - [ ] Project-owned Secret Master scope and separate managed PostgreSQL roles.
 - [ ] Production runtime roles have no DDL or `BYPASSRLS`.
 - [ ] One immutable non-root image set: web, worker and migrator.
@@ -37,6 +39,9 @@
 
 - First release has no previous application image; later releases retain the
   prior digest set.
+- The release manifest and rollback contract are locally proven, but no image
+  digest, rollout or live rollback exists until a separately authorized exact-
+  `main` release.
 - Local checks are not CI attestation or live proof.
 - Managed PostgreSQL backup evidence remains provider-owned until captured.
 
