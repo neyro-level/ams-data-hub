@@ -28,6 +28,7 @@ import {
   type ProjectAckCredential,
   type TransitionDeliveryRunInput,
 } from "../src/modules/snapshot-delivery/index.ts";
+import { assertProjectOperationAllowed, projectServicePolicy } from "../src/modules/project-registry/index.ts";
 
 class MemoryObjectStorage implements ObjectStorage {
   readonly entries = new Map<string, ObjectStorageGetResult>();
@@ -177,7 +178,7 @@ describe("snapshot delivery", () => {
     });
     const snapshot = await fixture();
     const current = await service.stageArtifacts({ organizationId: "org-1", ...snapshot });
-    let run = await service.registerPublication(current);
+    let run = await service.registerPublication(current, "ACTIVE");
     notifications.push(service.webhookSignal(run));
     run = await service.recordNotified(run);
 
@@ -197,7 +198,7 @@ describe("snapshot delivery", () => {
       now: () => new Date("2026-10-05T00:00:02.000Z"),
     });
     const current = await service.stageArtifacts({ organizationId: "org-1", ...await fixture() });
-    const run = await service.registerPublication(current);
+    const run = await service.registerPublication(current, "ACTIVE");
     const unavailableWebhook: SnapshotWebhookNotifier = { async notify() { throw new Error("WEBHOOK_UNAVAILABLE"); } };
     await expect(unavailableWebhook.notify(service.webhookSignal(run))).rejects.toThrow("WEBHOOK_UNAVAILABLE");
     expect(run.status).toBe("PENDING");
@@ -212,7 +213,7 @@ describe("snapshot delivery", () => {
       createProjectStorage: (projectId) => new ProjectSnapshotStorage(projectId, new MemoryObjectStorage()),
       now: () => new Date("2026-10-05T00:00:02.000Z"),
     });
-    let run = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture() }));
+    let run = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture() }), "ACTIVE");
     run = await service.recordNotified(run);
     await expect(service.recordApplied(run)).rejects.toThrow("DELIVERY_TRANSITION_CONFLICT");
     run = await service.recordDownloaded(run);
@@ -230,8 +231,8 @@ describe("snapshot delivery", () => {
       createProjectStorage: (projectId) => new ProjectSnapshotStorage(projectId, new MemoryObjectStorage()),
       now: () => now,
     });
-    const active = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture(1) }));
-    const failed = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture(2) }));
+    const active = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture(1) }), "ACTIVE");
+    const failed = await service.registerPublication(await service.stageArtifacts({ organizationId: "org-1", ...await fixture(2) }), "ACTIVE");
     await service.recordFailed(failed, "CLIENT_REJECTED");
     now = new Date("2026-10-06T00:00:00.999Z");
     await expect(service.markStaleDeliveries()).resolves.toBe(0);
@@ -239,6 +240,19 @@ describe("snapshot delivery", () => {
     await expect(service.markStaleDeliveries()).resolves.toBe(1);
     expect((await repository.getRun("org-1", "project-1", active.publishSequence))?.status).toBe("STALE");
     expect((await repository.getRun("org-1", "project-1", failed.publishSequence))?.status).toBe("FAILED");
+  });
+
+  it("blocks ingestion and publication while suspended, preserves last-good read, and resumes at a higher sequence", async () => {
+    const repository = new MemoryDeliveryRepository();
+    const service = createSnapshotDeliveryService({ repository, createProjectStorage: (projectId) => new ProjectSnapshotStorage(projectId, new MemoryObjectStorage()), now: () => new Date("2026-10-05T00:00:02.000Z") });
+    const first = await service.stageArtifacts({ organizationId: "org-1", ...await fixture(1) });
+    await service.registerPublication(first, "ACTIVE");
+    const suspendedCandidate = await service.stageArtifacts({ organizationId: "org-1", ...await fixture(2) });
+    expect(() => service.registerPublication(suspendedCandidate, "SUSPENDED")).toThrow("PROJECT_SERVICE_SUSPENDED:PUBLISH");
+    expect(() => assertProjectOperationAllowed("SUSPENDED", "INGEST")).toThrow("PROJECT_SERVICE_SUSPENDED:INGEST");
+    expect(projectServicePolicy("SUSPENDED")).toEqual({ canIngest: false, canPublish: false, canReadPublished: true });
+    await expect(service.getCurrentManifest("org-1", "project-1")).resolves.toMatchObject({ publishSequence: 1 });
+    await expect(service.registerPublication(suspendedCandidate, "ACTIVE")).resolves.toMatchObject({ publishSequence: 2 });
   });
 });
 
@@ -264,7 +278,7 @@ describe("snapshot ACK", () => {
   it("binds ACK to project plus sequence, is idempotent for the same key, and rejects replay", async () => {
     const repository = new MemoryDeliveryRepository();
     const delivery = createSnapshotDeliveryService({ repository, createProjectStorage: (projectId) => new ProjectSnapshotStorage(projectId, new MemoryObjectStorage()), now: () => new Date("2026-10-05T00:00:02.000Z") });
-    let run = await delivery.registerPublication(await delivery.stageArtifacts({ organizationId: "org-1", ...await fixture() }));
+    let run = await delivery.registerPublication(await delivery.stageArtifacts({ organizationId: "org-1", ...await fixture() }), "ACTIVE");
     run = await delivery.recordDownloaded(run);
     await delivery.recordApplied(run);
     const ack = createSnapshotAckService({ repository, now: () => new Date("2026-10-05T00:03:00.000Z") });

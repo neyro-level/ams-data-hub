@@ -1,6 +1,7 @@
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import type { ProjectSnapshotStorage } from "../../../platform/storage/object-storage.ts";
 import { calculateObjectSha256 } from "../../../platform/storage/object-storage.ts";
+import { assertProjectOperationAllowed, type ProjectServiceState } from "../../project-registry/index.ts";
 import type {
   CurrentSnapshotManifest,
   DeliveryRun,
@@ -77,7 +78,8 @@ export function createSnapshotDeliveryService(dependencies: SnapshotDeliveryDepe
     stageArtifacts(input: PublishSnapshotInput): Promise<CurrentSnapshotManifest> {
       return storeSnapshot(input, dependencies.createProjectStorage(input.manifest.projectId));
     },
-    registerPublication(current: CurrentSnapshotManifest): Promise<DeliveryRun> {
+    registerPublication(current: CurrentSnapshotManifest, serviceState: ProjectServiceState): Promise<DeliveryRun> {
+      assertProjectOperationAllowed(serviceState, "PUBLISH");
       return dependencies.repository.publishCurrentAndCreateRun(current);
     },
     webhookSignal(run: Pick<DeliveryRun, "projectId" | "publishSequence">): SnapshotWebhookNotification {

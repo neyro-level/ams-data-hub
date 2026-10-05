@@ -15,6 +15,7 @@ export type {
   ProjectStatus,
   UpdateProjectInput,
 } from "./contracts.ts";
+export { assertProjectOperationAllowed, projectServicePolicy } from "./domain/project-service-policy.ts";
 export {
   ProjectRegistryError,
   type ProjectRegistryErrorCode,
