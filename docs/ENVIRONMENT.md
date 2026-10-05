@@ -25,6 +25,7 @@ Use `.env.example` as the value-free project template.
 | `OUTBOX_POLL_DELAY_MS` | worker | idle poll delay; defaults to `1000` ms |
 | `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | maximum graceful drain wait for the active handler; defaults to `30000` ms |
 | `LOG_LEVEL` | server/worker | pino level |
+| `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
 `AMS_DATA_HUB_WORKER_IMAGE`, `AMS_DATA_HUB_MIGRATOR_IMAGE`, their exact digests and
@@ -38,6 +39,21 @@ environment variable name. The server-only resolver reads the corresponding
 value from the process environment delivered by Secret Master. Application
 contracts, browser payloads and operator UI never receive that value; UI status
 is limited to `configured` plus a redacted display marker.
+
+## Timeweb S3 credential-isolation proof
+
+`pnpm test:s3-isolation` is intentionally a separate explicit command. It
+refuses to run unless `TIMEWEB_S3_ISOLATION_TEST=nonproduction`, two distinct
+private buckets and two distinct additional-user credential pairs are supplied
+through the local environment. It writes a synthetic object through credential
+B, proves credential A receives access denial for that object, proves B can
+read it, then deletes the fixture. Its output is secret-free and is the
+required provider evidence for ADR-015; it is not a deployment operation.
+The owner-approved master plan v4 marks this proof
+`DEFERRED_TO_PREPRODUCTION` and assigns it to `dh-09.4`. Until it passes, the
+Timeweb adapter stays unwired, its runtime credentials stay absent, and only
+synthetic/local storage may be used; real project artifacts are forbidden.
+
 ## PostgreSQL Evidence Transition
 
 E06 uses only the E00A guarded `*_test` PostgreSQL 18 lifecycle. A successful integration pass emits a secret-free coverage summary for E02–E05; it is local starter evidence, never production attestation. See [`ADR-009`](adr/ADR-009-postgresql-security-evidence.md).

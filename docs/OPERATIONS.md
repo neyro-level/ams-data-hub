@@ -80,6 +80,20 @@ write intervals. PID existence is not accepted as health evidence.
 
 ## Recovery and restore
 
+### Isolated restore drill
+
+`pnpm test:data-safety-drill` is the only local restore command. It accepts
+only the guarded loopback `*_test` target, freezes mutating jobs before the
+logical dump, restores into a distinct `*_restore_test` database, verifies
+PostgreSQL 18 and identity invariants, keeps jobs frozen through reconcile and
+unfreezes only after a zero-conflict report. The command deletes the temporary
+dump and restore database in `finally`; its secret-free evidence remains in
+`.local/evidence/data-safety-drill.json`.
+
+Production and managed-provider restore are never inferred from this command.
+They require the release procedure, provider backup/retention evidence, an
+isolated target and a separate owner-approved cutover.
+
 1. Confirm exact SHA, branch and database target.
 2. Check live/ready endpoints, worker heartbeat and outbox health.
 3. Roll back application artifacts to the recorded prior digest set.
@@ -89,3 +103,36 @@ write intervals. PID existence is not accepted as health evidence.
 
 Artifact rollback never reverses schema/data. Migrations stay forward-compatible
 or require a separately reviewed data-recovery procedure.
+
+## Snapshot signing-key rotation and revocation
+
+Private Ed25519 material exists only in the project Secret Master scope. The
+application receives an approved `SecretRef`; the server-only signer resolves
+it directly into the crypto adapter. Private key values must never enter Git,
+documentation, browser payloads, argv, logs, snapshot files or client trust
+sets. Public keys and `keyId` values are non-secret and form the consumer trust
+set.
+
+Planned rotation:
+
+1. Generate the next Ed25519 keypair in the approved secure operator contour.
+2. Store the next private key only in Secret Master; record its public key and
+   `keyId` in the consumer trust set.
+3. Prove the overlap state accepts snapshots from both current and next keys.
+4. Start signing only higher `publishSequence` values with the next key.
+5. Confirm every active consumer accepted the next key before removing the old
+   key from the active current/next set.
+
+Emergency revocation:
+
+1. Add the compromised `keyId` to the Hub and consumer revoked lists and stop
+   resolving that private key.
+2. Activate a safe current/emergency key already present in the trust set.
+3. Republish the last approved content as a new snapshot with a strictly higher
+   `publishSequence` and the safe `keyId`.
+4. Notify or poll consumers and prove the revoked key is rejected even when its
+   old cryptographic signature is valid. Rejection must keep last-good intact.
+
+Actual key generation, Secret Master mutation, consumer distribution and live
+rotation require a separate owner-approved operation; repository tests use only
+ephemeral in-memory keypairs.

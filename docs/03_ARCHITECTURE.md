@@ -54,8 +54,8 @@ this table is a boundary decision, not permission to add an empty scaffold.
 | `platform-admin` | active | platform-wide resource views, summaries and admin queries | `contracts.ts`, `server.ts`, `index.ts` |
 | `shared-catalog` | active; DH-03.1 geography foundation | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | `contracts.ts`, `server.ts`, `index.ts` |
 | `project-state` | future; DH-04 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
-| `media-assets` | future; DH-03 after DH-02 media port | media metadata, intake state, hashes, object references and ownership rules | media contracts; storage remains a platform port |
-| `snapshot-delivery` | future; DH-05 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | snapshot contracts, server/worker facade; verifier lives in `packages/snapshot-verifier` |
+| `media-assets` | active foundation; DH-02.5, extended in DH-03 | validated admin intake, rights metadata, hashes, object references and ownership rules | `contracts.ts`, `server.ts`, `index.ts`; storage remains a platform port |
+| `snapshot-delivery` | active foundation; DH-05.1–05.7 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | composer/signature contracts, server-only SecretRef signer, immutable project storage, current-manifest pointer, persisted `DeliveryRun`, hashed project ACK credential and portable `packages/snapshot-verifier` |
 | `ingestion-core` | future; DH-06 | source registry, adapter/profile contracts, raw and normalized revisions, identity resolution, safety analysis and apply plan | adapter contracts plus project-job worker facade |
 | `operations-control` | future; DH-08 | fleet projections, audited operator actions and Exit Bundle orchestration | operations contracts plus server facade; alerts go through `notifications` |
 | `platform/*` | active platform layer | database, commands, auth, authorization, config, observability, safe outbound and storage ports | platform-owned APIs only |
@@ -179,3 +179,5 @@ not an incidental hardening change.
 - ADR-012 retains cache-header, error and observability safeguards; its PWA and
   public-contact clauses were retired by DH-00.5. Revisit TypeScript only
   through a separately approved version task.
+- ADR-015 fixes the per-project object-storage boundary. Its provider-level
+  credential denial proof is required before an S3 adapter is enabled.

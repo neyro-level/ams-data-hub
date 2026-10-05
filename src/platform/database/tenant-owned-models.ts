@@ -10,6 +10,7 @@ export const TENANT_OWNED_MODELS = [
   "OutboxEvent",
   "JobRun",
   "PublicUrlIdReservation",
+  "MediaAsset",
   "ProjectCatalogSubscription",
   "ProjectCatalogSubscriptionCity",
   "ProjectCatalogSubscriptionSelection",
@@ -24,6 +25,16 @@ export const TENANT_OWNED_MODELS = [
   "SourceCredentialRef",
   "SourceManualRunRequest",
   "ListingDevelopmentLink",
+  "Agent",
+  "AgentExternalIdentity",
+  "AgentMatchReview",
+  "AgentMergeEvent",
+  "AgentConsentBatch",
+  "ProjectCurrentSnapshotManifest",
+  "DeliveryRun",
+  "ProjectAckCredential",
+  "InventoryIdentity",
+  "InventoryLifecycleEvent",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];

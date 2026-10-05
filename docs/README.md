@@ -24,10 +24,14 @@ Beads и execution ledger. Он не заменяет продуктовый bac
 | `SECURITY.md` | trust boundaries, ПДн, auth, tenant isolation и secrets |
 | `ENVIRONMENT.md` | реестр переменных окружения без значений |
 | `OPERATIONS.md` | local runtime, deploy, rollback, backup/restore и incident recovery |
+| `DELIVERY_STATE.yaml` | machine-readable pointers на фактические delivery и restore proofs |
 | `DH-00_CANON_MAPPING.md` | доказательство нормализации и переноса legacy-документов |
 
 [`docs/adr/README.md`](adr/README.md) фиксирует стабильные IDs и статус
 труднообратимых решений. Каталог
-`docs/contracts/` создаётся только вместе с первым реальным snapshot/Exit
-Bundle contract. Mutable epic/PR/SHA evidence хранится в Beads ledger; отдельный
-`DELIVERY_STATE.yaml` появляется только когда это потребуется программе.
+[`docs/contracts/SNAPSHOT_V1.md`](contracts/SNAPSHOT_V1.md) фиксирует contract
+эталонного snapshot-потребителя, а
+[`PROJECT_EXIT_BUNDLE_V1.md`](contracts/PROJECT_EXIT_BUNDLE_V1.md) — typed
+handoff foundation. Полный exporter появляется только вместе с реальным Exit
+Bundle. Mutable epic/PR/SHA evidence хранится в Beads ledger;
+`DELIVERY_STATE.yaml` содержит только machine-readable proof pointers.

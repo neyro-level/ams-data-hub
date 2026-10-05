@@ -2,17 +2,18 @@
 
 ```text
 Plan ID: AMS-DATA-HUB-IMPLEMENTATION-2026-01
-Version: v3
+Version: v4
 Status: APPROVED
 Phase: APPROVAL_HANDOFF
+Readiness: APPROVED
 Baseline repository SHA: 6246a2fa26ed8aaae629f891d6c64d07c0f8a96f
-Revision input: OWNER-2026-10-04-SPEED-01 + FINAL-AUDIT-2026-10-04-V2
+Revision input: OWNER-2026-10-04-S3-DEFER-01
 Canonical working file: docs/AMS Data Hub Master Plan v1.md
 Architecture input: docs/00_CONSTITUTION.MD.md (v3.1.2 provided basis)
-Previous approved snapshot: v1, owner, 2026-10-03
+Previous approved snapshot: v3, owner, 2026-10-04
 Approved by: owner
 Approved at: 2026-10-04
-Task Manager import/upgrade: AUTHORIZED FOR COMPATIBLE v1 -> v3 UPGRADE
+Task Manager import/upgrade: AUTHORIZED FOR COMPATIBLE v3 -> v4 UPGRADE
 Developer handoff: AUTHORIZED AFTER CLEAN UPGRADE AND RECONCILE
 Production: NOT AUTHORIZED
 ```
@@ -28,7 +29,11 @@ Production: NOT AUTHORIZED
 > cadence и delivery в `main`; владелец утвердил exact `v3` фразой «План
 > утверждён» 2026-10-04 и разрешил совместимый upgrade существующего
 > Beads-графа и передачу Task Manager Developer. Production по-прежнему требует
-> отдельной release-команды.
+> отдельной release-команды. Exact `v4` переносит provider-level A→B denial
+> proof из DH-02 в pre-production boundary DH-09. До PASS реальный Timeweb S3
+> adapter остаётся выключенным, а разработка использует только synthetic/local
+> storage. Владелец утвердил exact `v4` фразой «План утверждён» 2026-10-04.
+> Это не разрешает production, реальные артефакты или новые секреты.
 
 **Текущий canonical working file:** `docs/AMS Data Hub Master Plan v1.md`; target
 после approved DH-00 mapping: `docs/04_IMPLEMENTATION_PLAN.md`
@@ -369,7 +374,13 @@ Project A читает A — разрешено. Project A читает или �
 
 * Абстракция `ObjectStorage`: put, get, head, иммутабельные ключи `sha256`, presign.  
 * Префиксы: `source-artifacts/`, `snapshots/<projectId>/`, `media/`, `exports/`, `backups/`.  
-* **Проверить возможности Timeweb S3** и записать ADR «Per-project snapshot isolation». Варианты по предпочтению: (а) отдельный bucket на проект с ключом доступа только к нему; (б) политика доступа к префиксу, если Timeweb её поддерживает; (в) запасной вариант — короткоживущие presigned URL, которые выдаёт Hub. Обязательный тест: учётные данные A при чтении артефакта B получают отказ.
+* Записать ADR «Per-project snapshot isolation». Основная модель остаётся:
+  отдельный private bucket и дополнительный пользователь на проект; browser
+  получает только короткоживущий presigned URL после server-side authorization.
+* На implementation-этапе доказать immutable key contract, project-key boundary
+  и disabled-by-default provider adapter на synthetic/local storage. Внешний
+  Timeweb A→B denial proof перенесён в `dh-09.4`: до него запрещены реальный S3
+  adapter, реальные project artifacts и runtime credentials.
 
 **dh-02.2 — Safe Outbound.** HTTP-клиент: allowlist протоколов `https` (и `http` только для медиа, если профиль разрешает), блок localhost, RFC1918, link-local и IPv6-private, повторная проверка DNS и цели после редиректа, конечные таймауты, лимит байтов, проверка content-type. Все будущие запросы к фидам и медиа идут только через него (правило dependency-cruiser).
 
@@ -412,7 +423,7 @@ Project A читает A — разрешено. Project A читает или �
 
 ### **Приёмка**
 
-Все тесты Safe Outbound зелёные (127.0.0.1, частные сети, редирект в частную сеть, перебор размера, таймаут). Изоляция S3 между проектами доказана тестом. Restore drill выполнен, результат записан в `DELIVERY_STATE.yaml`. Health worker отражает реальное состояние.
+Все тесты Safe Outbound зелёные (127.0.0.1, частные сети, редирект в частную сеть, перебор размера, таймаут). Локальная project-key boundary доказана тестом; реальный Timeweb S3 adapter остаётся выключенным до provider A→B denial proof в `dh-09.4`. Restore drill выполнен на isolated/local storage, результат записан в `DELIVERY_STATE.yaml`. Health worker отражает реальное состояние.
 
 ---
 
@@ -613,8 +624,11 @@ Snapshot собирается из каталога, контактов, аге�
 * **dh-09.2** — Совместный прогон с сайтом (E30): Hub выключен, S3 выключен после apply — сайт рендерит. Exit Bundle \+ `DATA_MODE=local` на чистой машине. Это работа команды сайта, Hub предоставляет артефакты и verifier.  
 * **dh-09.3** — Закрыть OQ-04 и OQ-05. Включить `deactivationEnabled` после калибровки.  
 * **dh-09.4** — Финальная синхронизация документации и `CHANGELOG.md`, freeze
-  exact candidate main SHA, release manifest и rollback rehearsal. Никакого
-  deploy, server mutation, production migration или live release внутри
+  exact candidate main SHA, release manifest и rollback rehearsal. Перед первым
+  enablement реального Timeweb S3 выполнить non-production provider proof:
+  credential A получает AccessDenied на private bucket B, credential B читает
+  synthetic fixture, fixture удалён, в ledger остаётся только secret-free
+  evidence. Никакого deploy, production migration или live release внутри
   implementation graph.
 
 ### **Приёмка**
@@ -645,7 +659,7 @@ XLSX-импорт каталога новостроек (dry-run → diff → ap
 | OQ-09 | Second factor для Platform Admin | DECIDED: mandatory TOTP в production; более сильный factor — revisit через 2–3 месяца |
 | OQ-01, 02, 08 | Сроки хранения после расторжения, лицензия frozen-каталога, лиды | до первого коммерческого договора |
 | OQ-10 (новый) | Договор поручения на обработку ПДн между ИП и агентством (для агентов и данных фидов) | до DH-07 (реальные данные Bastion) |
-| OQ-11 (новый) | Возможности изоляции Timeweb S3 по bucket или префиксу | в DH-02 (ADR) |
+| OQ-11 (новый) | DECIDED: отдельный private bucket/user на проект; provider A→B proof отложен до pre-production `dh-09.4`, adapter до PASS выключен | owner, 2026-10-04 |
 
 ---
 
@@ -834,6 +848,24 @@ the phrase «План утверждён» on 2026-10-04; compatible Beads upgra
 Developer handoff are authorized, while production remains forbidden.
 **Sections changed:** header, §0.3, §0.5, §0.6, §7.4, §12, §14 and §15.
 
+#### **v4 — APPROVED — 2026-10-04**
+
+**Revision input ID:** `OWNER-2026-10-04-S3-DEFER-01`.
+**Source:** владелец явно разрешил не создавать сейчас два non-production S3
+bucket/user, сохранить запрет на реальный S3 до проверки и продолжить graph.
+**Accepted:** provider-level A→B denial proof переносится из DH-02 exit в
+pre-production task `dh-09.4`; DH-02 закрывает code/ADR/local boundary и
+disabled-by-default contract.
+**Rejected:** полное удаление provider proof и включение реального S3 без него.
+**Safety:** no real S3 adapter, runtime credential, real project artifact,
+production or server mutation before PASS.
+**Managed graph:** stable 82 IDs; changed open cards `adh-dh-02-1` and
+`adh-dh-09-4`; dependency topology unchanged.
+**Owner approval:** exact `v4` approved with the phrase «План утверждён» on
+2026-10-04; compatible v3→v4 Upgrade and Developer handoff are authorized.
+**Sections changed:** header, DH-02.1, DH-02 acceptance, DH-09.4, OQ-11,
+revision history, external prerequisites and §16.
+
 ---
 
 ## **8. Dependency matrix и ready waves**
@@ -907,7 +939,7 @@ instead of copying it.
 
 | ID / prerequisite | Deadline | Preflight | Fallback / safe work | Stop condition |
 | --- | --- | --- | --- | --- |
-| EXT-01 Timeweb S3 isolation | before dh-02 isolation exit | prove bucket/prefix policy with A→B denial using non-production credentials | separate bucket per project or Hub-issued short-lived presigned URL | no real project artifact until isolation proof PASS |
+| EXT-01 Timeweb S3 isolation | before first real S3 enablement and before dh-09.4 exit | prove bucket policy with A→B denial using non-production credentials | synthetic/local storage; provider adapter disabled | no real S3 credential or project artifact until isolation proof PASS |
 | EXT-02 Managed PostgreSQL backup/restore | before dh-02 Data Safety exit | provider schedule/retention + isolated restore target + connection budget | encrypted logical dump to isolated S3 and non-production restore drill | no real PII/import and no production migration without proven recovery |
 | EXT-03 Secret Master refs and signing key | before real dh-05/dh-07 | exact project/env/path and least-privilege runtime reference verified without printing values | ephemeral test keys and sanitized fixtures only | no live feed, real signature or deploy; Developer cannot create a new secret silently |
 | EXT-04 SourceCraft OCI Registry | before owner release | pull/push identity and immutable digest proof | local/pre-production image only | production release blocked; implementation continues |
@@ -1212,3 +1244,62 @@ Exact `v3` satisfies the Architect gate and is
 `READY_FOR_OWNER_APPROVAL`. This is not approval. Inventory generation,
 Beads Upgrade, consolidation merge and Developer handoff remain forbidden until
 the owner says exactly «План утверждён» or «План утвержден».
+
+---
+
+## **16. Final Architect Audit — exact v4 S3 deferral**
+
+### **16.1. Revision boundary**
+
+Exact `v4` changes one external prerequisite boundary. DH-02 may complete from
+the implemented `ObjectStorage` port, Timeweb adapter, immutable/project-scoped
+keys, ADR and local denied-cross-project proof while the provider adapter stays
+disabled. The real Timeweb A→B credential proof is mandatory in `dh-09.4`
+before the first real S3 enablement or pilot. No product capability, managed ID
+or dependency edge is removed.
+
+### **16.2. Finding register**
+
+| ID | Severity | Finding | Resolution | Status |
+| --- | --- | --- | --- | --- |
+| V4-001 | MAJOR | Provider proof blocked the whole code graph before any real S3 use | Move proof to pre-production `dh-09.4`; keep adapter disabled | RESOLVED |
+| V4-002 | MAJOR | Deferral could be mistaken for removal of isolation proof | Preserve exact A→B denial acceptance and explicit enablement stop | RESOLVED |
+| V4-003 | ALREADY_COVERED | Application boundary still needs immediate proof | Existing project-key denial, immutable keys and synthetic tests remain DH-02 evidence | RESOLVED |
+
+Open blocker findings: **0**. Open major findings: **0**.
+
+### **16.3. Four audit passes**
+
+1. **Logic / Completeness — PASS.** The provider test is deferred, not
+   deleted. DH-02 has an observable implementation outcome; DH-09.4 owns the
+   external enablement proof.
+2. **Architecture / Data / Security — PASS.** Bucket-per-project remains the
+   selected provider model. Browser access remains server-authorized and
+   presigned. Real credentials, artifacts and adapter enablement remain
+   forbidden before denial proof.
+3. **Dependencies / Autonomy — PASS.** Managed IDs remain `82`, dependency
+   edges remain unchanged and cycles remain `0`. Only two open task cards
+   change; development can resume without an external cloud mutation.
+4. **Executability / Evidence / Delivery — PASS.** DH-02 evidence is local and
+   deterministic. DH-09.4 requires secret-free provider outcomes and cleanup
+   of the synthetic fixture. Production remains outside the graph.
+
+### **16.4. NIGHT RUN READINESS**
+
+```text
+Managed IDs: 82 unchanged
+Dependency cycles: 0
+Open blocker findings: 0
+Open major findings: 0
+Provider S3 proof: deferred to dh-09.4, mandatory before real enablement
+Real S3 adapter before proof: forbidden
+Production: not authorized
+Result: READY_WITH_LIMITS
+```
+
+### **16.5. Readiness verdict**
+
+Exact `v4` satisfies the Architect gate and was approved by the owner with the
+phrase «План утверждён» on 2026-10-04. Compatible Beads Upgrade and Developer
+handoff are authorized. Production remains forbidden without a separate
+release command.

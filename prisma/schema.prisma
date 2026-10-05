@@ -55,10 +55,36 @@ enum RetentionRunStatus {
   FAILED
 }
 
+enum DeliveryRunStatus {
+  PENDING
+  NOTIFIED
+  DOWNLOADED
+  APPLIED
+  ACKNOWLEDGED
+  FAILED
+  STALE
+}
+
+enum InventoryLifecycleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InventoryLifecycleEventType {
+  INACTIVATED
+  REACTIVATED
+}
+
 enum ProjectStatus {
   ACTIVE
   PLANNED
   DISABLED
+}
+
+enum MediaRightsBasis {
+  OWNED
+  LICENSED
+  PUBLIC_DOMAIN
 }
 
 enum NotificationCategory {
@@ -182,6 +208,43 @@ enum SourceManualRunStatus {
   FAILED
 }
 
+enum AgentRole {
+  AGENT
+  LAWYER
+  MORTGAGE_BROKER
+  MANAGER
+  OTHER
+}
+
+enum AgentOrigin {
+  FEED
+  MANUAL
+}
+
+enum AgentStatus {
+  ACTIVE
+  HIDDEN
+  DEPARTED
+}
+
+enum AgentListingPresenceStatus {
+  HAS_ACTIVE_LISTINGS
+  NO_ACTIVE_LISTINGS
+  UNKNOWN
+}
+
+enum AgentMatchReviewStatus {
+  PENDING
+  RESOLVED
+  REJECTED
+}
+
+enum AgentMergeEventType {
+  MERGE
+  RELINK
+  SPLIT
+}
+
 model User {
   id                String                  @id
   name              String
@@ -189,14 +252,14 @@ model User {
   email             String                  @unique
   emailVerified     Boolean                 @default(false)
   image             String?
-  twoFactorEnabled  Boolean            @default(false)
-  failedLoginCount  Int                @default(0)
-  loginLockedUntil  DateTime?          @db.Timestamptz(3)
+  twoFactorEnabled  Boolean                 @default(false)
+  failedLoginCount  Int                     @default(0)
+  loginLockedUntil  DateTime?               @db.Timestamptz(3)
   setupCompletedAt  DateTime?
-  systemRole        SystemRole         @default(USER)
-  disabledAt        DateTime?          @db.Timestamptz(3)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  systemRole        SystemRole              @default(USER)
+  disabledAt        DateTime?               @db.Timestamptz(3)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
   sessions          Session[]
   accounts          Account[]
   members           Member[]
@@ -331,6 +394,7 @@ model Organization {
   outboxEvents    OutboxEvent[]
   jobRuns         JobRun[]
   notifications   Notification[]
+  mediaAssets     MediaAsset[]
 }
 
 model Member {
@@ -350,40 +414,107 @@ model Member {
 }
 
 model Project {
-  id             String        @id @default(cuid())
-  organizationId String
-  slug           String
-  name           String
-  description    String?
-  status         ProjectStatus @default(ACTIVE)
-  serviceState   ProjectServiceState @default(ACTIVE)
-  siteBaseUrl    String?
-  publicUrlPolicyVersion String?
-  notes          String?
-  version        Int           @default(1)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  notifications  Notification[]
-  members        ProjectMember[]
-  publicUrlIdReservations PublicUrlIdReservation[]
-  catalogSubscription     ProjectCatalogSubscription?
-  publicContact           ProjectPublicContact?
-  entityEditorial         EntityEditorial[]
-  entityMediaOrderPolicy  EntityMediaOrderPolicy[]
-  urlPolicy               ProjectUrlPolicy?
-  urlEntries              ProjectUrlEntry[]
-  redirects               ProjectRedirect[]
-  urlTombstones           ProjectUrlTombstone[]
-  sources                 Source[]
-  sourceCredentialRefs    SourceCredentialRef[]
-  sourceManualRunRequests SourceManualRunRequest[]
-  listingDevelopmentLinks ListingDevelopmentLink[]
+  id                       String                          @id @default(cuid())
+  organizationId           String
+  slug                     String
+  name                     String
+  description              String?
+  status                   ProjectStatus                   @default(ACTIVE)
+  serviceState             ProjectServiceState             @default(ACTIVE)
+  siteBaseUrl              String?
+  publicUrlPolicyVersion   String?
+  notes                    String?
+  version                  Int                             @default(1)
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
+  organization             Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  notifications            Notification[]
+  members                  ProjectMember[]
+  mediaAssets              MediaAsset[]
+  publicUrlIdReservations  PublicUrlIdReservation[]
+  catalogSubscription      ProjectCatalogSubscription?
+  publicContact            ProjectPublicContact?
+  entityEditorial          EntityEditorial[]
+  entityMediaOrderPolicy   EntityMediaOrderPolicy[]
+  urlPolicy                ProjectUrlPolicy?
+  urlEntries               ProjectUrlEntry[]
+  redirects                ProjectRedirect[]
+  urlTombstones            ProjectUrlTombstone[]
+  sources                  Source[]
+  sourceCredentialRefs     SourceCredentialRef[]
+  sourceManualRunRequests  SourceManualRunRequest[]
+  agents                   Agent[]
+  agentExternalIdentities  AgentExternalIdentity[]
+  agentMatchReviews        AgentMatchReview[]
+  agentMergeEvents         AgentMergeEvent[]
+  agentConsentBatches      AgentConsentBatch[]
+  currentSnapshotManifest  ProjectCurrentSnapshotManifest?
+  deliveryRuns             DeliveryRun[]
+  ackCredential            ProjectAckCredential?
+  inventoryIdentities      InventoryIdentity[]
+  inventoryLifecycleEvents InventoryLifecycleEvent[]
+  listingDevelopmentLinks  ListingDevelopmentLink[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
   @@index([organizationId])
   @@index([status, updatedAt])
+}
+
+model ProjectCurrentSnapshotManifest {
+  organizationId  String
+  projectId       String
+  publishSequence Int
+  manifestKey     String   @db.VarChar(512)
+  manifestSha256  String   @db.VarChar(64)
+  publishedAt     DateTime @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+  project         Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId])
+  @@index([projectId, publishSequence])
+}
+
+model DeliveryRun {
+  id                    String            @id @default(cuid())
+  organizationId        String
+  projectId             String
+  publishSequence       Int
+  manifestKey           String            @db.VarChar(512)
+  manifestSha256        String            @db.VarChar(64)
+  status                DeliveryRunStatus @default(PENDING)
+  publishedAt           DateTime          @db.Timestamptz(3)
+  notifiedAt            DateTime?         @db.Timestamptz(3)
+  downloadedAt          DateTime?         @db.Timestamptz(3)
+  appliedAt             DateTime?         @db.Timestamptz(3)
+  acknowledgedAt        DateTime?         @db.Timestamptz(3)
+  failedAt              DateTime?         @db.Timestamptz(3)
+  staleAt               DateTime?         @db.Timestamptz(3)
+  safeErrorCode         String?           @db.VarChar(120)
+  ackIdempotencyKeyHash String?           @db.VarChar(64)
+  createdAt             DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
+  project               Project           @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, publishSequence])
+  @@index([status, createdAt])
+  @@index([projectId, publishSequence])
+}
+
+model ProjectAckCredential {
+  organizationId   String
+  projectId        String
+  currentTokenHash String    @db.VarChar(255)
+  nextTokenHash    String?   @db.VarChar(255)
+  version          Int       @default(1)
+  rotatedAt        DateTime? @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+  project          Project   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([organizationId, projectId])
+  @@index([projectId])
 }
 
 model ProjectMember {
@@ -401,6 +532,129 @@ model ProjectMember {
   @@unique([organizationId, projectId, userId])
   @@index([userId])
   @@index([organizationId, projectId])
+}
+
+model Agent {
+  id                    String                     @id @default(cuid())
+  uid                   String                     @unique @db.VarChar(26)
+  organizationId        String
+  projectId             String
+  slug                  String                     @db.VarChar(200)
+  role                  AgentRole                  @default(AGENT)
+  origin                AgentOrigin                @default(MANUAL)
+  fullName              String                     @db.VarChar(240)
+  position              String?                    @db.VarChar(240)
+  bio                   String?                    @db.VarChar(4000)
+  specializations       String[]                   @default([])
+  photoMediaId          String?
+  feedPhotoMediaId      String?
+  workPhone             String?                    @db.VarChar(40)
+  workEmail             String?                    @db.VarChar(320)
+  messengers            Json                       @default("[]")
+  showOnSite            Boolean                    @default(false)
+  sortOrder             Int                        @default(0)
+  status                AgentStatus                @default(ACTIVE)
+  listingPresenceStatus AgentListingPresenceStatus @default(UNKNOWN)
+  consentConfirmedBy    String?
+  consentConfirmedAt    DateTime?                  @db.Timestamptz(3)
+  consentBasis          String?                    @db.VarChar(1000)
+  consentBatchId        String?
+  version               Int                        @default(1)
+  createdAt             DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
+  project               Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  externalIdentities    AgentExternalIdentity[]
+  consentBatch          AgentConsentBatch?         @relation(fields: [organizationId, projectId, consentBatchId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, uid])
+  @@unique([projectId, slug])
+  @@index([projectId, status, sortOrder])
+  @@index([projectId, listingPresenceStatus])
+  @@index([organizationId, projectId, consentBatchId])
+}
+
+model AgentConsentBatch {
+  id             String   @id @db.VarChar(26)
+  organizationId String
+  projectId      String
+  confirmedBy    String   @db.VarChar(240)
+  confirmedAt    DateTime @db.Timestamptz(3)
+  basis          String?  @db.VarChar(1000)
+  referenceUrl   String?  @db.VarChar(2048)
+  note           String?  @db.VarChar(2000)
+  actorId        String
+  correlationId  String
+  agentCount     Int
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  agents         Agent[]
+
+  @@unique([organizationId, projectId, id])
+  @@index([projectId, createdAt])
+}
+
+model AgentExternalIdentity {
+  id                String   @id @default(cuid())
+  organizationId    String
+  projectId         String
+  agentUid          String   @db.VarChar(26)
+  sourceId          String   @db.VarChar(128)
+  externalId        String?  @db.VarChar(255)
+  phoneNorm         String?  @db.VarChar(40)
+  emailNorm         String?  @db.VarChar(320)
+  sharedOfficePhone Boolean  @default(false)
+  firstSeenAt       DateTime @db.Timestamptz(3)
+  lastSeenAt        DateTime @db.Timestamptz(3)
+  version           Int      @default(1)
+  agent             Agent    @relation(fields: [organizationId, projectId, agentUid], references: [organizationId, projectId, uid], onDelete: Restrict, onUpdate: Cascade)
+  project           Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([projectId, sourceId, externalId])
+  @@index([projectId, phoneNorm])
+  @@index([projectId, emailNorm])
+  @@index([agentUid])
+}
+
+model AgentMatchReview {
+  id                 String                 @id @default(cuid())
+  organizationId     String
+  projectId          String
+  sourceId           String                 @db.VarChar(128)
+  candidateAgentUid  String?                @db.VarChar(26)
+  proposedAgentUid   String?                @db.VarChar(26)
+  normalizedFullName String                 @db.VarChar(240)
+  phoneNorm          String?                @db.VarChar(40)
+  emailNorm          String?                @db.VarChar(320)
+  reason             String                 @db.VarChar(500)
+  status             AgentMatchReviewStatus @default(PENDING)
+  resolvedBy         String?
+  resolvedAt         DateTime?              @db.Timestamptz(3)
+  version            Int                    @default(1)
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+  project            Project                @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, status, createdAt])
+  @@index([candidateAgentUid])
+}
+
+model AgentMergeEvent {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  projectId          String
+  type               AgentMergeEventType
+  sourceAgentUid     String              @db.VarChar(26)
+  targetAgentUid     String              @db.VarChar(26)
+  externalIdentityId String?
+  actorId            String
+  correlationId      String
+  detail             Json
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  project            Project             @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([sourceAgentUid])
+  @@index([targetAgentUid])
 }
 
 model ProjectPublicContact {
@@ -421,36 +675,36 @@ model ProjectPublicContact {
 }
 
 model EntityEditorial {
-  organizationId    String
-  projectId         String
-  entityType        ProjectEditorialEntityType
-  entityUid         String                     @db.VarChar(26)
-  shortDescription  String?                    @db.VarChar(500)
-  description       String?                    @db.VarChar(4000)
-  faq               Json
-  presentationNotes String?                    @db.VarChar(2000)
-  mediaOrder         String[]                   @default([])
+  organizationId          String
+  projectId               String
+  entityType              ProjectEditorialEntityType
+  entityUid               String                     @db.VarChar(26)
+  shortDescription        String?                    @db.VarChar(500)
+  description             String?                    @db.VarChar(4000)
+  faq                     Json
+  presentationNotes       String?                    @db.VarChar(2000)
+  mediaOrder              String[]                   @default([])
   mediaOrderPolicyVersion Int?
-  version            Int                        @default(1)
-  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime                   @updatedAt @db.Timestamptz(3)
-  project            Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  version                 Int                        @default(1)
+  createdAt               DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime                   @updatedAt @db.Timestamptz(3)
+  project                 Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([organizationId, projectId, entityType, entityUid])
   @@index([projectId, entityType])
 }
 
 model EntityMediaOrderPolicy {
-  organizationId           String
-  projectId                String
-  entityType               ProjectEditorialEntityType
-  entityUid                String                     @db.VarChar(26)
-  sourceMediaOrder         String[]                   @default([])
+  organizationId            String
+  projectId                 String
+  entityType                ProjectEditorialEntityType
+  entityUid                 String                     @db.VarChar(26)
+  sourceMediaOrder          String[]                   @default([])
   isImageOrderChangeAllowed Boolean                    @default(false)
-  version                  Int                        @default(1)
-  createdAt                DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime                   @updatedAt @db.Timestamptz(3)
-  project                  Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  version                   Int                        @default(1)
+  createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
+  project                   Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
 
   @@id([organizationId, projectId, entityType, entityUid])
   @@index([projectId, entityType])
@@ -516,53 +770,97 @@ model ProjectRedirect {
 }
 
 model ProjectUrlTombstone {
-  id             String                      @id @default(cuid())
+  id             String                     @id @default(cuid())
   organizationId String
   projectId      String
   reservationId  String
   entityType     ProjectEditorialEntityType
-  entityUid      String                      @db.VarChar(26)
-  canonicalPath  String                      @db.VarChar(1024)
+  entityUid      String                     @db.VarChar(26)
+  canonicalPath  String                     @db.VarChar(1024)
   reason         ProjectRedirectReason
-  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
-  project        Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
-  reservation    PublicUrlIdReservation      @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  project        Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  reservation    PublicUrlIdReservation     @relation(fields: [reservationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([organizationId, projectId, canonicalPath])
   @@index([reservationId])
 }
 
 model Source {
-  id                   String               @id @default(cuid())
-  organizationId       String
-  projectId            String
-  sourceKey            String               @db.VarChar(128)
-  name                 String               @db.VarChar(200)
-  adapterKey           String               @db.VarChar(128)
-  adapterVersion       String               @db.VarChar(64)
-  profileKey           String               @db.VarChar(128)
-  profileVersion       String               @db.VarChar(64)
-  datasetType          SourceDatasetType
-  transportType        SourceTransportType  @default(HTTPS_XML)
-  sharingPolicy        SourceSharingPolicy  @default(PROJECT_ONLY)
-  schedulePolicy       Json
-  safetyPolicyId       String?
-  enabled              Boolean              @default(false)
-  lastAttemptAt        DateTime?             @db.Timestamptz(3)
-  lastSuccessAt        DateTime?             @db.Timestamptz(3)
-  lastGoodRevisionId   String?
-  expectedNamespace    String?               @db.VarChar(500)
-  expectedProducer     String?               @db.VarChar(300)
-  version              Int                  @default(1)
-  createdAt            DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime             @updatedAt @db.Timestamptz(3)
-  project              Project              @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
-  credentialRef        SourceCredentialRef?
-  manualRunRequests    SourceManualRunRequest[]
+  id                  String                   @id @default(cuid())
+  organizationId      String
+  projectId           String
+  sourceKey           String                   @db.VarChar(128)
+  name                String                   @db.VarChar(200)
+  adapterKey          String                   @db.VarChar(128)
+  adapterVersion      String                   @db.VarChar(64)
+  profileKey          String                   @db.VarChar(128)
+  profileVersion      String                   @db.VarChar(64)
+  datasetType         SourceDatasetType
+  transportType       SourceTransportType      @default(HTTPS_XML)
+  sharingPolicy       SourceSharingPolicy      @default(PROJECT_ONLY)
+  schedulePolicy      Json
+  safetyPolicyId      String?
+  enabled             Boolean                  @default(false)
+  lastAttemptAt       DateTime?                @db.Timestamptz(3)
+  lastSuccessAt       DateTime?                @db.Timestamptz(3)
+  lastGoodRevisionId  String?
+  expectedNamespace   String?                  @db.VarChar(500)
+  expectedProducer    String?                  @db.VarChar(300)
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(3)
+  project             Project                  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  credentialRef       SourceCredentialRef?
+  manualRunRequests   SourceManualRunRequest[]
+  inventoryIdentities InventoryIdentity[]
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, sourceKey])
   @@index([projectId, enabled])
+}
+
+model InventoryIdentity {
+  uid             String                    @id @db.VarChar(26)
+  organizationId  String
+  projectId       String
+  sourceId        String
+  externalOfferId String                    @db.VarChar(240)
+  status          InventoryLifecycleStatus  @default(ACTIVE)
+  firstSeenAt     DateTime                  @db.Timestamptz(3)
+  lastSeenAt      DateTime                  @db.Timestamptz(3)
+  missingGoodRuns Int                       @default(0)
+  missingSince    DateTime?                 @db.Timestamptz(3)
+  sourceCreatedAt DateTime?                 @db.Timestamptz(3)
+  sourceUpdatedAt DateTime?                 @db.Timestamptz(3)
+  sourceHash      String                    @db.Char(64)
+  normalizedHash  String                    @db.Char(64)
+  version         Int                       @default(1)
+  createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @db.Timestamptz(3)
+  project         Project                   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source          Source                    @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+  lifecycleEvents InventoryLifecycleEvent[]
+
+  @@unique([organizationId, projectId, sourceId, externalOfferId])
+  @@unique([organizationId, projectId, uid])
+  @@index([projectId, sourceId, status])
+  @@index([sourceId, missingSince])
+}
+
+model InventoryLifecycleEvent {
+  id             String                      @id @default(cuid())
+  organizationId String
+  projectId      String
+  inventoryUid   String                      @db.VarChar(26)
+  type           InventoryLifecycleEventType
+  occurredAt     DateTime                    @db.Timestamptz(3)
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
+  project        Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  inventory      InventoryIdentity           @relation(fields: [organizationId, projectId, inventoryUid], references: [organizationId, projectId, uid], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, occurredAt])
+  @@index([inventoryUid, occurredAt])
 }
 
 model SourceCredentialRef {
@@ -576,8 +874,8 @@ model SourceCredentialRef {
   project                   Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   source                    Source   @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
 
-  @@index([projectId])
   @@unique([organizationId, projectId, sourceId])
+  @@index([projectId])
 }
 
 model SourceManualRunRequest {
@@ -787,15 +1085,47 @@ model RetentionRun {
   @@index([status, startedAt])
 }
 
+model DataSafetyState {
+  id           String    @id
+  jobsFrozen   Boolean   @default(true)
+  freezeReason String?
+  frozenAt     DateTime? @db.Timestamptz(3)
+  reconciledAt DateTime? @db.Timestamptz(3)
+  unfrozenAt   DateTime? @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt
+}
+
+model MediaAsset {
+  id               String           @id @default(cuid())
+  organizationId   String
+  projectId        String
+  sha256           String           @db.Char(64)
+  storageKey       String
+  contentType      String           @db.VarChar(127)
+  byteSize         Int
+  originalFileName String           @db.VarChar(255)
+  rightsBasis      MediaRightsBasis
+  source           String           @db.VarChar(2048)
+  license          String?          @db.VarChar(255)
+  uploadedBy       String
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  project          Project          @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([projectId, sha256])
+  @@index([organizationId, createdAt])
+  @@index([storageKey])
+}
+
 model PublicUrlIdReservation {
-  id             String   @id @default(cuid())
+  id             String                @id @default(cuid())
   organizationId String
   projectId      String
-  subjectType    String   @db.VarChar(64)
-  subjectUid     String   @db.VarChar(26)
-  publicUrlId    String   @db.VarChar(16)
-  reservedAt     DateTime @default(now()) @db.Timestamptz(3)
-  project        Project  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
+  subjectType    String                @db.VarChar(64)
+  subjectUid     String                @db.VarChar(26)
+  publicUrlId    String                @db.VarChar(16)
+  reservedAt     DateTime              @default(now()) @db.Timestamptz(3)
+  project        Project               @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: Cascade)
   urlEntry       ProjectUrlEntry?
   urlTombstones  ProjectUrlTombstone[]
 
