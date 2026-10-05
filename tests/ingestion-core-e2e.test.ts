@@ -14,9 +14,9 @@ import {
 } from "../src/modules/ingestion-core/application/import-pipeline.ts";
 
 const NAMESPACE = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
-const TARGET = { organizationId: "org-neutral", projectId: "project-neutral", sourceId: "source-neutral" };
+const TARGET = { organizationId: "org-data-hub", projectId: "project-data-hub", sourceId: "source-data-hub" };
 
-interface NeutralInventory {
+interface CanonicalInventory {
   externalId: string;
   price: number;
   areaM2: number;
@@ -50,7 +50,7 @@ async function parse(raw: string): Promise<YrlRawOffer[]> {
   return offers;
 }
 
-function normalize(offers: readonly YrlRawOffer[]): NeutralInventory[] {
+function normalize(offers: readonly YrlRawOffer[]): CanonicalInventory[] {
   return offers.map((offer) => {
     const externalId = offer.element.attributes.find((attribute) => attribute.localName === "internal-id")?.value;
     if (!externalId) throw new Error("YRL_REQUIRED_FIELD_MISSING");
@@ -68,7 +68,7 @@ function dependencies(state: {
   lastGood: GoodRevisionReceipt | null;
   applied: number;
   snapshots: number;
-}): ImportPipelineDependencies<string, YrlRawOffer[], NeutralInventory[], NeutralInventory[]> {
+}): ImportPipelineDependencies<string, YrlRawOffer[], CanonicalInventory[], CanonicalInventory[]> {
   return {
     safeIntake: { acquire: async () => state.raw },
     rawArtifactStore: {
@@ -91,7 +91,7 @@ function dependencies(state: {
       }),
     },
     stagingStore: {
-      write: async (inventory) => ({ stagingId: "neutral-stage", entityCount: inventory.length }),
+      write: async (inventory) => ({ stagingId: "data-hub-stage", entityCount: inventory.length }),
     },
     mutationPlanner: {
       plan: async (staging) => ({
@@ -107,7 +107,7 @@ function dependencies(state: {
       applyGoodRevision: async ({ staging }) => {
         state.applied += 1;
         state.previousGoodCount = staging.entityCount;
-        state.lastGood = { revisionId: `neutral-${state.applied}`, sequence: state.applied };
+        state.lastGood = { revisionId: `data-hub-${state.applied}`, sequence: state.applied };
         return state.lastGood;
       },
     },
@@ -123,8 +123,8 @@ describe("ingestion core synthetic end-to-end", () => {
   it("reaches GOOD and snapshot while empty, truncated and mass-drop feeds preserve Last Good", async () => {
     const state = {
       raw: feed([
-        { id: "neutral-1", price: 5_000_000, area: 50 },
-        { id: "neutral-2", price: 7_500_000, area: 75 },
+        { id: "data-hub-1", price: 5_000_000, area: 50 },
+        { id: "data-hub-2", price: 7_500_000, area: 75 },
       ]),
       previousGoodCount: null as number | null,
       lastGood: null as GoodRevisionReceipt | null,
@@ -138,7 +138,7 @@ describe("ingestion core synthetic end-to-end", () => {
       sequence: 1,
       snapshotTriggered: true,
     });
-    expect(state.lastGood).toEqual({ revisionId: "neutral-1", sequence: 1 });
+    expect(state.lastGood).toEqual({ revisionId: "data-hub-1", sequence: 1 });
     expect(state.snapshots).toBe(1);
     const lastGood = state.lastGood;
 
@@ -158,7 +158,7 @@ describe("ingestion core synthetic end-to-end", () => {
     });
     expect(state.lastGood).toBe(lastGood);
 
-    state.raw = feed([{ id: "neutral-1", price: 5_000_000, area: 50 }]);
+    state.raw = feed([{ id: "data-hub-1", price: 5_000_000, area: 50 }]);
     await expect(runSourceImport(TARGET, dependencies(state))).resolves.toMatchObject({
       state: "FAILED",
       failedStage: "SAFETY_ANALYSIS",
