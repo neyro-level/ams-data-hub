@@ -115,13 +115,13 @@ describe("source registry", () => {
     });
     const input = {
       ...setup, sourceKey: "guard-source", name: "Guard source", endpointCredentialRef: "SYNTHETIC_GUARD_ENDPOINT",
-      adapterKey: "guard-adapter", adapterVersion: "1", profileKey: "guard-profile", profileVersion: "1", datasetType: "RESALE" as const,
+      adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "RESALE" as const,
       transportType: "HTTPS_XML" as const, sharingPolicy: "PROJECT_ONLY" as const, schedulePolicy: { mode: "MANUAL_ONLY" as const }, safetyPolicyId: "", expectedNamespace: "", expectedProducer: "",
     };
     const created = await sourceRegistryCommands.createSource(principal, input);
     await expect(sourceRegistryCommands.createSource(principal, input)).rejects.toThrow("SOURCE_REGISTRY_CONFLICT");
     await expect(sourceRegistryCommands.createSource(principal, { ...input, sourceKey: "raw-endpoint", endpointCredentialRef: "https://feed.example.test/raw.xml" })).rejects.toThrow();
-    const update = { ...setup, sourceId: created.sourceId, version: created.version, name: "Updated", adapterKey: input.adapterKey, adapterVersion: "2", profileKey: input.profileKey, profileVersion: "2", datasetType: input.datasetType, schedulePolicy: input.schedulePolicy, safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" };
+    const update = { ...setup, sourceId: created.sourceId, version: created.version, name: "Updated", adapterKey: input.adapterKey, adapterVersion: input.adapterVersion, profileKey: input.profileKey, profileVersion: input.profileVersion, datasetType: input.datasetType, schedulePolicy: input.schedulePolicy, safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" };
     await sourceRegistryCommands.updateSource(principal, update);
     await expect(sourceRegistryCommands.updateSource(principal, update)).rejects.toThrow("SOURCE_REGISTRY_STALE");
   });

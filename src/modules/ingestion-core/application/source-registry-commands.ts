@@ -7,6 +7,7 @@ import {
   setSourceEnabledInputSchema,
   updateSourceInputSchema,
 } from "../contracts.ts";
+import type { AdapterProfileRegistry } from "../domain/adapter-profile-registry.ts";
 import { SourceRegistryError } from "../domain/source-registry-error.ts";
 import type { SourceRegistryRepository, StoredSource } from "./ports/source-registry-repository.ts";
 import { requireSourceRegistryAdmin } from "./source-registry-authorization.ts";
@@ -28,6 +29,7 @@ function sourceMarker(source: StoredSource) {
 
 export function createSourceRegistryCommands(dependencies: {
   createRepository(transaction: DatabaseTransaction): SourceRegistryRepository;
+  adapterProfileRegistry: AdapterProfileRegistry;
 }) {
   const createSource = defineCommand({
     name: "ingestion-core.source.create",
@@ -35,6 +37,7 @@ export function createSourceRegistryCommands(dependencies: {
     authorize: (principal: PrincipalContext) => { requireSourceRegistryAdmin(principal); },
     execute: async ({ principal, input, transaction }) => {
       const actor = requireSourceRegistryAdmin(principal);
+      dependencies.adapterProfileRegistry.assertCompatible(input);
       const repository = dependencies.createRepository(transaction);
       if (!await repository.projectExists(input.organizationId, input.projectId)) {
         throw new SourceRegistryError("SOURCE_REGISTRY_REFERENCE_INVALID");
@@ -59,6 +62,7 @@ export function createSourceRegistryCommands(dependencies: {
     authorize: (principal: PrincipalContext) => { requireSourceRegistryAdmin(principal); },
     execute: async ({ principal, input, transaction }) => {
       const actor = requireSourceRegistryAdmin(principal);
+      dependencies.adapterProfileRegistry.assertCompatible({ ...input, transportType: "HTTPS_XML" });
       const repository = dependencies.createRepository(transaction);
       const previous = await repository.findSource(input);
       if (!previous) throw new SourceRegistryError("SOURCE_REGISTRY_NOT_FOUND");

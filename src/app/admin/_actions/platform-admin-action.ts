@@ -69,6 +69,9 @@ function mapError(error: unknown) {
     AGENT_FEED_FIELD_OWNERSHIP_VIOLATION: "Фидовые поля нельзя изменять вручную.",
     AGENT_EXTERNAL_IDENTITY_NOT_FOUND: "Внешняя идентичность агента недоступна.",
     AGENT_CONSENT_DATE_INVALID: "Дата подтверждения согласия не может быть в будущем.",
+    SOURCE_REGISTRY_ADAPTER_UNKNOWN: "Выбранный адаптер или его версия не зарегистрированы.",
+    SOURCE_REGISTRY_PROFILE_UNKNOWN: "Выбранный профиль или его версия не зарегистрированы.",
+    SOURCE_REGISTRY_PROFILE_INCOMPATIBLE: "Профиль несовместим с адаптером, транспортом или типом данных.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
   };

@@ -65,6 +65,16 @@ enum DeliveryRunStatus {
   STALE
 }
 
+enum InventoryLifecycleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InventoryLifecycleEventType {
+  INACTIVATED
+  REACTIVATED
+}
+
 enum ProjectStatus {
   ACTIVE
   PLANNED
@@ -398,43 +408,45 @@ model Member {
 }
 
 model Project {
-  id                      String                          @id @default(cuid())
-  organizationId          String
-  slug                    String
-  name                    String
-  description             String?
-  status                  ProjectStatus                   @default(ACTIVE)
-  serviceState            ProjectServiceState             @default(ACTIVE)
-  siteBaseUrl             String?
-  publicUrlPolicyVersion  String?
-  notes                   String?
-  version                 Int                             @default(1)
-  createdAt               DateTime                        @default(now())
-  updatedAt               DateTime                        @updatedAt
-  organization            Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  notifications           Notification[]
-  members                 ProjectMember[]
-  mediaAssets             MediaAsset[]
-  publicUrlIdReservations PublicUrlIdReservation[]
-  catalogSubscription     ProjectCatalogSubscription?
-  publicContact           ProjectPublicContact?
-  entityEditorial         EntityEditorial[]
-  entityMediaOrderPolicy  EntityMediaOrderPolicy[]
-  urlPolicy               ProjectUrlPolicy?
-  urlEntries              ProjectUrlEntry[]
-  redirects               ProjectRedirect[]
-  urlTombstones           ProjectUrlTombstone[]
-  sources                 Source[]
-  sourceCredentialRefs    SourceCredentialRef[]
-  sourceManualRunRequests SourceManualRunRequest[]
-  agents                  Agent[]
-  agentExternalIdentities AgentExternalIdentity[]
-  agentMatchReviews       AgentMatchReview[]
-  agentMergeEvents        AgentMergeEvent[]
-  agentConsentBatches     AgentConsentBatch[]
-  currentSnapshotManifest ProjectCurrentSnapshotManifest?
-  deliveryRuns            DeliveryRun[]
-  ackCredential           ProjectAckCredential?
+  id                       String                          @id @default(cuid())
+  organizationId           String
+  slug                     String
+  name                     String
+  description              String?
+  status                   ProjectStatus                   @default(ACTIVE)
+  serviceState             ProjectServiceState             @default(ACTIVE)
+  siteBaseUrl              String?
+  publicUrlPolicyVersion   String?
+  notes                    String?
+  version                  Int                             @default(1)
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
+  organization             Organization                    @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  notifications            Notification[]
+  members                  ProjectMember[]
+  mediaAssets              MediaAsset[]
+  publicUrlIdReservations  PublicUrlIdReservation[]
+  catalogSubscription      ProjectCatalogSubscription?
+  publicContact            ProjectPublicContact?
+  entityEditorial          EntityEditorial[]
+  entityMediaOrderPolicy   EntityMediaOrderPolicy[]
+  urlPolicy                ProjectUrlPolicy?
+  urlEntries               ProjectUrlEntry[]
+  redirects                ProjectRedirect[]
+  urlTombstones            ProjectUrlTombstone[]
+  sources                  Source[]
+  sourceCredentialRefs     SourceCredentialRef[]
+  sourceManualRunRequests  SourceManualRunRequest[]
+  agents                   Agent[]
+  agentExternalIdentities  AgentExternalIdentity[]
+  agentMatchReviews        AgentMatchReview[]
+  agentMergeEvents         AgentMergeEvent[]
+  agentConsentBatches      AgentConsentBatch[]
+  currentSnapshotManifest  ProjectCurrentSnapshotManifest?
+  deliveryRuns             DeliveryRun[]
+  ackCredential            ProjectAckCredential?
+  inventoryIdentities      InventoryIdentity[]
+  inventoryLifecycleEvents InventoryLifecycleEvent[]
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
@@ -768,36 +780,80 @@ model ProjectUrlTombstone {
 }
 
 model Source {
-  id                 String                   @id @default(cuid())
-  organizationId     String
-  projectId          String
-  sourceKey          String                   @db.VarChar(128)
-  name               String                   @db.VarChar(200)
-  adapterKey         String                   @db.VarChar(128)
-  adapterVersion     String                   @db.VarChar(64)
-  profileKey         String                   @db.VarChar(128)
-  profileVersion     String                   @db.VarChar(64)
-  datasetType        SourceDatasetType
-  transportType      SourceTransportType      @default(HTTPS_XML)
-  sharingPolicy      SourceSharingPolicy      @default(PROJECT_ONLY)
-  schedulePolicy     Json
-  safetyPolicyId     String?
-  enabled            Boolean                  @default(false)
-  lastAttemptAt      DateTime?                @db.Timestamptz(3)
-  lastSuccessAt      DateTime?                @db.Timestamptz(3)
-  lastGoodRevisionId String?
-  expectedNamespace  String?                  @db.VarChar(500)
-  expectedProducer   String?                  @db.VarChar(300)
-  version            Int                      @default(1)
-  createdAt          DateTime                 @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime                 @updatedAt @db.Timestamptz(3)
-  project            Project                  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
-  credentialRef      SourceCredentialRef?
-  manualRunRequests  SourceManualRunRequest[]
+  id                  String                   @id @default(cuid())
+  organizationId      String
+  projectId           String
+  sourceKey           String                   @db.VarChar(128)
+  name                String                   @db.VarChar(200)
+  adapterKey          String                   @db.VarChar(128)
+  adapterVersion      String                   @db.VarChar(64)
+  profileKey          String                   @db.VarChar(128)
+  profileVersion      String                   @db.VarChar(64)
+  datasetType         SourceDatasetType
+  transportType       SourceTransportType      @default(HTTPS_XML)
+  sharingPolicy       SourceSharingPolicy      @default(PROJECT_ONLY)
+  schedulePolicy      Json
+  safetyPolicyId      String?
+  enabled             Boolean                  @default(false)
+  lastAttemptAt       DateTime?                @db.Timestamptz(3)
+  lastSuccessAt       DateTime?                @db.Timestamptz(3)
+  lastGoodRevisionId  String?
+  expectedNamespace   String?                  @db.VarChar(500)
+  expectedProducer    String?                  @db.VarChar(300)
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(3)
+  project             Project                  @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  credentialRef       SourceCredentialRef?
+  manualRunRequests   SourceManualRunRequest[]
+  inventoryIdentities InventoryIdentity[]
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, sourceKey])
   @@index([projectId, enabled])
+}
+
+model InventoryIdentity {
+  uid             String                    @id @db.VarChar(26)
+  organizationId  String
+  projectId       String
+  sourceId        String
+  externalOfferId String                    @db.VarChar(240)
+  status          InventoryLifecycleStatus  @default(ACTIVE)
+  firstSeenAt     DateTime                  @db.Timestamptz(3)
+  lastSeenAt      DateTime                  @db.Timestamptz(3)
+  missingGoodRuns Int                       @default(0)
+  missingSince    DateTime?                 @db.Timestamptz(3)
+  sourceCreatedAt DateTime?                 @db.Timestamptz(3)
+  sourceUpdatedAt DateTime?                 @db.Timestamptz(3)
+  sourceHash      String                    @db.Char(64)
+  normalizedHash  String                    @db.Char(64)
+  version         Int                       @default(1)
+  createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @db.Timestamptz(3)
+  project         Project                   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  source          Source                    @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
+  lifecycleEvents InventoryLifecycleEvent[]
+
+  @@unique([organizationId, projectId, sourceId, externalOfferId])
+  @@unique([organizationId, projectId, uid])
+  @@index([projectId, sourceId, status])
+  @@index([sourceId, missingSince])
+}
+
+model InventoryLifecycleEvent {
+  id             String                      @id @default(cuid())
+  organizationId String
+  projectId      String
+  inventoryUid   String                      @db.VarChar(26)
+  type           InventoryLifecycleEventType
+  occurredAt     DateTime                    @db.Timestamptz(3)
+  createdAt      DateTime                    @default(now()) @db.Timestamptz(3)
+  project        Project                     @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  inventory      InventoryIdentity           @relation(fields: [organizationId, projectId, inventoryUid], references: [organizationId, projectId, uid], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectId, occurredAt])
+  @@index([inventoryUid, occurredAt])
 }
 
 model SourceCredentialRef {
