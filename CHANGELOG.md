@@ -9,9 +9,9 @@
 - Proved Timeweb S3 project isolation in non-production: credential A was
   denied access to bucket B, credential B read its fixture, and all temporary
   fixtures, policies, users, buckets and proof secrets were removed.
-- Kept the pilot release gate closed pending the external site local-mode
-  consumer and clean-machine drill; no deployment or production migration was
-  performed.
+- Proved the external Bastion `ProjectExitBundleV1` local-mode consumer through
+  an exact-SHA clean-copy build and runtime smoke without Hub/S3 credentials;
+  no deployment or production migration was performed.
 
 ## 0.1.0 — initial import
 

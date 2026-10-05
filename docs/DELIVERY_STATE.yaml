@@ -155,10 +155,12 @@ e32_evidence:
         - repo://tests/snapshot-signing.test.ts
         - repo://docs/OPERATIONS.md#snapshot-signing-key-rotation
     runtime_independence:
-      status: BLOCKED_EXTERNAL_SITE_CONSUMER_MISSING
+      status: CLEAN_COPY_LOCAL_MODE_PASS
       outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+      external_commit: 42faeb2f5e9fa4e72561ff4aa06a2029156d2d15
+      external_pr: https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
     portability:
-      status: CONTRACT_PASS_EXTERNAL_SITE_CONSUMER_MISSING
+      status: CONTRACT_AND_EXTERNAL_CONSUMER_PASS
       ledger_pointers:
         - beads://adh-dh-08-4#EXECUTION_LEDGER_V1
       artifact_pointers:
@@ -167,7 +169,7 @@ e32_evidence:
       outcome_ledger_pointer: beads://adh-dh-09-2#EXECUTION_LEDGER_V1
   integration_drill:
     task_id: adh-dh-09-2
-    status: BLOCKED_EXTERNAL_SITE_CONSUMER_MISSING
+    status: PASS
     hub_artifact_pointers:
       - repo://packages/snapshot-verifier/src/index.ts
       - repo://packages/data-contracts/src/project-exit-bundle.ts
@@ -179,11 +181,15 @@ e32_evidence:
       - repo://tests/project-exit-bundle-contract.test.ts
     external_site:
       repository: https://git.sourcecraft.dev/integrator-p/bastion-lugansk-next.git
-      inspected_ref: 1c55abf2379bd83d540d60353f25a986173b20cd
-      consumer_contract_discovery: NOT_FOUND
-      working_tree_mutated: false
+      consumer_ref: 42faeb2f5e9fa4e72561ff4aa06a2029156d2d15
+      pull_request: https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
+      consumer_contract_discovery: PASS
+      clean_copy_build: PASS
+      runtime_smoke: SOURCE_LOCAL_TOTAL_1_PASS
+      hub_and_s3_runtime_env_present: false
+      database_endpoint: UNREACHABLE_LOOPBACK_PLACEHOLDER
       deployed: false
-    required_external_follow_up: SITE_TEAM_LOCAL_MODE_CONSUMER_AND_CLEAN_MACHINE_DRILL
+    required_external_follow_up: COMPLETE
   source_calibration:
     task_id: adh-dh-09-3
     status: PASS
@@ -199,9 +205,10 @@ e32_evidence:
     shared_office_phone_count: 0
     deactivation_enabled: true
   final_gate:
-    status: NOT_PASSED
-    blocking_evidence_pointers:
+    status: READY_FOR_EXACT_HEAD_RISKY_GATE
+    evidence_pointers:
       - beads://adh-dh-09-2#EXECUTION_LEDGER_V1
+      - https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136
     candidate_sha_pointer: beads://adh-dh-09-4#EXECUTION_LEDGER_V1
     image_contract_pointer: repo://tests/release-contract.test.ts
     rollback_rehearsal: CONTRACT_PASS_NO_ROLLOUT
