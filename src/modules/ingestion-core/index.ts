@@ -12,6 +12,7 @@ export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { isSourceEligibleForAutomaticRun } from "./domain/source-schedule.ts";
 export {
   analyzeImportSafety,
+  assertSafetyApprovalEvidence,
   BOOTSTRAP_SOURCE_SAFETY_POLICY,
   importIssueSchema,
   importIssueSeveritySchema,

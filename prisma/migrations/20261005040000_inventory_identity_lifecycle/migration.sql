@@ -76,18 +76,16 @@ CREATE POLICY "InventoryIdentity_rls" ON "InventoryIdentity" FOR SELECT TO PUBLI
   )
 );
 CREATE POLICY "InventoryIdentity_job_write" ON "InventoryIdentity" FOR ALL TO PUBLIC
-  USING (current_setting('app.principal_kind', true) IN ('platform-admin', 'system-job') OR (
-    current_setting('app.principal_kind', true) IN ('job', 'project-job')
+  USING (current_setting('app.principal_kind', true) IN ('job', 'project-job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
     AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
       OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
-  ))
-  WITH CHECK (current_setting('app.principal_kind', true) IN ('platform-admin', 'system-job') OR (
-    current_setting('app.principal_kind', true) IN ('job', 'project-job')
+  )
+  WITH CHECK (current_setting('app.principal_kind', true) IN ('job', 'project-job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
     AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
       OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
-  ));
+  );
 
 CREATE POLICY "InventoryLifecycleEvent_rls" ON "InventoryLifecycleEvent" FOR SELECT TO PUBLIC USING (
   current_setting('app.principal_kind', true) = 'platform-admin' OR (
@@ -98,12 +96,11 @@ CREATE POLICY "InventoryLifecycleEvent_rls" ON "InventoryLifecycleEvent" FOR SEL
   )
 );
 CREATE POLICY "InventoryLifecycleEvent_job_insert" ON "InventoryLifecycleEvent" FOR INSERT TO PUBLIC
-  WITH CHECK (current_setting('app.principal_kind', true) IN ('platform-admin', 'system-job') OR (
-    current_setting('app.principal_kind', true) IN ('job', 'project-job')
+  WITH CHECK (current_setting('app.principal_kind', true) IN ('job', 'project-job')
     AND "organizationId" = NULLIF(current_setting('app.organization_id', true), '')
     AND (NULLIF(current_setting('app.project_ids', true), '') = '*'
       OR "projectId" = ANY(string_to_array(NULLIF(current_setting('app.project_ids', true), ''), ',')))
-  ));
+  );
 
 GRANT SELECT ON TABLE "InventoryIdentity", "InventoryLifecycleEvent" TO ams_data_hub_web;
 GRANT SELECT, INSERT, UPDATE ON TABLE "InventoryIdentity" TO ams_data_hub_worker;

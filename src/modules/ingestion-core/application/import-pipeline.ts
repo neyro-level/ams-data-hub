@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { SafetyAnalysisResult } from "../domain/safety-engine.ts";
+import {
+  assertSafetyApprovalEvidence,
+  type SafetyAnalysisResult,
+} from "../domain/safety-engine.ts";
 
 export type ImportPipelineStage =
   | "SAFE_INTAKE"
@@ -123,6 +126,7 @@ export async function runSourceImport<TRaw, TParsed, TNormalized, TResolved>(
     const safety = await dependencies.safetyAnalyzer.analyze(resolved, target);
     if (safety?.disposition === "SUSPICIOUS") throw new Error("IMPORT_REQUIRES_APPROVAL");
     if (safety?.disposition === "REJECTED") throw new Error("IMPORT_REJECTED_BY_SAFETY_POLICY");
+    if (safety) assertSafetyApprovalEvidence(safety);
     stage = "STAGING";
     const staging = await dependencies.stagingStore.write(resolved, target);
     stage = "MUTATION_PLAN";

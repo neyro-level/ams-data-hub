@@ -117,4 +117,25 @@ describe("source import pipeline", () => {
     await expect(runSourceImport(target("alpha"), dependencies)).resolves.toMatchObject({ state: "GOOD" });
     expect(state.applied).toEqual(["alpha"]);
   });
+
+  it("rejects an APPROVED disposition without review evidence", async () => {
+    const state = { lastGood: new Map<string, GoodRevisionReceipt>(), failures: [] as string[], applied: [] as string[] };
+    const dependencies = fixtureDependencies(
+      state,
+      { alpha: JSON.stringify({ offers: [{ id: "1", price: 10 }] }) },
+    );
+    dependencies.safetyAnalyzer.analyze = async () => ({
+      disposition: "APPROVED",
+      reasonCodes: ["DROP_THRESHOLD_EXCEEDED"],
+      metrics: { recordCount: 1, previousGoodRecordCount: 10, invalidPercent: 0, dropPercent: 90, growthPercent: 0, criticalIssueCount: 0 },
+    });
+
+    await expect(runSourceImport(target("alpha"), dependencies)).resolves.toEqual({
+      state: "FAILED",
+      sourceId: "alpha",
+      failedStage: "SAFETY_ANALYSIS",
+      code: "IMPORT_APPROVAL_EVIDENCE_INVALID",
+    });
+    expect(state.applied).toEqual([]);
+  });
 });

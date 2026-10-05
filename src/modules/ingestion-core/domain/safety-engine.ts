@@ -121,3 +121,13 @@ export function reviewSuspiciousImport(
     review: { reviewedBy, reviewedAt: input.reviewedAt, reason },
   };
 }
+
+export function assertSafetyApprovalEvidence(analysis: SafetyAnalysisResult): void {
+  if (analysis.disposition !== "APPROVED") return;
+  const reviewedBy = analysis.review?.reviewedBy.trim() ?? "";
+  const reason = analysis.review?.reason.trim() ?? "";
+  const reviewedAt = analysis.review?.reviewedAt ?? "";
+  if (!reviewedBy || !reason || !Number.isFinite(Date.parse(reviewedAt))) {
+    throw new Error("IMPORT_APPROVAL_EVIDENCE_INVALID");
+  }
+}

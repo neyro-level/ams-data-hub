@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { describe, expect, it } from "vitest";
+import { readTestDatabaseTarget } from "../../scripts/verify-test-database-env.mjs";
 import { inventoryIdentityCommands } from "../../src/modules/ingestion-core/server.ts";
 import type { JobPrincipal, PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
+const target = readTestDatabaseTarget(process.env, { allowApplicationTarget: true });
 
 function admin(): PlatformAdminPrincipal {
   return { kind: "platform-admin", userId: `inventory-admin-${randomUUID()}`, correlationId: randomUUID() };
@@ -48,6 +51,31 @@ describe("inventory identity lifecycle persistence", () => {
       normalizedHash: HASH_A,
       seenAt: new Date("2026-10-01T00:00:00.000Z"),
     });
+    const rlsClient = new pg.Client({
+      host: target.host,
+      port: target.port,
+      database: target.database,
+      user: target.user,
+      password: target.password,
+      ssl: target.sslmode === "require",
+    });
+    await rlsClient.connect();
+    try {
+      await rlsClient.query("set role ams_data_hub_worker");
+      await rlsClient.query("begin");
+      await rlsClient.query("select set_config('app.principal_kind', 'platform-admin', true)");
+      await rlsClient.query("select set_config('app.actor_id', 'inventory-admin', true)");
+      await rlsClient.query("select set_config('app.organization_id', '', true)");
+      await rlsClient.query("select set_config('app.project_ids', '*', true)");
+      const blockedAdminWrite = await rlsClient.query(
+        'update "InventoryIdentity" set "status" = \'INACTIVE\' where "uid" = $1',
+        [first.uid],
+      );
+      expect(blockedAdminWrite.rowCount).toBe(0);
+      await rlsClient.query("rollback");
+    } finally {
+      await rlsClient.end();
+    }
     const policy = { deactivationEnabled: true, inactiveAfterMissingGoodRuns: 2, inactiveAfterMissingHours: 24 };
     const grace = await inventoryIdentityCommands.recordMissing(job, identity, policy, {
       completedGoodRun: true,
