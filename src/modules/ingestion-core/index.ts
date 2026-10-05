@@ -21,7 +21,15 @@ export {
   type SourceFieldMapping,
   type SourceObjectCodeExtraction,
   type SourceProfileConfiguration,
+  type SourceFormatContract,
 } from "./domain/source-profile.ts";
+export {
+  joyworkAvitoProfile,
+  joyworkCianProfile,
+  joyworkDomclickProfile,
+  joyworkMarketplaceProfiles,
+  joyworkYandexRealtyProfile,
+} from "./domain/profiles/joywork-marketplace-profiles.ts";
 export {
   resolveVladisDealKind,
   resolveVladisTransaction,
@@ -82,3 +90,25 @@ export {
   type YrlRawElement,
   type YrlRawOffer,
 } from "./domain/yrl-2010-parser.ts";
+export {
+  DEFAULT_MARKETPLACE_XML_LIMITS,
+  MarketplaceXmlError,
+  parseMarketplaceXmlRecords,
+  type MarketplaceXmlErrorCode,
+  type MarketplaceXmlLimits,
+  type MarketplaceXmlParserOptions,
+  type MarketplaceXmlRecord,
+} from "./domain/marketplace-xml-parser.ts";
+export {
+  canonicalSourceObjectKey,
+  findDuplicateExternalIds,
+  normalizeMarketplaceRecord,
+  parseAvitoV3Feed,
+  parseCianV2Feed,
+  parseDomclickYrlFeed,
+  parseJoyworkYandexFeed,
+  type CanonicalFeedDraft,
+  type FeedNormalizationIssue,
+  type FeedNormalizationResult,
+  type MarketplaceFeedFormat,
+} from "./domain/marketplace-feed-adapters.ts";

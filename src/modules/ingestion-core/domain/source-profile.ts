@@ -14,7 +14,19 @@ export interface SourceProfileDescriptor {
   }[];
   requiredCapabilities: readonly SourceAdapterCapability[];
   datasetTypes: readonly SourceDatasetType[];
+  formatContract?: SourceFormatContract;
   configuration?: SourceProfileConfiguration;
+}
+
+export interface SourceFormatContract {
+  family: "YRL_2010" | "AVITO_V3" | "CIAN_V2";
+  rootElement: string;
+  recordElement: string;
+  externalIdPath: string;
+  caseSensitiveTags: boolean;
+  encoding: "UTF_8" | "UTF_8_OR_WINDOWS_1251";
+  calibrationStatus: "EMPTY_LIVE_FEED" | "STRUCTURE_VERIFIED" | "CALIBRATED";
+  preserveRawProvenance: true;
 }
 
 export type ProfilePropertyType =
