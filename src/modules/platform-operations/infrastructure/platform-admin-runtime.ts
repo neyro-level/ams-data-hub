@@ -3,6 +3,8 @@ import type { PrincipalContext } from "../../../platform/authorization/principal
 import { defineCommand } from "../../../platform/commands/define-command.ts";
 import { ReliabilityService } from "../application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "./prisma-reliability-repository.ts";
+import { createDataSafetyService } from "../application/data-safety-service.ts";
+import { PrismaDataSafetyRepository } from "./prisma-data-safety-repository.ts";
 import {
   PlatformOperationsAdminError,
   requestMaintenanceInputSchema,
@@ -91,6 +93,13 @@ export async function requestMaintenance(
 ) {
   return enqueueMaintenance(principal, rawInput);
 }
+
+const dataSafetyService = createDataSafetyService({
+  createRepository: (transaction) => new PrismaDataSafetyRepository(transaction),
+});
+
+export const freezeMutatingJobs = dataSafetyService.freezeMutatingJobs;
+export const unfreezeMutatingJobs = dataSafetyService.unfreezeMutatingJobs;
 
 const enqueueMaintenance = defineCommand({
   name: "platform-operations.maintenance.request",

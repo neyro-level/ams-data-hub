@@ -14,6 +14,12 @@ export interface DataSafetyRepository {
   markReconciled(now: Date): Promise<DataSafetySnapshot>;
   unfreeze(now: Date): Promise<DataSafetySnapshot>;
   read(): Promise<DataSafetySnapshot>;
+  appendAudit(input: {
+    actorId: string;
+    correlationId: string;
+    action: "data-safety.freeze" | "data-safety.reconcile" | "data-safety.unfreeze";
+    afterMarker: Record<string, string | number | boolean>;
+  }): Promise<void>;
 }
 
 export interface DataSafetyServiceDependencies {
@@ -35,8 +41,9 @@ const reconcileInputSchema = z.object({
   publishSequenceConflicts: z.number().int().min(0),
 });
 
-function requireAdmin(principal: PrincipalContext): void {
+function requireAdmin(principal: PrincipalContext) {
   if (principal.kind !== "platform-admin") throw new DataSafetyError("DATA_SAFETY_ADMIN_REQUIRED");
+  return principal;
 }
 
 export function createDataSafetyService(dependencies: DataSafetyServiceDependencies) {
@@ -47,31 +54,44 @@ export function createDataSafetyService(dependencies: DataSafetyServiceDependenc
   const freezeMutatingJobs = defineCommand({
     name: "platform-operations.data-safety.freeze",
     input: z.object({ reason: z.string().trim().min(1).max(255) }),
-    authorize: requireAdmin,
-    execute: ({ input, transaction }) => dependencies.createRepository(transaction).freeze(input.reason, now()),
+    authorize: (principal) => { requireAdmin(principal); },
+    execute: async ({ principal, input, transaction }) => {
+      const repository = dependencies.createRepository(transaction);
+      const result = await repository.freeze(input.reason, now());
+      const actor = requireAdmin(principal);
+      await repository.appendAudit({ actorId: actor.userId, correlationId: actor.correlationId, action: "data-safety.freeze", afterMarker: { jobsFrozen: true, reasonRecorded: true } });
+      return result;
+    },
   });
   const reconcileAfterRestore = defineCommand({
     name: "platform-operations.data-safety.reconcile",
     input: reconcileInputSchema,
-    authorize: requireAdmin,
-    execute: ({ input, transaction }) => {
+    authorize: (principal) => { requireAdmin(principal); },
+    execute: async ({ principal, input, transaction }) => {
       if (Object.values(input).some((count) => count !== 0)) {
         throw new DataSafetyError("DATA_SAFETY_RECONCILE_FAILED");
       }
-      return dependencies.createRepository(transaction).markReconciled(now());
+      const repository = dependencies.createRepository(transaction);
+      const result = await repository.markReconciled(now());
+      const actor = requireAdmin(principal);
+      await repository.appendAudit({ actorId: actor.userId, correlationId: actor.correlationId, action: "data-safety.reconcile", afterMarker: { jobsFrozen: result.jobsFrozen, conflicts: 0 } });
+      return result;
     },
   });
   const unfreezeMutatingJobs = defineCommand({
     name: "platform-operations.data-safety.unfreeze",
     input: z.object({}),
-    authorize: requireAdmin,
-    execute: async ({ transaction }) => {
+    authorize: (principal) => { requireAdmin(principal); },
+    execute: async ({ principal, transaction }) => {
       const repository = dependencies.createRepository(transaction);
       const state = await repository.read();
       if (!state.jobsFrozen || !state.frozenAt || !state.reconciledAt || state.reconciledAt < state.frozenAt) {
         throw new DataSafetyError("DATA_SAFETY_RECONCILE_REQUIRED");
       }
-      return repository.unfreeze(now());
+      const result = await repository.unfreeze(now());
+      const actor = requireAdmin(principal);
+      await repository.appendAudit({ actorId: actor.userId, correlationId: actor.correlationId, action: "data-safety.unfreeze", afterMarker: { jobsFrozen: false } });
+      return result;
     },
   });
   return { freezeMutatingJobs, reconcileAfterRestore, unfreezeMutatingJobs };

@@ -1,0 +1,184 @@
+export type FleetSourceHealth =
+  | "DISABLED"
+  | "NEVER_RUN"
+  | "GOOD"
+  | "STALE"
+  | "ATTENTION";
+
+export interface FleetSourceView {
+  sourceId: string;
+  name: string;
+  enabled: boolean;
+  health: FleetSourceHealth;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  hasLastGoodRevision: boolean;
+  issueCode: "LATEST_ATTEMPT_NOT_GOOD" | "NO_SUCCESS_YET" | "STALE_SUCCESS" | null;
+}
+
+export interface FleetProjectView {
+  organizationId: string;
+  organizationName: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  projectStatus: string;
+  serviceState: string;
+  sources: FleetSourceView[];
+  currentSnapshot: {
+    publishSequence: number;
+    publishedAt: string;
+  } | null;
+  latestDelivery: {
+    publishSequence: number;
+    status: string;
+    publishedAt: string;
+    acknowledgedAt: string | null;
+    safeErrorCode: string | null;
+  } | null;
+  issueCount: number;
+}
+
+export interface FleetFailedJobView {
+  jobRunId: string;
+  organizationName: string | null;
+  jobType: string;
+  attempt: number;
+  safeErrorCode: string | null;
+  startedAt: string;
+}
+
+export interface FleetDashboard {
+  generatedAt: string;
+  dataSafety: {
+    jobsFrozen: boolean;
+    frozenAt: string | null;
+    reconciledAt: string | null;
+  };
+  summary: {
+    organizations: number;
+    projects: number;
+    sources: number;
+    projectsWithIssues: number;
+    unacknowledgedDeliveries: number;
+    failedJobs: number;
+  };
+  projects: FleetProjectView[];
+  failedJobs: FleetFailedJobView[];
+  auditEvents: FleetAuditEventView[];
+}
+
+export interface FleetAuditEventView {
+  auditEventId: string;
+  organizationName: string | null;
+  action: string;
+  entityType: string;
+  createdAt: string;
+}
+
+export class OperationsControlError extends Error {
+  constructor(public readonly code:
+    | "OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED"
+    | "OPERATIONS_CONTROL_REFERENCE_INVALID"
+    | "OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT") {
+    super(code);
+    this.name = "OperationsControlError";
+  }
+}
+
+export interface FleetSourceRecord {
+  id: string;
+  name: string;
+  enabled: boolean;
+  schedulePolicy: unknown;
+  lastAttemptAt: Date | null;
+  lastSuccessAt: Date | null;
+  lastGoodRevisionId: string | null;
+}
+
+export interface FleetProjectRecord {
+  organizationId: string;
+  organizationName: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  projectStatus: string;
+  serviceState: string;
+  sources: FleetSourceRecord[];
+  currentSnapshot: { publishSequence: number; publishedAt: Date } | null;
+  latestDelivery: {
+    publishSequence: number;
+    status: string;
+    publishedAt: Date;
+    acknowledgedAt: Date | null;
+    safeErrorCode: string | null;
+  } | null;
+}
+
+export interface FleetFailedJobRecord {
+  jobRunId: string;
+  organizationName: string | null;
+  jobType: string;
+  attempt: number;
+  safeErrorCode: string | null;
+  startedAt: Date;
+}
+
+export interface FleetAuditEventRecord {
+  auditEventId: string;
+  organizationName: string | null;
+  action: string;
+  entityType: string;
+  createdAt: Date;
+}
+
+export interface FleetDataSafetyRecord {
+  jobsFrozen: boolean;
+  frozenAt: Date | null;
+  reconciledAt: Date | null;
+}
+import { z } from "zod";
+
+const identifierSchema = z.string().trim().min(1).max(128);
+
+export const operationalActionSchema = z.enum([
+  "RUN_SOURCE",
+  "SUSPICIOUS_APPROVE",
+  "SUSPICIOUS_REJECT",
+  "SNAPSHOT_BUILD",
+  "SNAPSHOT_PUBLISH",
+  "SNAPSHOT_ROLLBACK",
+  "ACK_ROTATE",
+]);
+
+export const requestOperationalActionInputSchema = z.object({
+  action: operationalActionSchema,
+  organizationId: identifierSchema,
+  projectId: identifierSchema,
+  sourceId: z.string().trim().max(128).default(""),
+  sourceRevisionId: z.string().trim().max(128).default(""),
+  sourcePublishSequence: z.coerce.number().int().positive().optional(),
+  reason: z.string().trim().max(500).default(""),
+  idempotencyKey: identifierSchema,
+}).superRefine((value, context) => {
+  if (["RUN_SOURCE", "SUSPICIOUS_APPROVE", "SUSPICIOUS_REJECT"].includes(value.action) && !value.sourceId) {
+    context.addIssue({ code: "custom", path: ["sourceId"], message: "Выберите источник" });
+  }
+  if (["SUSPICIOUS_APPROVE", "SUSPICIOUS_REJECT"].includes(value.action) && !value.sourceRevisionId) {
+    context.addIssue({ code: "custom", path: ["sourceRevisionId"], message: "Укажите revision" });
+  }
+  if (["SUSPICIOUS_APPROVE", "SUSPICIOUS_REJECT"].includes(value.action) && !value.reason) {
+    context.addIssue({ code: "custom", path: ["reason"], message: "Обоснование обязательно" });
+  }
+  if (value.action === "SNAPSHOT_ROLLBACK" && value.sourcePublishSequence === undefined) {
+    context.addIssue({ code: "custom", path: ["sourcePublishSequence"], message: "Укажите исходный sequence" });
+  }
+});
+
+export const freezeJobsInputSchema = z.object({ reason: z.string().trim().min(3).max(255) });
+export const unfreezeJobsInputSchema = z.object({});
+
+export type OperationalAction = z.infer<typeof operationalActionSchema>;
+export type RequestOperationalActionInput = z.infer<typeof requestOperationalActionInputSchema>;
+export type FreezeJobsInput = z.infer<typeof freezeJobsInputSchema>;
+export type UnfreezeJobsInput = z.infer<typeof unfreezeJobsInputSchema>;

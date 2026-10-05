@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { KpiCard } from "../../../components/dashboard/KpiCard.tsx";
@@ -31,6 +32,7 @@ import {
 import {
   getPlatformAdminDashboardSummary,
 } from "../../../modules/platform-admin/server.ts";
+import { getFleetDashboard } from "../../../modules/operations-control/server.ts";
 import {
   listOperations,
 } from "../../../modules/platform-operations/server.ts";
@@ -53,6 +55,7 @@ import { PlatformAdminTable, type PlatformAdminDisplayRow } from "../_components
 import { ProjectsAdminForms } from "../_components/ProjectAdminForms.tsx";
 import { CatalogAdminWorkspace } from "../_components/CatalogAdminWorkspace.tsx";
 import { SourceAdminForms } from "../_components/SourceAdminForms.tsx";
+import { FleetDashboard } from "../_components/FleetDashboard.tsx";
 
 const defaultSortOptions: Array<{ field: PlatformAdminSortField; label: string }> = [
   { field: "name", label: "Запись" },
@@ -153,6 +156,17 @@ export default async function AdminResourcePageRoute({
   const listQuery = toPlatformAdminListQuery(query);
   const definition = getPlatformAdminResourceDefinition(resource);
   const currentPath = `/admin/${resource}/`;
+
+  if (resource === "fleet") {
+    const data = await getFleetDashboard(state.principal);
+    return (
+      <div className="space-y-6">
+        <PageHeader title={definition.label} description={definition.description} />
+        <AdminResourceNav currentPath={currentPath} />
+        <FleetDashboard data={data} initialIdempotencyKey={`operation-${randomUUID()}`} />
+      </div>
+    );
+  }
 
   if (resource === "catalog") {
     const catalogQuery = parseCatalogAdminQuery(rawSearchParams);

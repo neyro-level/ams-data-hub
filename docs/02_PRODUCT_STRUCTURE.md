@@ -21,6 +21,15 @@
 4. A business mutation may create an outbox event in the same transaction;
    worker delivery occurs after commit.
 
+`/admin/fleet/` is the cross-project operations surface. It exposes PII-safe
+fleet state, guarded source requests, audited SUSPICIOUS/snapshot/ACK requests,
+data-safety freeze/unfreeze controls and a redacted audit feed. Recording a
+Build/Publish/Rollback/ACK request does not claim that an executor completed it.
+The notifications feed receives deduplicated Platform Admin alerts for overdue
+sources, SUSPICIOUS/CRITICAL imports, stale ACK, worker health and failed
+backups. Owner email uses the same safe alert envelope, but remains disabled
+until a real recipient adapter is explicitly configured.
+
 ## Derivation substitutions
 
 A derived product replaces application name/slug/origin, legal content,

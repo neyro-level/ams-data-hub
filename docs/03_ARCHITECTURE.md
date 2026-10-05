@@ -50,14 +50,14 @@ this table is a boundary decision, not permission to add an empty scaffold.
 | `identity-access` | active | users, memberships, account setup, authentication administration | `contracts.ts`, `client.ts`, `server.ts`, `index.ts` |
 | `project-registry` | active | organizations, projects, memberships and service state | `contracts.ts`, `server.ts`, `index.ts` |
 | `platform-operations` | active | audit, idempotency, outbox, jobs and readiness | `contracts.ts`, `server.ts`, `worker.ts`, `index.ts` |
-| `notifications` | active; retained for DH-08 alerts | in-app notification delivery, feed and read state | `actions.ts`, `server.ts`, `index.ts` |
+| `notifications` | active; DH-08.3 operational alerts | in-app delivery, feed/read state, scheduled alert detection and owner-delivery port | `actions.ts`, `server.ts`, `index.ts`; real owner recipient adapter stays disabled until configured |
 | `platform-admin` | active | platform-wide resource views, summaries and admin queries | `contracts.ts`, `server.ts`, `index.ts` |
 | `shared-catalog` | active; DH-03.1 geography foundation | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | `contracts.ts`, `server.ts`, `index.ts` |
 | `project-state` | future; DH-04 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
 | `media-assets` | active foundation; DH-02.5, extended in DH-03 | validated admin intake, rights metadata, hashes, object references and ownership rules | `contracts.ts`, `server.ts`, `index.ts`; storage remains a platform port |
 | `snapshot-delivery` | active foundation; DH-05.1–05.7 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | composer/signature contracts, server-only SecretRef signer, immutable project storage, current-manifest pointer, persisted `DeliveryRun`, hashed project ACK credential and portable `packages/snapshot-verifier` |
 | `ingestion-core` | future; DH-06 | source registry, adapter/profile contracts, raw and normalized revisions, identity resolution, safety analysis and apply plan | adapter contracts plus project-job worker facade |
-| `operations-control` | future; DH-08 | fleet projections, audited operator actions and Exit Bundle orchestration | operations contracts plus server facade; alerts go through `notifications` |
+| `operations-control` | active; DH-08.1–08.4 | PII-safe fleet projections, idempotent audited operation requests, guarded data-safety controls and protected Exit Bundle orchestration | `contracts.ts`, `server.ts`, `index.ts`; requests do not imply executor completion; alerts go through `notifications` |
 | `platform/*` | active platform layer | database, commands, auth, authorization, config, observability, safe outbound and storage ports | platform-owned APIs only |
 
 Dependency direction is `app/components/worker → module public boundary →

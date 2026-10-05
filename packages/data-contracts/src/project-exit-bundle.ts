@@ -3,6 +3,25 @@ import { z } from "zod";
 export const dataModeSchema = z.enum(["hub", "local"]);
 export type DataMode = z.infer<typeof dataModeSchema>;
 
+export const agentPublicV1Schema = z.object({
+  schemaMajor: z.literal(1),
+  schemaMinor: z.number().int().nonnegative(),
+  uid: z.string().trim().min(1).max(64),
+  slug: z.string().trim().min(1).max(200),
+  role: z.enum(["AGENT", "LAWYER", "MORTGAGE_BROKER", "MANAGER", "OTHER"]),
+  fullName: z.string().trim().min(2).max(240),
+  position: z.string().trim().max(240).nullable(),
+  bio: z.string().trim().max(4000).nullable(),
+  specializations: z.array(z.string().trim().min(1).max(120)).max(20),
+  photoUrl: z.url({ protocol: /^https$/ }).nullable(),
+  workPhone: z.string().trim().max(40).nullable(),
+  workEmail: z.email().nullable(),
+  messengers: z.array(z.url({ protocol: /^https$/ })).max(10),
+  sortOrder: z.number().int().min(0).max(100000),
+}).strict();
+
+export type AgentPublicV1 = z.infer<typeof agentPublicV1Schema>;
+
 export const PROJECT_EXIT_DATASET_KINDS = [
   "geo", "developers", "developments", "buildings", "listings", "agents",
   "project-contacts", "editorial", "urls", "redirects", "lifecycle",

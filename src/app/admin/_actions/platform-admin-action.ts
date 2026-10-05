@@ -4,6 +4,8 @@ import { ProjectRegistryError } from "../../../modules/project-registry/index.ts
 import { SharedCatalogError } from "../../../modules/shared-catalog/server.ts";
 import { ProjectStateError } from "../../../modules/project-state/server.ts";
 import { SourceRegistryError } from "../../../modules/ingestion-core/server.ts";
+import { OperationsControlError } from "../../../modules/operations-control/index.ts";
+import { DataSafetyError } from "../../../modules/platform-operations/server.ts";
 import { defineAction } from "../../../platform/actions/define-action.ts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 
@@ -20,6 +22,10 @@ function mapError(error: unknown) {
           : error instanceof ProjectStateError
             ? error.code
           : error instanceof SourceRegistryError
+            ? error.code
+          : error instanceof OperationsControlError
+            ? error.code
+          : error instanceof DataSafetyError
             ? error.code
           : "PLATFORM_ADMIN_ACTION_FAILED";
 
@@ -74,6 +80,12 @@ function mapError(error: unknown) {
     SOURCE_REGISTRY_PROFILE_INCOMPATIBLE: "Профиль несовместим с адаптером, транспортом или типом данных.",
     PLATFORM_OPERATIONS_ADMIN_ACCESS_DENIED: "Недостаточно прав для этого действия.",
     MAINTENANCE_REQUEST_INVALID_SCOPE: "Служебную задачу можно поставить только на уровне платформы.",
+    OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED: "Недостаточно прав для операционного действия.",
+    OPERATIONS_CONTROL_REFERENCE_INVALID: "Проект, источник или revision недоступны.",
+    OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT: "Этот номер запроса уже использован с другими параметрами.",
+    DATA_SAFETY_ADMIN_REQUIRED: "Недостаточно прав для управления остановкой jobs.",
+    DATA_SAFETY_RECONCILE_REQUIRED: "Перед разморозкой нужен успешный reconcile после последней остановки.",
+    DATA_SAFETY_RECONCILE_FAILED: "Reconcile обнаружил конфликты. Jobs остаются остановлены.",
   };
 
   return { code, message: messages[code] ?? "Не удалось сохранить изменения." };

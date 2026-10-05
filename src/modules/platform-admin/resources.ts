@@ -1,4 +1,5 @@
 export const PLATFORM_ADMIN_RESOURCE_KEYS = [
+  "fleet",
   "organizations",
   "memberships",
   "projects",
@@ -17,6 +18,12 @@ export interface PlatformAdminResourceDefinition {
 }
 
 export const PLATFORM_ADMIN_RESOURCES: readonly PlatformAdminResourceDefinition[] = [
+  {
+    key: "fleet",
+    label: "Состояние платформы",
+    description: "Read-only обзор источников, snapshots, delivery, ACK и фоновых ошибок по всем проектам.",
+    href: "/admin/fleet/",
+  },
   {
     key: "organizations",
     label: "Организации",

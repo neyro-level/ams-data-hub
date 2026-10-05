@@ -13,6 +13,7 @@ function harness() {
     markReconciled: vi.fn(async (now) => (state = { ...state, reconciledAt: now })),
     unfreeze: vi.fn(async () => (state = { ...state, jobsFrozen: false })),
     read: vi.fn(async () => state),
+    appendAudit: vi.fn(async () => undefined),
   };
   const service = createDataSafetyService({
     createRepository: () => repository,
@@ -31,6 +32,7 @@ describe("data safety state", () => {
     await service.reconcileAfterRestore(admin, { publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 });
     await service.unfreezeMutatingJobs(admin, {});
     await expect(assertMutatingJobsAllowed(repository)).resolves.toBeUndefined();
+    expect(repository.appendAudit).toHaveBeenCalledTimes(3);
   });
 
   it("rejects conflicts and non-admin control", async () => {

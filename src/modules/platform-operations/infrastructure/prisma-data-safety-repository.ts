@@ -36,4 +36,25 @@ export class PrismaDataSafetyRepository implements DataSafetyRepository {
     return (await this.transaction.dataSafetyState.findUnique({ where: { id: "global" }, select: selectState }))
       ?? { jobsFrozen: true, frozenAt: null, reconciledAt: null };
   }
+
+  public async appendAudit(input: {
+    actorId: string;
+    correlationId: string;
+    action: "data-safety.freeze" | "data-safety.reconcile" | "data-safety.unfreeze";
+    afterMarker: Record<string, string | number | boolean>;
+  }): Promise<void> {
+    await this.transaction.auditEvent.create({
+      data: {
+        organizationId: null,
+        actorType: "USER",
+        actorId: input.actorId,
+        action: input.action,
+        entityType: "DataSafetyState",
+        entityId: "global",
+        afterMarker: input.afterMarker,
+        source: "platform-operations",
+        correlationId: input.correlationId,
+      },
+    });
+  }
 }
