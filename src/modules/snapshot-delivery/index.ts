@@ -3,6 +3,7 @@ export * from "./application/snapshot-composer.ts";
 export * from "./application/snapshot-signing.ts";
 export * from "./application/snapshot-delivery.ts";
 export * from "./application/snapshot-ack.ts";
+export * from "./application/snapshot-rollback.ts";
 export * from "./application/ports/snapshot-delivery-repository.ts";
 export * from "./domain/delivery-run.ts";
 export * from "./domain/privacy-scanner.ts";

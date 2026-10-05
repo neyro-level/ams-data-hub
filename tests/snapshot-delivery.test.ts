@@ -14,6 +14,7 @@ import {
   SNAPSHOT_DATASET_KINDS,
   assertDeliveryTransition,
   composeSnapshot,
+  composeRollbackSnapshot,
   createSnapshotDeliveryService,
   createSnapshotAckService,
   hashProjectAckToken,
@@ -294,5 +295,34 @@ describe("snapshot ACK", () => {
 
   it("uses a different salted hash for the same token", () => {
     expect(hashProjectAckToken(currentToken)).not.toBe(hashProjectAckToken(currentToken));
+  });
+});
+
+describe("snapshot rollback", () => {
+  it("reuses old immutable content only through a new higher-sequence manifest", async () => {
+    const source = (await fixture(2)).composition;
+    const rollback = composeRollbackSnapshot({
+      source,
+      currentPublishSequence: 7,
+      generatedAt: "2026-10-06T00:00:00.000Z",
+      publishedAt: "2026-10-06T00:00:01.000Z",
+      keyId: "rollback-key",
+    });
+    expect(rollback.manifest.publishSequence).toBe(8);
+    expect(rollback.manifest.keyId).toBe("rollback-key");
+    expect(rollback.manifest.files).toEqual(source.manifest.files);
+    expect(rollback.files.map((file) => file.manifest.sha256)).toEqual(source.files.map((file) => file.manifest.sha256));
+    expect(rollback.manifestPayload).not.toEqual(source.manifestPayload);
+  });
+
+  it("rejects a source sequence newer than the current published sequence", async () => {
+    const source = (await fixture(5)).composition;
+    expect(() => composeRollbackSnapshot({
+      source,
+      currentPublishSequence: 4,
+      generatedAt: "2026-10-06T00:00:00.000Z",
+      publishedAt: "2026-10-06T00:00:01.000Z",
+      keyId: "rollback-key",
+    })).toThrow("SNAPSHOT_ROLLBACK_SOURCE_IS_FUTURE");
   });
 });
