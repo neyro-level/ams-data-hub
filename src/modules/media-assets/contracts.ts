@@ -116,6 +116,11 @@ export const inventoryMediaProjectionInputSchema = z.object({
   expectedRecordHash: z.string().regex(/^[a-f0-9]{64}$/u),
 }).strict();
 export type InventoryMediaProjectionInput = z.output<typeof inventoryMediaProjectionInputSchema>;
+export const inventoryPublicMediaReadInputSchema = inventoryMediaProjectionInputSchema.extend({
+  ref: z.string().regex(/^[a-f0-9]{64}$/u), position: z.number().int().min(0).max(10_000),
+}).strict();
+export type InventoryPublicMediaReadInput = z.output<typeof inventoryPublicMediaReadInputSchema>;
+export interface InventoryPublicMediaObject { ref: string; contentType: string; body: Uint8Array }
 export interface InventoryMediaProjectionResult {
   media: readonly MediaPublicV1[];
   warnings: readonly ("MEDIA_MIRROR_WARNING" | "MEDIA_MIRROR_UNAVAILABLE" | "MEDIA_OBJECT_UNAVAILABLE" | "MEDIA_ASSET_INVALID")[];

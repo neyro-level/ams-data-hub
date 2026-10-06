@@ -67,3 +67,16 @@ Missing mirrors and unavailable storage objects also produce fixed value-free
 warnings, never producer URL fallbacks. Arbitrary adapter messages/codes are not
 stored as warnings; only the finite outbound codes and image-decode code are
 retained, with `MEDIA_MIRROR_FAILED` as the safe default.
+
+`media-assets.readInventoryPublicMedia` is an internal server facade, not an
+anonymous HTTP route. It reuses the authorized current GOOD membership query
+before and after object I/O, with exact inventory hash, digest and position.
+Its storage capability is bounded streaming GET: checked declared size, one
+bounded output buffer, actual length and SHA-256, cancellable stream and timeout.
+The image decoder verifies MIME and format; only `{ref, contentType, body}` is
+returned. Legacy whole-body GET and producer HTTP are never fallbacks.
+Synthetic PostgreSQL proof composes the projected inventory and media dataset,
+then reads actual mirrored bytes through this facade after producer media is
+disabled. SDK transport is synthetic; storage adapter, GOOD/RLS queries,
+projection, gzip composition and reader are real. This is not provider live
+proof, browser delivery, full MP-05 orchestration or production activation.

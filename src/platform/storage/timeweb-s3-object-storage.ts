@@ -25,6 +25,8 @@ import {
   type ObjectStoragePutInput,
   type ObjectStorageStreamingPutInput,
   type StreamingObjectStorage,
+  type BoundedObjectStorage,
+  type ObjectStorageBoundedGetInput,
 } from "./object-storage.ts";
 
 const TIMEWEB_S3_BUCKET_PATTERN = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
@@ -119,7 +121,7 @@ function toStoredObject(input: {
  * S3-compatible adapter for one already-authorized private Timeweb bucket.
  * It never creates, lists, deletes, or makes a bucket/object public.
  */
-export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage {
+export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage, BoundedObjectStorage {
   private readonly bucket: string;
   private readonly client: S3Client;
 
@@ -172,6 +174,61 @@ export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage {
     } catch (error) {
       if (isMissingObjectError(error)) return null;
       throw error;
+    }
+  }
+
+  public async getBounded(input: ObjectStorageBoundedGetInput): Promise<ObjectStorageGetResult | null> {
+    const sha256 = getObjectStorageKeySha256(input.key);
+    if (!Number.isSafeInteger(input.maxBytes) || input.maxBytes < 1 || input.maxBytes > MAX_STREAMING_OBJECT_BYTES) {
+      throw new Error("OBJECT_STORAGE_READ_LIMIT_INVALID");
+    }
+    const signal = input.signal ? AbortSignal.any([input.signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000);
+    let body: (AsyncIterable<Uint8Array> & { destroy?(): unknown }) | undefined;
+    const known = new Set(["OBJECT_STORAGE_READ_ABORTED", "OBJECT_STORAGE_READ_TOO_LARGE", "OBJECT_STORAGE_READ_METADATA_INVALID",
+      "OBJECT_STORAGE_READ_LENGTH_MISMATCH", "OBJECT_STORAGE_READ_HASH_MISMATCH", "OBJECT_STORAGE_READ_STREAM_UNSUPPORTED"]);
+    try {
+      if (signal.aborted) throw new Error("OBJECT_STORAGE_READ_ABORTED");
+      const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: input.key }), { abortSignal: signal });
+      body = response.Body as typeof body;
+      const declared = response.ContentLength;
+      if (!Number.isSafeInteger(declared) || declared === undefined || declared < 0) throw new Error("OBJECT_STORAGE_READ_METADATA_INVALID");
+      if (declared > input.maxBytes) throw new Error("OBJECT_STORAGE_READ_TOO_LARGE");
+      if (!body || typeof body[Symbol.asyncIterator] !== "function" || typeof body.destroy !== "function") {
+        throw new Error("OBJECT_STORAGE_READ_STREAM_UNSUPPORTED");
+      }
+      const iterator = body[Symbol.asyncIterator]();
+      const output = Buffer.alloc(declared);
+      const hash = createHash("sha256");
+      let bytes = 0;
+      while (true) {
+        // Each iteration removes its abort listener; no shared unresolved race or per-chunk buffers.
+        const next = await new Promise<IteratorResult<Uint8Array>>((resolve, reject) => {
+          const onAbort = () => { signal.removeEventListener("abort", onAbort); reject(new Error("OBJECT_STORAGE_READ_ABORTED")); };
+          signal.addEventListener("abort", onAbort, { once: true });
+          if (signal.aborted) { onAbort(); return; }
+          Promise.resolve().then(() => iterator.next()).then(
+            (value) => { signal.removeEventListener("abort", onAbort); resolve(value); },
+            (error: unknown) => { signal.removeEventListener("abort", onAbort); reject(error); },
+          );
+        });
+        if (next.done) break;
+        if (!(next.value instanceof Uint8Array)) throw new Error("OBJECT_STORAGE_READ_STREAM_UNSUPPORTED");
+        bytes += next.value.byteLength;
+        if (bytes > input.maxBytes) throw new Error("OBJECT_STORAGE_READ_TOO_LARGE");
+        if (bytes > declared) throw new Error("OBJECT_STORAGE_READ_LENGTH_MISMATCH");
+        output.set(next.value, bytes - next.value.byteLength);
+        hash.update(next.value);
+      }
+      if (bytes !== declared) throw new Error("OBJECT_STORAGE_READ_LENGTH_MISMATCH");
+      if (hash.digest("hex") !== sha256) throw new Error("OBJECT_STORAGE_READ_HASH_MISMATCH");
+      return { ...toStoredObject({ key: input.key, contentType: response.ContentType, contentLength: declared,
+        sha256, etag: response.ETag, lastModifiedAt: response.LastModified }), body: output };
+    } catch (error) {
+      if (isMissingObjectError(error)) return null;
+      if (error instanceof Error && known.has(error.message)) throw new Error(error.message);
+      throw new Error("OBJECT_STORAGE_READ_FAILED");
+    } finally {
+      try { body?.destroy?.(); } catch { throw new Error("OBJECT_STORAGE_READ_FAILED"); }
     }
   }
 

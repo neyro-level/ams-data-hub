@@ -104,7 +104,13 @@ remediation program preserves these boundaries while connecting them:
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
   storage coordinates. The inventory media query resolves current scoped GOOD
   image membership and same-scope mirrored assets, verifies storage HEAD outside
-  transactions and rejects changes during IO. Complete snapshot orchestration,
+  transactions and rejects changes during IO. The internal authorized media
+  reader repeats membership checks around bounded cancellable storage GET,
+  verifies length/digest and image format, and never calls producer HTTP or
+  legacy unbounded GET. Synthetic producer-OFF proof exercises GOOD/RLS,
+  public projection, gzip snapshot composition and mirrored image bytes with
+  only external transport replaced. This does not enable a browser route or
+  a real storage provider. Complete snapshot orchestration,
   historical missing-grace fact selection and consent-gated agent projection
   remain subsequent gates.
 - MP-07: bounded consumer decompression remains pending; the verifier currently

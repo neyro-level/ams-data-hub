@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { gunzipSync } from "node:zlib";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 const gateway = vi.hoisted(() => ({ feed: vi.fn(), media: vi.fn() }));
 vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => ({
@@ -7,31 +9,37 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => ({
 }));
 import { createSourceExecutionServer, createInventoryPublicProjectionServer, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { serializePublicDto } from "@ams-data-hub/data-contracts";
+import { composeSnapshot, SNAPSHOT_DATASET_KINDS } from "../../src/modules/snapshot-delivery/index.ts";
 import { syntheticCanonicalInventory } from "../fixtures/canonical-inventory.ts";
 import { createMediaAssetsServer } from "../../src/modules/media-assets/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import type { PlatformAdminPrincipal, PrincipalContext } from "../../src/platform/authorization/principal.ts";
 import * as database from "../../src/platform/database/transaction.ts";
 import { runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
-import { assertImmutableObjectStoragePut, type ObjectStorage, type StreamingObjectStorage,
-  type ObjectStorageGetResult, type ObjectStorageObject, type ObjectStoragePutInput, type ObjectStorageStreamingPutInput,
-  type ObjectStoragePresignedUrl } from "../../src/platform/storage/object-storage.ts";
+import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
+import { calculateObjectSha256 } from "../../src/platform/storage/object-storage.ts";
 
 const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
-class MemoryStorage implements ObjectStorage, StreamingObjectStorage {
-  readonly entries = new Map<string, ObjectStorageGetResult>();
-  public async put(input: ObjectStoragePutInput): Promise<ObjectStorageObject> {
-    assertImmutableObjectStoragePut(input);
-    const object = { ...input, contentLength: input.body.byteLength, etag: null, lastModifiedAt: new Date(0) };
-    this.entries.set(input.key, object); return object;
-  }
-  public async putStream(input: ObjectStorageStreamingPutInput) {
-    const chunks: Uint8Array[] = []; for await (const chunk of input.openBody()) chunks.push(chunk);
-    return this.put({ ...input, body: Buffer.concat(chunks) });
-  }
-  public async get(key: string) { return this.entries.get(key) ?? null; }
-  public readonly head = vi.fn(async (key: string) => this.entries.get(key) ?? null);
-  public async presignGet(): Promise<ObjectStoragePresignedUrl> { throw new Error("SYNTHETIC_PRESIGN_NOT_USED"); }
+function syntheticS3() {
+  const client = new S3Client({ region: "ru-1", credentials: { accessKeyId: "synthetic", secretAccessKey: "synthetic" } });
+  const entries = new Map<string, { body: Uint8Array; contentType: string }>();
+  // Only the SDK transport is replaced: immutable keys, hashing, streaming and limits remain real.
+  vi.spyOn(client, "send").mockImplementation(async (command: unknown) => {
+    if (command instanceof PutObjectCommand) {
+      const chunks: Uint8Array[] = [];
+      if (command.input.Body instanceof Uint8Array) chunks.push(command.input.Body);
+      else for await (const chunk of command.input.Body as AsyncIterable<Uint8Array>) chunks.push(chunk);
+      entries.set(command.input.Key!, { body: Buffer.concat(chunks), contentType: command.input.ContentType! });
+      return { ETag: "synthetic" } as never;
+    }
+    if (!(command instanceof GetObjectCommand) && !(command instanceof HeadObjectCommand)) throw new Error("SYNTHETIC_S3_OPERATION_DENIED");
+    const object = entries.get(command.input.Key!);
+    if (!object) throw { name: "NoSuchKey", $metadata: { httpStatusCode: 404 } };
+    return { ContentLength: object.body.length, ContentType: object.contentType, LastModified: new Date(0), ETag: "synthetic",
+      ...(command instanceof GetObjectCommand ? { Body: { async *[Symbol.asyncIterator]() { yield object.body; }, destroy: vi.fn() } } : {}) } as never;
+  });
+  const storage = new S3ObjectStorage({ bucket: "synthetic-project", client });
+  return Object.assign(storage, { head: vi.spyOn(storage, "head") });
 }
 
 describe("persisted GOOD inventory mirrored media public facade", () => {
@@ -55,7 +63,7 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
         safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" });
       const target = { ...scope, sourceId: created.sourceId };
       await sourceRegistryCommands.setSourceEnabled(admin, { ...target, version: created.version, enabled: true });
-      const storage = new MemoryStorage(); const runtime = createSourceExecutionServer(storage); const media = createMediaAssetsServer(storage);
+      const storage = syntheticS3(); const runtime = createSourceExecutionServer(storage); const media = createMediaAssetsServer(storage);
       const provide = (images: string[]) => {
         const bytes = new TextEncoder().encode(`<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>1000</value></price>${images.map((url) => `<picture>${url}</picture>`).join("")}</offer></realty-feed>`);
         gateway.feed.mockResolvedValue({ status: 200, contentType: "application/xml", contentLength: bytes.byteLength,
@@ -110,6 +118,22 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
       const publicProjection = await createInventoryPublicProjectionServer(storage)(job, { entity: canonical, sourceRevisionId: currentInput.sourceRevisionId });
       expect(JSON.parse(serializePublicDto(publicProjection.inventory)).media).toEqual(projected.media);
       expect(publicProjection.warnings).toEqual(["MEDIA_MIRROR_WARNING", "MEDIA_MIRROR_WARNING"]);
+      const inventory = JSON.parse(serializePublicDto(publicProjection.inventory));
+      const mediaRef = projected.media[0]!.ref;
+      const composition = composeSnapshot({ projectId: scope.projectId, schemaMinor: 0, publishSequence: 1,
+        generatedAt: new Date(0).toISOString(), publishedAt: new Date(0).toISOString(), catalogRevision: "synthetic-independence",
+        sourceRevisions: [currentInput.sourceRevisionId], keyId: "synthetic", requiresProjectContact: true,
+        datasets: SNAPSHOT_DATASET_KINDS.map((kind) => ({ kind, records: kind === "inventory" ? [{ key: inventory.uid, value: inventory,
+          references: [{ kind: "media", key: mediaRef }] }] : kind === "media" ? [{ key: mediaRef, value: { ref: mediaRef, kind: "IMAGE" } }]
+          : kind === "project/contacts" ? [{ key: scope.projectId, value: { phone: "+70000000000", email: "public@example.test" } }] : [] })) });
+      const catalog = JSON.parse(gunzipSync(composition.files.find((file) => file.manifest.kind === "inventory")!.body).toString());
+      expect(catalog[0].media).toEqual(projected.media);
+      const image = await workerMedia.readInventoryPublicMedia(job, { ...currentInput, ref: mediaRef, position: 0 });
+      expect(Buffer.from(image.body)).toEqual(Buffer.from(png)); expect(calculateObjectSha256(image.body)).toBe(mediaRef);
+      expect(Object.keys(image).sort()).toEqual(["body", "contentType", "ref"]);
+      expect(gateway.media).toHaveBeenCalledTimes(outboundCount);
+      await expect(workerMedia.readInventoryPublicMedia(job, { ...currentInput, ref: mediaRef, position: 1 }))
+        .rejects.toThrow("MEDIA_PUBLIC_OBJECT_NOT_FOUND");
       storage.head.mockClear();
       await expect(workerMedia.projectInventoryMedia(job, { ...currentInput, expectedRecordHash: first.identity.normalizedHash }))
         .rejects.toThrow("MEDIA_PROJECTION_REVISION_NOT_FOUND");
