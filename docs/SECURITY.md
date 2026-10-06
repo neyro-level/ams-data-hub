@@ -64,8 +64,9 @@ used by migration tooling, are supplied through stdin and never bypass setup.
 ## Authentication Transition
 
 The current owner amendment replaces E02's previous factor policy, not password/
-session or authorization security. Legacy runtime factor checks and TOTP-specific
-recovery still await MP-01 removal; this is not a completed runtime claim.
+session or authorization security. MP-01 removes legacy runtime factor checks,
+TOTP-specific recovery and unused factor schema through a new forward migration.
+Its evidence is auth-scoped, not overall production readiness.
 One-time hashed account setup/password recovery material remains protected.
 Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins are exact;
 CSRF/origin protection stays enabled. The production deployment must define

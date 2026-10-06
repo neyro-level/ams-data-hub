@@ -29,10 +29,11 @@
 
 ## Следующая граница
 
-MP-00 фиксирует owner amendments и синхронизирует текущий канон. Checkpoint
-implementation evidence находится в Beads; merge в `main` ещё требует отдельный
-MP-00 exact-head Gate и delivery ledger. Legacy TOTP-код до MP-01 остаётся
-неудалённым. Runtime Source/snapshot/operations composition не объявляется
+MP-00 доставлен PR #18 после exact-head RISKY Gate #185, merge
+`23d1204fccb07afe25b8b8aa0c87ece0001e6b25`; GitHub mirror синхронизирован.
+MP-01 удаляет текущий TOTP contour с новой forward migration и auth regressions;
+его отдельная delivery-задача требует review/exact-head Gate до merge.
+Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
 Активная доработка: MP-00–MP-10 нового remediation plan. Первая волна —
