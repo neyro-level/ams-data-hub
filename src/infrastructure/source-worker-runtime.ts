@@ -27,10 +27,8 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
     // Schedule reconciliation is owned by MP04.3, never a no-op completion path.
     queue: { reconcileSchedules: async () => { throw new Error("SOURCE_SCHEDULE_RECONCILIATION_NOT_BOUND"); } },
     runImport: async (_principal, target) => {
-      const result = await createSourceExecutionServer(dependencies.resolveStorage({ organizationId: target.organizationId,
+      return createSourceExecutionServer(dependencies.resolveStorage({ organizationId: target.organizationId,
         projectId: target.projectId })).run(target);
-      if (result.state !== "GOOD") throw new Error(result.code);
-      return result;
     } });
   const totals = { fetched: 0, completed: 0, failed: 0 };
   while (!options.signal.aborted) {

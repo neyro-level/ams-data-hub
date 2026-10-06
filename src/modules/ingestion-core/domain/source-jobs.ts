@@ -7,9 +7,9 @@ export const SOURCE_SCHEDULE_CRON = "*/5 * * * *";
 
 export const sourceImportJobSchema = z.object({
   schemaVersion: z.literal(SOURCE_IMPORT_JOB_SCHEMA_VERSION),
-  organizationId: z.string().trim().min(1),
-  projectId: z.string().trim().min(1),
-  sourceId: z.string().trim().min(1),
+  organizationId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+  projectId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,128}$/u),
+  sourceId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,128}$/u),
   trigger: z.enum(["SCHEDULED", "MANUAL"]),
 }).strict();
 

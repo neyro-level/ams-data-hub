@@ -70,8 +70,16 @@ Adapters resolve lazily after Source scope checks; another project has no
 fallback, and shared resolved bucket/user identities are rejected. Bindings
 and cached adapters are process-lifetime configuration; change them only with
 the approved environment/restart operation. This code creates no credentials.
-Scheduler/manual bridge, concurrency, controlled shutdown and source health
-proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
+The native queue consumer now has synthetic PostgreSQL proof through the
+default `runSourceWorker`: real pg-boss job → scoped non-bypass import queries
+→ GOOD revision; a malformed next feed retries its job and keeps Last Good.
+Only outbound HTTP and SDK transport are replaced; SourceExecutionServer is
+not called directly by the test. Import results are typed and only a GOOD
+result pinned to that Source may complete the job. FAILED/absent/cross-source
+results fail it with a value-free code; queue payload IDs are bounded and no
+endpoint override is accepted. This is not scheduler/manual-request/production
+proof. Scheduler/manual bridge, concurrency, controlled shutdown and source
+health proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
 not intake capacity proof for the up-to-256 MiB source spool.
 
 ## PostgreSQL Evidence Transition

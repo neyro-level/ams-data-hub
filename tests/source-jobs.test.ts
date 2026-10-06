@@ -6,6 +6,7 @@ import {
   PgBossSourceJobQueue,
   SOURCE_IMPORT_QUEUE,
   SOURCE_SCHEDULE_CRON,
+  sourceImportJobSchema,
   type SourceJobExecutionContext,
   type SourceJobRecord,
   type SourceScheduleBoss,
@@ -86,7 +87,8 @@ describe("source jobs", () => {
   });
 
   it("runs due work under a project-job principal and skips early schedule ticks", async () => {
-    const runImport = vi.fn().mockResolvedValue(undefined);
+    const runImport = vi.fn().mockResolvedValue({ state: "GOOD", sourceId: "source-1", revisionId: "synthetic-revision",
+      sequence: 1, rawArtifactHash: "a".repeat(64), normalizedContentHash: "b".repeat(64), snapshotTriggered: true });
     const source = context();
     const jobs = createSourceJobs({
       repository: {
@@ -163,5 +165,24 @@ describe("source jobs", () => {
       "job-1",
       { status: "FAILED", code: "IMPORT_PIPELINE_FAILED" },
     );
+  });
+
+  it.each([{ state: "FAILED", sourceId: "source-1", failedStage: "PARSE", code: "YRL_XML_MALFORMED" },
+    undefined, { state: "GOOD", sourceId: "other-source" }])("never completes failed, absent or cross-source results %j", async (result) => {
+    const jobs = createSourceJobs({ repository: { listSchedulingSources: vi.fn(), loadExecutionContext: vi.fn(async () => context()) },
+      queue: { reconcileSchedules: vi.fn() }, runImport: vi.fn().mockResolvedValue(result) });
+    const boss = { fetch: vi.fn(async () => [{ id: "synthetic-failed", data: { schemaVersion: 1,
+      organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" } }]),
+      complete: vi.fn(), fail: vi.fn() };
+    expect(await drainSourceJobQueue(boss as never, jobs, 1)).toMatchObject({ failed: 1, completed: 0 });
+    expect(boss.complete).not.toHaveBeenCalled();
+    expect(boss.fail).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, "synthetic-failed", { status: "FAILED", code: "SOURCE_IMPORT_FAILED" });
+  });
+  it("bounds IDs and rejects endpoint overrides in queue payloads", () => {
+    const payload = { schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" };
+    for (const patch of [{ sourceId: "x".repeat(129) }, { sourceId: "https://private.invalid" },
+      { endpointUrl: "https://private.invalid" }, { organizationId: "x".repeat(129) }, { projectId: "x".repeat(129) }]) {
+      expect(sourceImportJobSchema.safeParse({ ...payload, ...patch }).success).toBe(false);
+    }
   });
 });

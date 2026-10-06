@@ -1,7 +1,7 @@
 import type { ProjectJobPrincipal } from "../../../platform/authorization/principal.ts";
 import { createProjectJobPrincipal } from "../../../platform/authorization/principal-factories.ts";
 import { assertProjectOperationAllowed } from "../../project-registry/index.ts";
-import type { SourceImportTarget } from "./import-pipeline.ts";
+import type { SourceImportTarget, SourceImportResult } from "./import-pipeline.ts";
 import type { SourceJobQueue, SourceJobRunResult } from "./ports/source-job-queue.ts";
 import type { SourceJobRepository } from "./ports/source-job-repository.ts";
 import {
@@ -13,7 +13,7 @@ import {
 export interface SourceJobDependencies {
   repository: SourceJobRepository;
   queue: SourceJobQueue;
-  runImport(principal: ProjectJobPrincipal, target: SourceImportTarget): Promise<unknown>;
+  runImport(principal: ProjectJobPrincipal, target: SourceImportTarget): Promise<SourceImportResult>;
   now?: () => Date;
   createPrincipal?: (job: SourceImportJob) => ProjectJobPrincipal;
 }
@@ -60,11 +60,12 @@ export function createSourceJobs(dependencies: SourceJobDependencies) {
         return { status: "SKIPPED", reason: "NOT_DUE" };
       }
 
-      await dependencies.runImport(principal, {
+      const result = await dependencies.runImport(principal, {
         organizationId: job.organizationId,
         projectId: job.projectId,
         sourceId: job.sourceId,
       });
+      if (result?.state !== "GOOD" || result.sourceId !== job.sourceId) throw new Error("SOURCE_IMPORT_FAILED");
       return { status: "COMPLETED" };
     },
   };
