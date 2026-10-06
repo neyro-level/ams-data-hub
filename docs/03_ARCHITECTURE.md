@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-03 delivered, MP-06 preparation / 2026-10-06
+### Remediation runtime state — MP-03/MP-06 delivered, MP-04 foundation / 2026-10-06
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:

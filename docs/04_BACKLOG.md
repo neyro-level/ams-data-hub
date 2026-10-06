@@ -38,12 +38,15 @@ bounded streaming intake, private raw spool и large-feed synthetic proof.
 MP-03 доставлен PR #21 после exact-head RISKY Gate #217, merge
 `edbd8242c93aaea130570277f7719cf55f1e33cd`: concrete Source runtime,
 atomic GOOD/Last Good и durable snapshot intent; GitHub mirror синхронизирован.
-Текущий независимый участок — MP-06 public HTML/media contracts;
-MP-04 worker/scheduler доступен после MP-03 delivery.
+MP-06 доставлен PR #22 после exact-head RISKY Gate #226, merge
+`185cf150cf093e6858b824629ddc6e0994e63240`: public HTML/media contracts,
+scoped mirrored media и синтетическое producer-OFF proof; GitHub mirror совпадает.
+Текущий участок — MP-04 worker/scheduler runtime.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-04–MP-10 нового remediation plan; MP-00–MP-03 закрыты.
+Активная доработка: MP-04/MP-05/MP-07–MP-10 нового remediation plan;
+MP-00–MP-03 и MP-06 закрыты.
 Далее — production composition, source worker/scheduler,
 snapshot assembly, public contracts, verifier hardening, operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний

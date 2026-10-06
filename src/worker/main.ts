@@ -6,6 +6,7 @@ import {
   runReliabilityRetention,
 } from "../modules/platform-operations/worker.ts";
 import { getLogger } from "../platform/observability/logger.ts";
+import { runSourceWorker } from "../infrastructure/source-worker-runtime.ts";
 
 const command = process.argv[2] ?? null;
 const argument = process.argv[3] ?? null;
@@ -31,14 +32,14 @@ async function main() {
     return;
   }
 
-  if (command === "outbox-worker") {
+  if (command === "outbox-worker" || command === "source-worker") {
     const controller = new AbortController();
     const stop = () => controller.abort();
     process.once("SIGINT", stop);
     process.once("SIGTERM", stop);
     const releaseWorkerGuard = await acquireOutboxWorkerGuard();
     try {
-      const result = await runOutboxWorker({
+      const result = await (command === "source-worker" ? runSourceWorker : runOutboxWorker)({
         workerId: argument ?? process.env.OUTBOX_WORKER_ID ?? `ams-data-hub-worker-${process.pid}`,
         pollIntervalMs: Number(process.env.OUTBOX_POLL_DELAY_MS ?? 1_000),
         shutdownDrainTimeoutMs: Number(
@@ -46,7 +47,7 @@ async function main() {
         ),
         signal: controller.signal,
       });
-      logger.info({ event: "outbox_worker_stopped", ...result }, "outbox worker stopped");
+      logger.info({ event: command === "source-worker" ? "source_worker_stopped" : "outbox_worker_stopped", ...result }, "worker stopped");
       // Handled delivery failures are operational outcomes (retry/dead-letter),
       // not worker-process failures. A resolved lifecycle therefore exits cleanly;
       // infrastructure/runtime failures still reject and reach the fatal catch below.
@@ -66,7 +67,7 @@ async function main() {
 
   if (command !== "maintenance-smoke") {
     throw new Error(
-      "Usage: worker module-smoke | healthcheck | maintenance-smoke | outbox-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
+      "Usage: worker module-smoke | healthcheck | maintenance-smoke | outbox-worker [worker-id] | source-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
     );
   }
   logger.info({ event: "worker_maintenance_smoke_ok" }, "maintenance smoke passed");

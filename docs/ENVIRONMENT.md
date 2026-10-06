@@ -25,6 +25,7 @@ Use `.env.example` as the value-free project template.
 | `OUTBOX_POLL_DELAY_MS` | worker | idle poll delay; defaults to `1000` ms |
 | `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | maximum graceful drain wait for the active handler; defaults to `30000` ms |
 | `LOG_LEVEL` | server/worker | pino level |
+| `PROJECT_STORAGE_BINDINGS` | source-worker | value-free exact organization/project registry of five environment reference names; no implicit global S3 fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
@@ -53,6 +54,25 @@ The proof assigned by master plan v4 to `dh-09.4` passed on 2026-10-05;
 see `research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`. Temporary resources and
 credentials were removed. The Timeweb adapter remains disabled in application
 runtime; production wiring and real project artifacts require separate approval.
+
+The MP04 command foundation adds `pnpm worker:source` / `source-worker`, an
+explicit combined outbox/source runtime sharing the existing permanent-worker
+guard and one pg-boss lifecycle owner. Production Compose still runs the
+existing `outbox-worker`; no deployment or provider activation is performed.
+`PROJECT_STORAGE_BINDINGS` is a strict JSON array (1–256 entries, 128 KiB cap)
+whose entries contain `organizationId`, `projectId`, `bucketRef`, `endpointRef`,
+`regionRef`, `accessKeyIdRef`, `secretAccessKeyRef`. Reference fields contain
+uppercase environment names, never values. One explicitly bound project may
+reuse `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`; other projects require their own approved references.
+Missing, duplicate or malformed bindings fail closed before queue startup.
+Adapters resolve lazily after Source scope checks; another project has no
+fallback, and shared resolved bucket/user identities are rejected. Bindings
+and cached adapters are process-lifetime configuration; change them only with
+the approved environment/restart operation. This code creates no credentials.
+Scheduler/manual bridge, concurrency, controlled shutdown and source health
+proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
+not intake capacity proof for the up-to-256 MiB source spool.
 
 ## PostgreSQL Evidence Transition
 

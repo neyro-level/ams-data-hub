@@ -271,12 +271,7 @@ export async function drainOutboxWithDependencies(
 export async function drainOutbox(options: DrainOutboxOptions): Promise<DrainOutboxResult> {
   const boss = await getPgBoss();
   try {
-    return await drainOutboxWithDependencies(options, {
-      boss,
-      reliability: getWorkerReliabilityService(),
-      heartbeat: (workerId) =>
-        recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId }),
-    });
+    return await drainOutboxWithDependencies(options, createOutboxDrainDependencies(boss));
   } finally {
     await stopPgBoss();
   }
@@ -311,12 +306,7 @@ export async function runOutboxWorker(
 ): Promise<DrainOutboxResult> {
   const boss = await getPgBoss();
   try {
-    return await runOutboxWorkerWithDependencies(options, {
-      boss,
-      reliability: getWorkerReliabilityService(),
-      heartbeat: (workerId) =>
-        recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId }),
-    });
+    return await runOutboxWorkerWithDependencies(options, createOutboxDrainDependencies(boss));
   } finally {
     await stopPgBoss();
   }
@@ -331,3 +321,10 @@ export function checkOutboxWorkerHealth() {
 }
 
 export { runReliabilityRetention };
+
+/** Shared queue lifecycle belongs to the combined runtime, not either consumer. */
+export { getPgBoss, stopPgBoss };
+export function createOutboxDrainDependencies(boss: OutboxQueueClient): OutboxDrainDependencies {
+  return { boss, reliability: getWorkerReliabilityService(),
+    heartbeat: (workerId) => recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId }) };
+}
