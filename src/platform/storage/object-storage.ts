@@ -50,6 +50,16 @@ export interface StreamingObjectStorage {
   putStream(input: ObjectStorageStreamingPutInput): Promise<ObjectStorageObject>;
 }
 
+export interface ObjectStorageBoundedGetInput {
+  key: ObjectStorageKey;
+  maxBytes: number;
+  signal?: AbortSignal;
+}
+/** Explicit bounded read capability; consumers must not fall back to get(). */
+export interface BoundedObjectStorage {
+  getBounded(input: ObjectStorageBoundedGetInput): Promise<ObjectStorageGetResult | null>;
+}
+
 export interface ObjectStoragePresignGetInput {
   key: ObjectStorageKey;
   expiresInSeconds: number;

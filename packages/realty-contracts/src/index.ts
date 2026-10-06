@@ -20,3 +20,5 @@ export type RealtyEntityReference = z.infer<typeof realtyEntityReferenceSchema>;
 
 export * from "./catalog-geo.ts";
 export * from "./inventory.ts";
+export * from "./description-html-safe.ts";
+export * from "./media-public.ts";

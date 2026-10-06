@@ -1,5 +1,7 @@
 import { publicUrlIdSchema, ulidSchema } from "@ams-data-hub/data-contracts";
 import { z } from "zod";
+import { descriptionHtmlSafeSchema } from "./description-html-safe.ts";
+import { mediaPublicV1Schema } from "./media-public.ts";
 
 const identifierSchema = z.string().trim().min(1).max(128);
 const textSchema = z.string().trim().min(1).max(500);
@@ -195,7 +197,7 @@ const inventoryBaseSchema = z.object({
   firstSeenAt: z.iso.datetime({ offset: false }),
   lastSeenAt: z.iso.datetime({ offset: false }),
   title: textSchema.optional(),
-  descriptionHtmlSafe: longTextSchema.optional(),
+  descriptionHtmlSafe: descriptionHtmlSafeSchema.optional(),
   descriptionText: longTextSchema.optional(),
   sourceObjectCode: z.string().trim().min(1).max(200).optional(),
   price: nonNegativeNumberSchema.optional(),
@@ -228,6 +230,7 @@ const publicInventoryBaseSchema = inventoryBaseSchema.omit({
   normalizedHash: true,
 }).extend({
   address: z.object({ addressPublic: addressValueSchema.shape.addressPublic }).strict(),
+  media: z.array(mediaPublicV1Schema).max(500),
 }).strict();
 
 export const publicInventoryDtoSchema = z.intersection(publicInventoryBaseSchema, inventoryFactsByPropertySchema);

@@ -77,7 +77,7 @@ function harness() {
     runInTransaction: async (_actor, execute) => execute({} as DatabaseTransaction),
     createRepository: () => repository,
   });
-  return { mirror, mirrored, warnings, storage };
+  return { mirror, mirrored, warnings, storage, fetchMedia };
 }
 
 const base = {
@@ -89,6 +89,16 @@ const base = {
 };
 
 describe("safe media mirror", () => {
+  it.each([
+    new Error("MEDIA_PRIVATE_SYNTHETIC_VALUE"),
+    Object.assign(new Error("private adapter message"), { code: "https://private.example.invalid/?token=synthetic" }),
+  ])("records only fixed warning codes, never arbitrary adapter error values %#", async (error) => {
+    const h = harness(); h.fetchMedia.mockRejectedValue(error);
+    const result = await h.mirror(principal, { ...base, items: [{ sourceUrl: "https://media.example.invalid/failed.png", entityType: "INVENTORY",
+      entityUid: "listing-1", kind: "LISTING_IMAGE", position: 0, rightsBasis: "OWNED" }] });
+    expect(result).toMatchObject({ importStatus: "UNCHANGED", mediaStatus: "WARNING" });
+    expect(h.warnings[0]!.warningCode).toBe("MEDIA_MIRROR_FAILED"); expect(result.items[0]!.warningCode).toBe("MEDIA_MIRROR_FAILED");
+  });
   it("deduplicates bytes across query variants and preserves protected source order", async () => {
     const { mirror, mirrored, storage } = harness();
     const result = await mirror(principal, {

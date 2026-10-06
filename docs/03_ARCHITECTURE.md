@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-03 in progress / 2026-10-06
+### Remediation runtime state — MP-03 delivered, MP-06 preparation / 2026-10-06
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -58,7 +58,7 @@ remediation program preserves these boundaries while connecting them:
   synthetic XML through real filesystem/S3-adapter/parser paths with bounded
   buffers and cancellation regression; SDK/network remain mocked, not provider
   or production Source execution proof.
-- MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
+- MP-03/MP-04: concrete import orchestration and source queue/scheduler ports exist,
   but the permanent worker entrypoint currently runs outbox only.
   SourceExecutionService now provides scoped application orchestration and
   resolves registered descriptors, SecretRef, policy and Last Good before intake.
@@ -68,8 +68,10 @@ remediation program preserves these boundaries while connecting them:
   causes. Jobs and DTOs carry scoped IDs, not resolved credentials.
   The service resolves executable parser/normalizer bindings by exact registered
   adapter/profile versions. Synthetic registry regressions cover YRL/Vladis,
-  Domclick, Avito v3 and CIAN v2 with real bounded parsers; this does not yet prove
-  the durable runtime composition or activate those families in production.
+  Domclick, Avito v3 and CIAN v2. Four-family PostgreSQL composition regressions
+  prove persisted configuration through GOOD, changed hash/stable UID and broken
+  input preservation with actual parser/spool/storage adapters. HTTP/SDK lower
+  transport is mocked; this does not activate those families in production.
   Concrete server composition now binds scoped Prisma loading, reference-owned
   intake, raw spool/S3 capability, executable parsers, per-record normalization,
   bounded durable staging, Safety Engine and GOOD apply. Records are appended in
@@ -97,8 +99,22 @@ remediation program preserves these boundaries while connecting them:
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.
-- MP-06/MP-07: sanitized HTML/public media corrections and bounded consumer
-  decompression are pending; the verifier currently calls unbounded gunzip.
+- MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
+  contract; public DTO/snapshot accept only its validated tag grammar, never raw
+  markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
+  storage coordinates. The inventory media query resolves current scoped GOOD
+  image membership and same-scope mirrored assets, verifies storage HEAD outside
+  transactions and rejects changes during IO. The internal authorized media
+  reader repeats membership checks around bounded cancellable storage GET,
+  verifies length/digest and image format, and never calls producer HTTP or
+  legacy unbounded GET. Synthetic producer-OFF proof exercises GOOD/RLS,
+  public projection, gzip snapshot composition and mirrored image bytes with
+  only external transport replaced. This does not enable a browser route or
+  a real storage provider. Complete snapshot orchestration,
+  historical missing-grace fact selection and consent-gated agent projection
+  remain subsequent gates.
+- MP-07: bounded consumer decompression remains pending; the verifier currently
+  calls unbounded gunzip.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

@@ -5,7 +5,7 @@ this file owns executable local, deploy and recovery procedures.
 
 ## Local development
 
-### Source runtime composition — MP-03 in progress
+### Source runtime composition — MP-03 implemented, worker activation pending
 
 The server facade binds concrete PostgreSQL revision/staging persistence, real
 raw spool and streaming S3 adapter capability with the Safe Outbound gateway.
@@ -71,8 +71,9 @@ has no factor enrollment requirement; preserve password/session security,
 rate limiting and explicit server permissions.
 
 The current permanent worker is an outbox worker, not proof of source ingestion
-or a source scheduler. SourceExecutionService and worker composition are MP-03/
-MP-04, real snapshot assembly is MP-05, and operations build/publish/rollback/
+or a source scheduler. SourceExecutionService is implemented by MP-03;
+permanent source worker/scheduler composition remains MP-04, real snapshot
+assembly is MP-05, and operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any

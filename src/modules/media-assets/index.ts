@@ -1,6 +1,12 @@
 export {
   MAX_MEDIA_BYTES,
   MEDIA_CONTENT_TYPES,
+  inventoryMediaProjectionInputSchema,
+  type InventoryMediaProjectionInput,
+  type InventoryMediaProjectionResult,
+  inventoryPublicMediaReadInputSchema,
+  type InventoryPublicMediaReadInput,
+  type InventoryPublicMediaObject,
   mediaIntakeInputSchema,
   mediaMirrorBatchInputSchema,
   mediaRightsBasisSchema,

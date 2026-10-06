@@ -1,9 +1,13 @@
-import { serializePublicDto } from "@ams-data-hub/data-contracts";
+import { serializePublicDto, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import {
   inventoryEntitySchema,
   type InventoryEntity,
+  mediaPublicV1Schema,
+  publicInventoryDtoSchema,
 } from "@ams-data-hub/realty-contracts";
 import { describe, expect, it } from "vitest";
+import { composeSnapshot, SNAPSHOT_DATASET_KINDS } from "../src/modules/snapshot-delivery/index.ts";
+import { gunzipSync } from "node:zlib";
 import {
   normalizeArea,
   normalizeCadastralNumber,
@@ -63,6 +67,37 @@ function inventoryEntity(): InventoryEntity {
 }
 
 describe("canonical inventory", () => {
+  it("never projects producer URLs and accepts only separately supplied strict public media", () => {
+    const entity = inventoryEntity();
+    entity.media = [{ sourceUrl: "https://producer.example.test/private-image.png?credential=synthetic", position: 0 }];
+    expect(JSON.parse(serializePublicDto(toPublicInventoryDto(entity))).media).toEqual([]);
+    const mirror = mediaPublicV1Schema.parse({ ref: "a".repeat(64), kind: "IMAGE", position: 0, alt: "Public image" });
+    const projected = JSON.parse(serializePublicDto(toPublicInventoryDto(entity, [mirror])));
+    expect(projected.media).toEqual([mirror]);
+    expect(JSON.stringify(projected)).not.toContain("producer.example.test");
+    expect(publicInventoryDtoSchema.safeParse({ ...projected, media: entity.media }).success).toBe(false);
+    expect(entity.media[0]!.sourceUrl).toContain("producer.example.test");
+  });
+
+  it("carries sanitized typed HTML through public DTO and deterministic snapshot composition", () => {
+    const entity = inventoryEntity();
+    Object.assign(entity, normalizeDescription('<p onclick="bad()">text <strong>safe</strong><script>bad()</script></p>'));
+    const dto = JSON.parse(serializePublicDto(toPublicInventoryDto(entity))) as CanonicalJsonValue;
+    const composition = composeSnapshot({
+      schemaMinor: 0, projectId: "project-internal", publishSequence: 1,
+      generatedAt: "2026-10-06T00:00:00.000Z", publishedAt: "2026-10-06T00:00:01.000Z",
+      catalogRevision: "synthetic-catalog", sourceRevisions: ["synthetic-good"], keyId: "synthetic-key",
+      requiresProjectContact: false,
+      datasets: SNAPSHOT_DATASET_KINDS.map((kind) => ({ kind,
+        records: kind === "inventory" ? [{ key: entity.uid, value: dto }] : [] })),
+    });
+    const inventory = composition.files.find((file) => file.manifest.kind === "inventory")!;
+    expect(JSON.parse(gunzipSync(inventory.body).toString("utf8"))[0]).toMatchObject({
+      descriptionHtmlSafe: "<p>text <strong>safe</strong></p>", descriptionText: "text safe",
+    });
+    expect(JSON.stringify(dto)).not.toMatch(/onclick|<script>|PRIVATE-CODE/u);
+  });
+
   it("keeps every sparse state distinct", () => {
     const number = (value: unknown) => {
       const parsed = Number(value);

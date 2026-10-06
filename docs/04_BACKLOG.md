@@ -35,11 +35,15 @@ MP-01 доставлен PR #19 после exact-head Gate #198: текущий 
 удалён forward migration, auth regressions проверены. MP-02 доставлен PR #20
 после exact-head Gate #207, merge `af0aa6092ae1ecc2a676840ae3ff2be615db3fc9`:
 bounded streaming intake, private raw spool и large-feed synthetic proof.
-Текущий участок — MP-03 application orchestration и concrete Source runtime.
+MP-03 доставлен PR #21 после exact-head RISKY Gate #217, merge
+`edbd8242c93aaea130570277f7719cf55f1e33cd`: concrete Source runtime,
+atomic GOOD/Last Good и durable snapshot intent; GitHub mirror синхронизирован.
+Текущий независимый участок — MP-06 public HTML/media contracts;
+MP-04 worker/scheduler доступен после MP-03 delivery.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-03–MP-10 нового remediation plan; MP-00–MP-02 закрыты.
+Активная доработка: MP-04–MP-10 нового remediation plan; MP-00–MP-03 закрыты.
 Далее — production composition, source worker/scheduler,
 snapshot assembly, public contracts, verifier hardening, operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний

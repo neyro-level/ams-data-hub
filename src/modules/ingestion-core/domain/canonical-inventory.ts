@@ -1,8 +1,12 @@
 import { createPublicDtoMapper, type PublicDto } from "@ams-data-hub/data-contracts";
 import {
   publicInventoryDtoSchema,
+  DESCRIPTION_HTML_SAFE_TAGS,
+  descriptionHtmlSafeSchema,
+  type DescriptionHtmlSafe,
   type InventoryEntity,
   type PublicInventoryDto,
+  type MediaPublicV1,
   type SparseValue,
 } from "@ams-data-hub/realty-contracts";
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
@@ -83,15 +87,15 @@ export function normalizeTimestamp(rawTimestamp: string): TimestampNormalization
 }
 
 export function normalizeDescription(rawDescription: string): {
-  descriptionHtmlSafe: string;
+  descriptionHtmlSafe: DescriptionHtmlSafe;
   descriptionText: string;
 } {
-  const descriptionHtmlSafe = sanitizeHtml(rawDescription, {
-    allowedTags: ["p", "br", "ul", "ol", "li", "strong", "em"],
+  const descriptionHtmlSafe = descriptionHtmlSafeSchema.parse(sanitizeHtml(rawDescription, {
+    allowedTags: [...DESCRIPTION_HTML_SAFE_TAGS],
     allowedAttributes: {},
     disallowedTagsMode: "discard",
     nonTextTags: ["script", "style", "textarea", "option", "iframe", "object"],
-  }).trim();
+  }).trim());
   const descriptionText = sanitizeHtml(descriptionHtmlSafe, {
     allowedTags: [],
     allowedAttributes: {},
@@ -128,9 +132,8 @@ export function normalizeCadastralNumber(
   };
 }
 
-export const toPublicInventoryDto: (
-  entity: InventoryEntity,
-) => PublicDto<PublicInventoryDto & object> = createPublicDtoMapper(publicInventoryDtoSchema, (entity) => ({
+const mapPublicInventory = createPublicDtoMapper(publicInventoryDtoSchema,
+  ({ entity, media }: { entity: InventoryEntity; media: readonly MediaPublicV1[] }) => ({
   uid: entity.uid,
   publicUrlId: entity.publicUrlId,
   propertyType: entity.propertyType,
@@ -152,10 +155,19 @@ export const toPublicInventoryDto: (
   geo: entity.geo,
   locationPrecision: entity.locationPrecision,
   ...(entity.agentUid === undefined ? {} : { agentUid: entity.agentUid }),
-  media: entity.media,
+  media: [...media],
   ...(entity.isImageOrderChangeAllowed === undefined ? {} : {
     isImageOrderChangeAllowed: entity.isImageOrderChangeAllowed,
   }),
   createdAt: entity.createdAt,
   updatedAt: entity.updatedAt,
 }));
+
+/** Raw producer media belongs to the internal entity only. Supply separately
+ * projected mirrored media; absent mirrors produce an empty public collection. */
+export function toPublicInventoryDto(
+  entity: InventoryEntity,
+  media: readonly MediaPublicV1[] = [],
+): PublicDto<PublicInventoryDto & object> {
+  return mapPublicInventory({ entity, media });
+}

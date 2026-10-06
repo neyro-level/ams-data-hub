@@ -13,3 +13,70 @@ The consumer atomically applies the returned datasets only when `accepted` is
 as the previous last-good state. Webhook data is never trusted as snapshot data;
 the consumer pulls the signed current manifest and immutable files from its
 project-scoped storage access.
+
+`descriptionHtmlSafe` is the only HTML-bearing public inventory field. Ingestion
+sanitizes raw descriptions with `p`, `br`, `ul`, `ol`, `li`, `strong`, `em` and no
+attributes. The shared Realty contract brands validated output, with a portable
+bounded tag grammar (100,000 characters, depth 64). DTO and snapshot validation
+accept that exact field without rewriting or sanitizing it again. Raw description
+fields, HTML in other fields, scripts, links, attributes, comments and malformed
+markup fail closed. Consumer inventory schemas use the same shared contract;
+do not bypass it with an unrestricted string or render raw feed descriptions.
+
+`MediaPublicV1` contains only a lowercase SHA-256 `ref`, `kind: IMAGE`,
+deterministic `position` and optional validated `width`, `height`, `alt`.
+`PublicInventoryDto.media` uses this strict contract, not the internal
+`media[].sourceUrl` provenance schema. The public mapper defaults to no media
+until separately projected mirrors are supplied; it never uses producer URLs
+as a fallback. Neither original URLs, private bucket keys, presigned URLs nor
+filenames belong in this contract. A digest is not a capability: delivery must
+resolve it through authorized organization/project-owned MediaSource/MediaAsset
+state. The contract does not create a permanent public storage URL or bypass
+ADR-015. The server-owned `media-assets.projectInventoryMedia` query resolves
+inventory image references from the scoped immutable GOOD record and its
+`draft.imageUrls`, not from caller-provided URLs. It requires the pinned current
+LastGood revision, matching MediaSource revision/entity/image membership,
+and an `expectedRecordHash` pin matching the canonical inventory normalized hash,
+same-scope MediaAsset, valid rights and verified immutable storage HEAD. HEAD
+is outside database transactions; a second database read rejects a revision
+or relation change during IO. Public output contains only digest references
+and fixed value-free warning codes. WARNING may retain a verified earlier
+mirror for a current image member, never an original URL fallback.
+This query is limited to INVENTORY/LISTING_IMAGE. Agent photos require their
+own fresh consent-gated projection. Forward migration
+`20261006163000_media_projection_good_read` enables only scoped GOOD reads for
+the server-owned `media-projection` database purpose; import writes and FORCE
+RLS are unchanged. Historical fact revisions for missing-grace
+inventory and full snapshot build/delivery composition remain MP-05 work.
+
+`ingestion-core.createInventoryPublicProjectionServer(storage)` composes the
+scoped media query with the existing public inventory mapper. It accepts only
+server-owned persisted canonical facts and a server-selected revision. The
+hash pin binds their version; it does not authenticate arbitrary request JSON.
+Scope and UID come from the validated entity, not separate caller overrides.
+Public media order is position then ref; identical `(position, ref)` relations
+are deduplicated, but one asset at different positions is retained. Conflicting
+assets or metadata at one position are omitted with `MEDIA_RELATION_AMBIGUOUS`.
+Positions are never renumbered after an omission. No path copies source URLs
+from the internal entity into the public DTO.
+Image positions come from the immutable GOOD-record, not mutable MediaSource
+position metadata: a canonical URL may repeat at several positions, served by
+one verified mirrored object. A first-attempt failed image has a persisted
+MediaSource WARNING without an asset; it is omitted, leaving the listing valid.
+Missing mirrors and unavailable storage objects also produce fixed value-free
+warnings, never producer URL fallbacks. Arbitrary adapter messages/codes are not
+stored as warnings; only the finite outbound codes and image-decode code are
+retained, with `MEDIA_MIRROR_FAILED` as the safe default.
+
+`media-assets.readInventoryPublicMedia` is an internal server facade, not an
+anonymous HTTP route. It reuses the authorized current GOOD membership query
+before and after object I/O, with exact inventory hash, digest and position.
+Its storage capability is bounded streaming GET: checked declared size, one
+bounded output buffer, actual length and SHA-256, cancellable stream and timeout.
+The image decoder verifies MIME and format; only `{ref, contentType, body}` is
+returned. Legacy whole-body GET and producer HTTP are never fallbacks.
+Synthetic PostgreSQL proof composes the projected inventory and media dataset,
+then reads actual mirrored bytes through this facade after producer media is
+disabled. SDK transport is synthetic; storage adapter, GOOD/RLS queries,
+projection, gzip composition and reader are real. This is not provider live
+proof, browser delivery, full MP-05 orchestration or production activation.
