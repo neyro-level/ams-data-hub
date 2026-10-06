@@ -96,6 +96,18 @@ write intervals. PID existence is not accepted as health evidence.
 
 ## Recovery and restore
 
+### Current-release account/password recovery
+
+MP-01 preserves the existing protected operator-issued, one-time hashed
+Platform Admin recovery token. Completing it rotates the credential, consumes
+the token atomically, revokes sibling tokens and old sessions, and never enables
+a disabled account. Expired/revoked/consumed tokens do not change credentials.
+There is no factor reset or re-enrollment step. Issuance remains an audited,
+authorized operator action; no permanent public recovery endpoint is added.
+Verify locally with `node scripts/run-integration-tests.mjs
+tests/integration/account-setup.integration.test.ts` against the guarded
+loopback `*_test` database. This is neither production recovery nor deployment.
+
 ### Timeweb S3 project isolation proof
 
 Before the first real project adapter enablement, provision two temporary

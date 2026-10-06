@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { verifyPassword } from "better-auth/crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   completeAccountSetup,
@@ -69,9 +70,50 @@ describe("platform recovery token lifecycle", () => {
 
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toEqual({ userId });
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
-    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { sessions: true, recoveryTokens: true } });
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { sessions: true, recoveryTokens: true, accounts: true } });
     expect(result.sessions).toHaveLength(0);
     expect(result.recoveryTokens[0]?.consumedAt).not.toBeNull();
+    expect(await verifyPassword({ hash: result.accounts[0]!.password!, password: "A recovered secure password" })).toBe(true);
+  });
+
+  it.each(["expired", "revoked"])("rejects a %s recovery token without changing password or sessions", async (state) => {
+    const prisma = getPrismaClient();
+    const recoveryToken = `integration-${state}-recovery-token-long-enough`;
+    await prisma.user.create({ data: {
+      id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN",
+      accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "unchanged-synthetic-hash" } },
+      sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
+      recoveryTokens: { create: { tokenHash: createHash("sha256").update(recoveryToken).digest("hex"), expiresAt: state === "expired" ? new Date(0) : new Date(Date.now() + 60_000), revokedAt: state === "revoked" ? new Date() : null } },
+    } });
+    await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { accounts: true, sessions: true, recoveryTokens: true } });
+    expect(result.accounts[0]?.password).toBe("unchanged-synthetic-hash");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.recoveryTokens[0]?.consumedAt).toBeNull();
+  });
+
+  it("allows one concurrent consume, revokes siblings and does not re-enable a disabled account", async () => {
+    const prisma = getPrismaClient();
+    const recoveryToken = "integration-concurrent-recovery-token-long-enough";
+    const tokenHash = createHash("sha256").update(recoveryToken).digest("hex");
+    await prisma.user.create({ data: {
+      id: userId, name: "Disabled recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", disabledAt: new Date(),
+      accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "legacy" } },
+      sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
+      recoveryTokens: { create: [{ tokenHash, expiresAt: new Date(Date.now() + 60_000) }, { tokenHash: "synthetic-sibling-hash", expiresAt: new Date(Date.now() + 60_000) }] },
+    } });
+    const results = await Promise.all([
+      completePlatformRecovery({ token: recoveryToken, password: "First secure recovered password" }),
+      completePlatformRecovery({ token: recoveryToken, password: "Second secure recovered password" }),
+    ]);
+    expect(results.filter(Boolean)).toEqual([{ userId }]);
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { disabledAt: true, accounts: true, sessions: true, recoveryTokens: true } });
+    expect(result.disabledAt).not.toBeNull();
+    expect(result.sessions).toHaveLength(0);
+    expect(result.recoveryTokens.find((record) => record.tokenHash !== tokenHash)?.revokedAt).not.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
+    const password = results[0] ? "First secure recovered password" : "Second secure recovered password";
+    expect(await verifyPassword({ hash: result.accounts[0]!.password!, password })).toBe(true);
   });
 });
 
