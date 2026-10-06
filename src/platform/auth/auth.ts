@@ -2,7 +2,7 @@ import "server-only";
 
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { betterAuth } from "better-auth";
-import { twoFactor, username } from "better-auth/plugins";
+import { username } from "better-auth/plugins";
 import { productIdentity } from "../config/product-identity.ts";
 import {
   hasDatabaseConfiguration,
@@ -12,7 +12,6 @@ import { getPrismaClient } from "../database/prisma/client.ts";
 import {
   createAuthIpAddressConfig,
   createAuthRateLimitConfig,
-  isTotpVerificationPath,
 } from "./security-config.ts";
 
 export function hasAuthConfiguration() {
@@ -35,15 +34,6 @@ export function getAuth() {
         secret: authEnvironment.secret,
         baseURL: authEnvironment.baseUrl,
         appName: productIdentity.appName,
-        session: {
-          additionalFields: {
-            twoFactorVerifiedAt: {
-              type: "date",
-              required: false,
-              input: false,
-            },
-          },
-        },
         trustedOrigins: [
           authEnvironment.baseUrl,
           ...(process.env.NODE_ENV === "production"
@@ -67,25 +57,7 @@ export function getAuth() {
           }),
           useSecureCookies: isProductionRuntime,
         },
-        databaseHooks: {
-          session: {
-            create: {
-              before: async (session, context) => {
-                if (!isTotpVerificationPath(context?.path)) return;
-                return { data: { ...session, twoFactorVerifiedAt: new Date() } };
-              },
-            },
-          },
-        },
         plugins: [
-          twoFactor({
-            issuer: productIdentity.appName,
-            accountLockout: {
-              enabled: true,
-              maxFailedAttempts: 10,
-              durationSeconds: 15 * 60,
-            },
-          }),
           username({
             displayUsername: false,
             immutableUsername: true,

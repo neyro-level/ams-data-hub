@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  betterAuth: vi.fn(() => ({ api: {} })),
+  betterAuth: vi.fn((_options: unknown) => ({ api: {} })),
   getPrismaClient: vi.fn(() => ({})),
+  username: vi.fn(() => ({ id: "username" })),
 }));
 
 vi.mock("better-auth", () => ({ betterAuth: authMocks.betterAuth }));
 vi.mock("better-auth/adapters/prisma", () => ({ prismaAdapter: vi.fn(() => ({})) }));
 vi.mock("better-auth/plugins", () => ({
-  twoFactor: vi.fn(() => ({})),
-  username: vi.fn(() => ({})),
+  username: authMocks.username,
 }));
 vi.mock("../src/platform/config/server-environment.ts", () => ({
   hasDatabaseConfiguration: vi.fn(() => true),
@@ -41,5 +41,26 @@ describe("B9 lazy auth initialization", () => {
     expect(authMocks.getPrismaClient).toHaveBeenCalledTimes(1);
     expect(authModule.getAuth()).toBeTruthy();
     expect(authMocks.betterAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses username/password without a factor plugin while retaining security controls", async () => {
+    const authModule = await import("../src/platform/auth/auth.ts");
+    authModule.getAuth();
+    const options = authMocks.betterAuth.mock.calls[0]?.[0] as {
+      plugins: { id: string }[];
+      session?: unknown;
+      databaseHooks?: unknown;
+      emailAndPassword: Record<string, unknown>;
+      rateLimit: Record<string, unknown>;
+      trustedOrigins: string[];
+      advanced: Record<string, unknown>;
+    };
+    expect(options.plugins).toEqual([{ id: "username" }]);
+    expect(options.session).toBeUndefined();
+    expect(options.databaseHooks).toBeUndefined();
+    expect(options.emailAndPassword).toMatchObject({ enabled: true, disableSignUp: true, minPasswordLength: 12 });
+    expect(options.rateLimit).toMatchObject({ enabled: true, storage: "database" });
+    expect(options.trustedOrigins).toContain("http://127.0.0.1:3000");
+    expect(options.advanced).toHaveProperty("ipAddress");
   });
 });
