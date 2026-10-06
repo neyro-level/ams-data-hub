@@ -52,8 +52,13 @@ export class PrismaSourceExecutionRepository {
       lastGood: revision ? { revisionId: revision.id, recordCount: revision.recordCount } : null };
   }
 
-  async begin(context: ResolvedSourceExecution) {
+  async begin(context: ResolvedSourceExecution, manualRequestId?: string) {
     await this.lockSource(context);
+    if (manualRequestId) {
+      const claimed = await this.transaction.sourceManualRunRequest.updateMany({ where: { ...context.target, id: manualRequestId,
+        status: { in: ["REQUESTED", "CLAIMED"] } }, data: { status: "CLAIMED" } });
+      if (claimed.count !== 1) throw new Error("SOURCE_MANUAL_REQUEST_INVALID");
+    }
     const policy = context.source.safetyPolicyId ? await this.transaction.sourceSafetyPolicy.findFirstOrThrow({
       where: { organizationId: context.target.organizationId, projectId: context.target.projectId, id: context.source.safetyPolicyId },
     }) : null;
@@ -200,7 +205,7 @@ export class PrismaSourceExecutionRepository {
     return deactivated;
   }
 
-  async apply(context: ResolvedSourceExecution, revisionId: string, plan: SourceRuntimeMutationPlan) {
+  async apply(context: ResolvedSourceExecution, revisionId: string, plan: SourceRuntimeMutationPlan, manualRequestId?: string) {
     await this.lockSource(context);
     const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: "STAGED" } });
     this.assertSafeRevision(context, revision);
@@ -257,6 +262,11 @@ export class PrismaSourceExecutionRepository {
       lastGoodRevisionId: revisionId, lastSuccessAt: revision.startedAt,
     } });
     await enqueueSourceGoodSnapshot(this.transaction, context.principal, context.target, { revisionId, sequence });
+    if (manualRequestId) {
+      const completed = await this.transaction.sourceManualRunRequest.updateMany({ where: { ...context.target, id: manualRequestId,
+        status: "CLAIMED" }, data: { status: "COMPLETED" } });
+      if (completed.count !== 1) throw new Error("SOURCE_MANUAL_REQUEST_INVALID");
+    }
     return { revisionId, sequence };
   }
 

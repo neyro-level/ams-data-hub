@@ -31,7 +31,7 @@ const knownFailures = new Set([
   "MARKETPLACE_XML_FIELD_TOO_LONG", "MARKETPLACE_XML_RECORD_TOO_COMPLEX", "MARKETPLACE_XML_ROOT_INVALID", "MARKETPLACE_XML_UTF8_INVALID",
 ]);
 
-async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage): Promise<SourceImportResult> {
+async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage, manualRequestId?: string): Promise<SourceImportResult> {
   const transaction = <T>(run: (repository: PrismaSourceExecutionRepository) => Promise<T>) =>
     runInPrincipalDatabaseTransaction(context.principal, (tx) => run(new PrismaSourceExecutionRepository(tx)));
   let stage: ImportPipelineStage = "SAFE_INTAKE";
@@ -39,7 +39,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
   let raw: StreamingRawArtifact | undefined;
   try {
     const safetyPolicy = sourceSafetyPolicySchema.parse(context.safetyPolicy);
-    revisionId = (await transaction((repository) => repository.begin(context))).id;
+    revisionId = (await transaction((repository) => repository.begin(context, manualRequestId))).id;
     const intake = createStreamingSourceIntake({ endpointReference: context.endpointReference, storage, adapter: context.adapter, safetyPolicy });
     raw = await intake.safeIntake.acquire();
     stage = "RAW_ARTIFACT";
@@ -117,7 +117,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     stage = "MUTATION_PLAN";
     const plan = await transaction((repository) => repository.plan(context, revisionId!));
     stage = "DATABASE_APPLY";
-    const good = await transaction((repository) => repository.apply(context, revisionId!, plan));
+    const good = await transaction((repository) => repository.apply(context, revisionId!, plan, manualRequestId));
     return { state: "GOOD", sourceId: context.target.sourceId, ...good, rawArtifactHash: receipt.rawArtifactHash,
       normalizedContentHash: normalizedHash, snapshotTriggered: true };
   } catch (error) {
@@ -137,10 +137,11 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
 
 /** Application composition; callers configure only Source IDs. Storage is the
  * server-owned infrastructure dependency, never a per-Source payload adapter. */
-export function createSourceExecutionServer(storage: StreamingObjectStorage) {
+export function createSourceExecutionServer(storage: StreamingObjectStorage, options: { manualRequestId?: string } = {}) {
+  if (options.manualRequestId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/u.test(options.manualRequestId)) throw new Error("SOURCE_MANUAL_REQUEST_INVALID");
   return new SourceExecutionService({
     load: (principal, sourceId) => runInPrincipalDatabaseTransaction(principal,
       (tx) => new PrismaSourceExecutionRepository(tx).load(principal, sourceId)),
-    run: (context) => execute(context, storage),
+    run: (context) => execute(context, storage, options.manualRequestId),
   });
 }

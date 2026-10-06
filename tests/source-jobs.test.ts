@@ -29,6 +29,27 @@ function context(overrides: Partial<SourceJobExecutionContext> = {}): SourceJobE
 }
 
 describe("source jobs", () => {
+  it("settles only terminal native manual failures", async () => {
+    const fail = vi.fn();
+    const jobs = createSourceJobs({ repository: { listSchedulingSources: vi.fn(), loadExecutionContext: vi.fn() },
+      queue: { reconcileSchedules: vi.fn() }, runImport: vi.fn(), manualRequests: { load: vi.fn(), fail } });
+    const job = { schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL", manualRequestId: "request-1" } as const;
+    await jobs.onFailure(job, false); expect(fail).not.toHaveBeenCalled();
+    await jobs.onFailure(job, true);
+    expect(fail).toHaveBeenCalledWith(expect.objectContaining({ kind: "project-job", organizationId: "org-1", projectId: "project-1" }), "source-1", "request-1");
+  });
+  it.each(["COMPLETED", "FAILED"] as const)("does not repeat intake for a settled %s manual request", async (status) => {
+    const runImport = vi.fn(); const loadExecutionContext = vi.fn();
+    const jobs = createSourceJobs({ repository: { listSchedulingSources: vi.fn(), loadExecutionContext },
+      queue: { reconcileSchedules: vi.fn() }, runImport, manualRequests: { load: vi.fn(async () => ({ status })), fail: vi.fn() } });
+    await expect(jobs.run({ schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1",
+      trigger: "MANUAL", manualRequestId: "request-1" })).resolves.toEqual({ status: "SKIPPED", reason: "MANUAL_REQUEST_SETTLED" });
+    expect(runImport).not.toHaveBeenCalled(); expect(loadExecutionContext).not.toHaveBeenCalled();
+  });
+  it("rejects request overrides on scheduled jobs", () => {
+    expect(sourceImportJobSchema.safeParse({ schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1",
+      trigger: "SCHEDULED", manualRequestId: "request-1" }).success).toBe(false);
+  });
   it("bounds the global scheduling query without reading tenant Project relations", async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const repository = new PrismaSourceJobRepository({ source: { findMany } } as unknown as DatabaseTransaction);
@@ -145,6 +166,7 @@ describe("source jobs", () => {
     expect(runImport).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "project-job", projectId: "project-1" }),
       { organizationId: "org-1", projectId: "project-1", sourceId: "source-1" },
+      payload,
     );
   });
 

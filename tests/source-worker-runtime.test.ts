@@ -37,11 +37,13 @@ describe("source worker command composition", () => {
         return [];
       }) };
     const repository = { listSchedulingSources: vi.fn(async () => []), loadExecutionContext: vi.fn() };
+    const reconcileTerminalRequests = vi.fn();
     const reliability = { claim: vi.fn(async () => null), takeOver: vi.fn(), complete: vi.fn(), fail: vi.fn() };
     try {
       await runSourceWorkerWithDependencies({ workerId: "synthetic", signal: controller.signal, pollIntervalMs: 10 },
-        { boss, repository, resolveStorage: vi.fn(), outbox: { boss: { ...boss, send: vi.fn() }, reliability, heartbeat: vi.fn() } });
+        { boss, repository, reconcileTerminalRequests, resolveStorage: vi.fn(), outbox: { boss: { ...boss, send: vi.fn() }, reliability, heartbeat: vi.fn() } });
       expect(repository.listSchedulingSources).toHaveBeenCalledTimes(2);
+      expect(reconcileTerminalRequests).toHaveBeenCalledTimes(2);
     } finally { time.mockRestore(); }
   });
 });

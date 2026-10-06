@@ -5,7 +5,7 @@ this file owns executable local, deploy and recovery procedures.
 
 ## Local development
 
-### Source runtime composition — MP-03 implemented, worker activation pending
+### Source runtime composition — command implemented, production activation pending
 
 The server facade binds concrete PostgreSQL revision/staging persistence, real
 raw spool and streaming S3 adapter capability with the Safe Outbound gateway.
@@ -31,8 +31,9 @@ YRL/Vladis, Domclick, Avito v3 and CIAN v2 configuration through the same facade
 GOOD, changed semantic hash, stable UID and broken-input Last Good preservation.
 These fixtures use explicit persisted synthetic safety policies and mocked
 HTTP/SDK transport; they do not recalibrate live profiles or prove provider
-compatibility. Permanent source worker remains the subsequent approved task
-gate. No production
+compatibility. The combined `source-worker` command now owns native pg-boss
+source consumption and startup/between-job schedule reconciliation. Production
+activation and the remaining concurrency/shutdown/health gates are pending. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
@@ -44,8 +45,23 @@ adds Project SELECT for runtime status checks while keeping existing project RLS
 and withholding Project mutation grants from the worker.
 Before enabling snapshot execution, use one complete handler registry for the
 shared `outbox.dispatch` queue or split executor queues. Topic-filtered database
-claim alone does not filter already-dispatched pg-boss jobs; specialized workers
-with incompatible handlers must not share that fetch queue.
+claim alone does not filter already-dispatched pg-boss jobs. The default worker
+checks the persisted topic after lease takeover and defers reserved Source/build
+topics it cannot execute; all other unknown topics remain explicit errors.
+The combined command registers maintenance and manual Source dispatch together.
+
+Admin `Run Source` commits its request and IDs-only outbox intent atomically.
+Dispatch runs after commit and uses a deterministic request job ID plus Source
+singleton. A busy Source defers instead of losing the request. Request COMPLETED
+is committed with GOOD/Last Good/snapshot intent, not after import; replay of a
+settled request performs no intake. Dispatch infrastructure errors are retryable.
+Native terminal retries set request FAILED. If an intent reaches DEAD_LETTER,
+startup/maintenance reconciliation settles its scoped request in bounded
+100-event pages and can repeat safely after a crash. COMPLETED is preserved.
+Busy/reserved events never enter this terminal reconciliation. JobRun DEFERRED
+and the durable outbox deferral counter preserve executor retry budget even
+after operational JobRun retention. This is a repository/runtime contract,
+not provider or production proof.
 
 ### Development commands
 
@@ -70,9 +86,10 @@ removes legacy TOTP runtime/schema/recovery branches. The target current policy
 has no factor enrollment requirement; preserve password/session security,
 rate limiting and explicit server permissions.
 
-The current permanent worker is an outbox worker, not proof of source ingestion
-or a source scheduler. SourceExecutionService is implemented by MP-03;
-permanent source worker/scheduler composition remains MP-04, real snapshot
+The production default permanent worker is still an outbox worker, not proof of
+production source ingestion. SourceExecutionService is implemented by MP-03;
+explicit local combined worker/scheduler/manual composition is implemented
+within MP-04, whose concurrency/shutdown/health gates remain open. Real snapshot
 assembly is MP-05, and operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate

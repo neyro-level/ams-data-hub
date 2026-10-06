@@ -20,6 +20,26 @@ function event(workerId: string): ClaimedReliabilityEvent {
 }
 
 describe("outbox worker lifecycle", () => {
+  it("defers an unsupported persisted topic even when the queued envelope claims maintenance", async () => {
+    const queued = event("publisher"); const persisted = { ...queued, workerId: "worker-default", topic: "snapshot.build.request" };
+    const complete = vi.fn(); const fail = vi.fn(); const defer = vi.fn();
+    await expect(drainOutboxWithDependencies({ workerId: "worker-default", maxEvents: 1 }, {
+      boss: { fetch: vi.fn(async () => [{ id: "queued-snapshot", data: { schemaVersion: 1, event: queued } }]), send: vi.fn(), complete: vi.fn() } as never,
+      reliability: { claim: vi.fn(), takeOver: vi.fn(async () => persisted), complete, fail, defer }, heartbeat: vi.fn(),
+    })).resolves.toEqual({ claimed: 1, completed: 0, failed: 0 });
+    expect(defer).toHaveBeenCalledWith(persisted, "OUTBOX_EXECUTOR_RESERVED");
+    expect(complete).not.toHaveBeenCalled(); expect(fail).not.toHaveBeenCalled();
+  });
+  it("defers a busy source dispatch without consuming its executor failure budget", async () => {
+    const queued = event("publisher"); const persisted = { ...queued, workerId: "worker-default", topic: "ingestion.source.manual.request" };
+    const defer = vi.fn(); const fail = vi.fn(); const complete = vi.fn();
+    await drainOutboxWithDependencies({ workerId: "worker-default", maxEvents: 1 }, {
+      boss: { fetch: vi.fn(async () => [{ id: "queued-manual", data: { schemaVersion: 1, event: queued } }]), send: vi.fn(), complete: vi.fn() } as never,
+      reliability: { claim: vi.fn(), takeOver: vi.fn(async () => persisted), complete, fail, defer }, heartbeat: vi.fn(),
+      topics: ["ingestion.source.manual.request"], handle: async () => ({ deferred: true, code: "SOURCE_JOB_QUEUE_BUSY" }),
+    });
+    expect(defer).toHaveBeenCalledWith(persisted, "SOURCE_JOB_QUEUE_BUSY"); expect(fail).not.toHaveBeenCalled(); expect(complete).not.toHaveBeenCalled();
+  });
   it("claims only default-handler topics and leaves future-executor intents unclaimed", async () => {
     const claim = vi.fn(async () => null);
     await drainOutboxWithDependencies({ workerId: "worker-default" }, {

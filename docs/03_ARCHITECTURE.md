@@ -59,7 +59,9 @@ remediation program preserves these boundaries while connecting them:
   buffers and cancellation regression; SDK/network remain mocked, not provider
   or production Source execution proof.
 - MP-03/MP-04: concrete import orchestration and source queue/scheduler ports exist,
-  but the permanent worker entrypoint currently runs outbox only.
+  with an explicit combined `source-worker` command, native schedule reconciliation
+  and a durable manual-request dispatcher. Production Compose still selects
+  `outbox-worker`; command composition is not production activation or health proof.
   SourceExecutionService now provides scoped application orchestration and
   resolves registered descriptors, SecretRef, policy and Last Good before intake.
   Reference-owned intake resolves the endpoint lazily on the server through the

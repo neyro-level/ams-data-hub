@@ -4,14 +4,12 @@ import { getWorkerReliabilityService } from "../../infrastructure/worker-service
 import {
   OUTBOX_DELIVERY_QUEUE,
   OUTBOX_HANDLER_MAX_ATTEMPTS,
-  OUTBOX_RETRY_DELAY_MAX_SECONDS,
-  OUTBOX_RETRY_DELAY_SECONDS,
   outboxDispatchJobSchema,
   type OutboxDispatchJob,
 } from "./domain/pg-boss.ts";
 import { getPgBoss, stopPgBoss } from "./infrastructure/pg-boss-client.ts";
 import { runReliabilityRetention } from "./infrastructure/retention-runtime.ts";
-import type { ClaimedReliabilityEvent } from "./application/ports/reliability-repository.ts";
+import type { ClaimedReliabilityEvent, OutboxHandlerResult } from "./application/ports/reliability-repository.ts";
 import {
   OUTBOX_WORKER_RUNTIME,
   recordRuntimeHeartbeat,
@@ -19,18 +17,20 @@ import {
 import { acquirePermanentOutboxWorkerGuard } from "./infrastructure/permanent-worker-guard.ts";
 import { assertOutboxWorkerHeartbeatHealthy } from "./infrastructure/readiness-runtime.ts";
 import { getPrismaPool } from "../../platform/database/prisma/client.ts";
+import { runInSystemJobDatabaseTransaction } from "../../platform/database/transaction.ts";
 
 type ReliabilityWorker = Pick<
   ReturnType<typeof getWorkerReliabilityService>,
   "claim" | "takeOver" | "complete" | "fail"
 >;
+type DeferrableReliabilityWorker = ReliabilityWorker & Partial<Pick<ReturnType<typeof getWorkerReliabilityService>, "defer">>;
 type OutboxQueueClient = Pick<PgBoss, "send" | "fetch" | "complete">;
 
 export interface OutboxDrainDependencies {
   boss: OutboxQueueClient;
-  reliability: ReliabilityWorker;
+  reliability: DeferrableReliabilityWorker;
   heartbeat: (workerId: string) => Promise<unknown>;
-  handle?: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<void>;
+  handle?: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<OutboxHandlerResult>;
   /** Exact topics supported by the supplied handler. The default worker must
    * leave future-executor intents pending instead of terminally failing them. */
   topics?: readonly string[];
@@ -38,13 +38,6 @@ export interface OutboxDrainDependencies {
 
 function outboxError(code: string, retryable: boolean) {
   return Object.assign(new Error(code), { code, retryable });
-}
-
-function nextAvailableDelaySeconds(attempt: number) {
-  return Math.min(
-    OUTBOX_RETRY_DELAY_MAX_SECONDS,
-    OUTBOX_RETRY_DELAY_SECONDS * 2 ** Math.max(0, attempt - 1),
-  );
 }
 
 export async function publishClaimedEvent(
@@ -69,7 +62,7 @@ async function fetchQueuedJob(boss: OutboxQueueClient) {
   return jobs[0] ?? null;
 }
 
-async function handleEvent(event: ClaimedReliabilityEvent) {
+export async function handleDefaultOutboxEvent(event: ClaimedReliabilityEvent) {
   if (event.topic === "platform.maintenance.requested") {
     return;
   }
@@ -81,10 +74,11 @@ async function processQueuedJob(
   boss: OutboxQueueClient,
   job: JobWithMetadata<OutboxDispatchJob>,
   workerId: string,
-  reliability: ReliabilityWorker,
-  eventHandler: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<void>,
+  reliability: DeferrableReliabilityWorker,
+  eventHandler: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<OutboxHandlerResult>,
   signal?: AbortSignal,
   shutdownDrainTimeoutMs = 30_000,
+  topics?: readonly string[],
 ) {
   const parsed = outboxDispatchJobSchema.safeParse(job.data);
   if (!parsed.success) {
@@ -104,12 +98,25 @@ async function processQueuedJob(
     return { claimed: 0, completed: 0, failed: 0 };
   }
 
+  if (topics && !topics.includes(event.topic) && ["snapshot.build.request", "ingestion.source.manual.request"].includes(event.topic)) {
+    if (!reliability.defer) throw new Error("OUTBOX_DEFER_UNBOUND");
+    await reliability.defer(event, "OUTBOX_EXECUTOR_RESERVED");
+    await boss.complete(OUTBOX_DELIVERY_QUEUE, job.id, { status: "deferred", code: "OUTBOX_EXECUTOR_RESERVED" });
+    return { claimed: 1, completed: 0, failed: 0 };
+  }
+
   try {
-    await withShutdownDeadline(
+    const outcome = await withShutdownDeadline(
       eventHandler(event, signal),
       signal,
       shutdownDrainTimeoutMs,
     );
+    if (outcome?.deferred) {
+      if (!reliability.defer) throw new Error("OUTBOX_DEFER_UNBOUND");
+      await reliability.defer(event, outcome.code);
+      await boss.complete(OUTBOX_DELIVERY_QUEUE, job.id, { status: "deferred", code: outcome.code });
+      return { claimed: 1, completed: 0, failed: 0 };
+    }
     await reliability.complete(event);
     await boss.complete(OUTBOX_DELIVERY_QUEUE, job.id, { status: "success" });
     return { claimed: 1, completed: 1, failed: 0 };
@@ -132,7 +139,8 @@ async function processQueuedJob(
       code,
       retryable,
       nextAvailableInSeconds:
-        failure.status === "pending" ? nextAvailableDelaySeconds(event.attempt) : null,
+        failure.status === "pending" && failure.availableAt
+          ? Math.max(0, Math.ceil((Date.parse(failure.availableAt) - Date.now()) / 1000)) : null,
     });
     return { claimed: 1, completed: 0, failed: 1 };
   }
@@ -212,7 +220,7 @@ export async function drainOutboxWithDependencies(
   dependencies: OutboxDrainDependencies,
 ): Promise<DrainOutboxResult> {
   const { boss, reliability } = dependencies;
-  const eventHandler = dependencies.handle ?? handleEvent;
+  const eventHandler = dependencies.handle ?? handleDefaultOutboxEvent;
   const topics = dependencies.topics ?? (dependencies.handle ? undefined : ["platform.maintenance.requested"]);
   const maxEvents = z.number().int().min(1).max(100).parse(options.maxEvents ?? 25);
   const shutdownDrainTimeoutMs = z.number().int().min(10).max(300_000).parse(
@@ -236,6 +244,7 @@ export async function drainOutboxWithDependencies(
       eventHandler,
       options.signal,
       shutdownDrainTimeoutMs,
+      topics,
     );
     result.claimed += settled.claimed;
     result.completed += settled.completed;
@@ -327,4 +336,11 @@ export { getPgBoss, stopPgBoss };
 export function createOutboxDrainDependencies(boss: OutboxQueueClient): OutboxDrainDependencies {
   return { boss, reliability: getWorkerReliabilityService(),
     heartbeat: (workerId) => recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId }) };
+}
+
+export function listDeadLetterOutboxEvents(topic: string, afterId: string) {
+  if (topic !== "ingestion.source.manual.request" || !/^[A-Za-z0-9_-]{0,128}$/u.test(afterId)) throw new Error("OUTBOX_TERMINAL_QUERY_INVALID");
+  return runInSystemJobDatabaseTransaction({ jobName: "outbox-terminal-reconcile", correlationId: `outbox-terminal-${Date.now()}` },
+    (tx) => tx.outboxEvent.findMany({ where: { topic, status: "DEAD_LETTER", ...(afterId ? { id: { gt: afterId } } : {}) },
+      orderBy: { id: "asc" }, take: 100, select: { id: true, organizationId: true, payload: true } }));
 }

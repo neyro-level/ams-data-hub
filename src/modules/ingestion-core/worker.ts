@@ -1,4 +1,6 @@
 export { createSourceJobs, SOURCE_JOB_NAME, type SourceJobDependencies } from "./application/source-jobs.ts";
+export { createPrismaSourceManualRequests, dispatchSourceManualRequest, sourceManualJobId, settleTerminalSourceManualRequests } from "./infrastructure/source-manual-worker.ts";
+export { SOURCE_MANUAL_REQUEST_TOPIC } from "./domain/source-jobs.ts";
 import type { ProjectJobPrincipal } from "../../platform/authorization/principal.ts";
 import type { PgBoss } from "pg-boss";
 import {
@@ -67,6 +69,7 @@ export async function drainSourceJobQueue(
       const code = error instanceof Error && /^[A-Z][A-Z0-9_]{2,100}$/u.test(error.message)
         ? error.message
         : "SOURCE_JOB_FAILED";
+      await handler.onFailure?.(parsed.data, Number.isInteger(job.retryCount) && Number.isInteger(job.retryLimit) && job.retryCount >= job.retryLimit);
       await boss.fail(SOURCE_IMPORT_QUEUE, job.id, { status: "FAILED", code });
       result.failed += 1;
     }
@@ -114,4 +117,5 @@ export type {
   SourceJobExecutionContext,
   SourceJobRecord,
   SourceJobRepository,
+  SourceManualRequestRepository,
 } from "./application/ports/source-job-repository.ts";

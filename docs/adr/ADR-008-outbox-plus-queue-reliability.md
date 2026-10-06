@@ -32,6 +32,11 @@ PENDING → PROCESSING → PROCESSED
 - Retry is finite, classified and bounded by the topic policy. Exhaustion writes
   one terminal `DEAD_LETTER` state and one deduplicated safe platform
   notification.
+- A supported but not yet executable reserved intent, or busy Source dispatch,
+  is lease-bound deferred to PENDING with a JobRun DEFERRED marker. It is neither
+  PROCESSED nor DEAD_LETTER. A durable deferral count excludes these attempts
+  from executor failure budget without resetting unique delivery ordinals;
+  operational JobRun retention cannot consume that budget later.
 - Same idempotency key plus same payload returns the prior deterministic outcome;
   the same key plus changed payload is `IDEMPOTENCY_CONFLICT` and creates no new
   delivery.

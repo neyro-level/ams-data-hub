@@ -87,8 +87,25 @@ schedules instead of silently truncating the registry. This is not
 provider attestation: synthetic PostgreSQL proof waits for a real native cron
 tick to produce a SCHEDULED job and GOOD through the default runtime, verifies
 orphan removal, then changes the Source to manual-only and verifies unscheduling.
-HTTP and SDK transports alone are replaced. This is not
-manual-request/production proof. Manual bridge, concurrency, controlled shutdown and source
+HTTP and SDK transports alone are replaced. The combined runtime also registers
+the manual Source topic. Admin request, audit and IDs-only outbox intent share
+one transaction. Dispatch uses a deterministic native job ID per persisted
+request and the Source singleton; a different busy job defers the intent.
+Only MANUAL jobs may carry `manualRequestId`; scoped persisted request state
+is checked before intake. GOOD, Last Good, snapshot intent and request COMPLETED
+commit together, so native settlement retry cannot repeat a completed import.
+Transient dispatch reads/queue errors retry; terminal native attempts mark the
+request FAILED. Terminal dispatch intents are reconciled in bounded 100-row
+pages at startup and maintenance, recovering a crash before request FAILED.
+Already-dispatched reserved topics without an executor return to PENDING and
+record JobRun DEFERRED, never fake SUCCESS or DEAD_LETTER. Persisted deferral
+counts do not consume the executor failure budget or reset attempt ordinals.
+Synthetic PostgreSQL regressions exercise the real Admin command and default
+runtime across enqueue rollback, dispatch/native settlement faults, one GOOD
+and one intake despite replay, foreign-project denial, busy deferral, reserved
+snapshot retention and terminal-request recovery on default worker restart.
+They replace HTTP/SDK transport, not command, queue, repository or import service.
+Concurrency, controlled shutdown and source
 health proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
 not intake capacity proof for the up-to-256 MiB source spool.
 
