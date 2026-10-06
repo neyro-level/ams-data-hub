@@ -17,22 +17,6 @@ function createDatabaseClient() {
   });
 }
 
-async function markPlatformAdminSessionMfaVerified() {
-  const client = createDatabaseClient();
-  await client.connect();
-  try {
-    const result = await client.query(
-      `update "Session"
-       set "twoFactorVerifiedAt" = now(), "updatedAt" = now()
-       where "userId" = (select "id" from "User" where "username" = $1)`,
-      [username],
-    );
-    if (result.rowCount === 0) throw new Error("Synthetic platform admin session is missing");
-  } finally {
-    await client.end();
-  }
-}
-
 test.beforeAll(async () => {
   const client = createDatabaseClient();
   await client.connect();
@@ -67,12 +51,20 @@ test("platform admin manages the shared catalog without horizontal overflow", as
   const developmentName = `ЖК Проверка ${suffix}`;
   const buildingLabel = `Корпус ${suffix}`;
 
-  const signInResponse = await page.request.post("/api/auth/sign-in/username", {
-    headers: { "x-forwarded-for": projectIp },
-    data: { username, password, rememberMe: true },
-  });
+  await page.setExtraHTTPHeaders({ "x-forwarded-for": projectIp });
+  await page.goto("/?login=1");
+  const loginDialog = page.getByRole("dialog");
+  await loginDialog.getByLabel("Логин", { exact: true }).fill(username);
+  await loginDialog.getByLabel("Пароль", { exact: true }).fill(password);
+  const [signInResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/auth/sign-in/username")),
+    loginDialog.getByRole("button", { name: "Войти", exact: true }).click(),
+  ]);
   expect(signInResponse.ok()).toBe(true);
-  await markPlatformAdminSessionMfaVerified();
+  expect(await signInResponse.json()).not.toHaveProperty("twoFactorRedirect");
+  await expect(loginDialog).not.toBeVisible();
+  await page.waitForURL(/\/(dashboard|admin)(\/|$)/);
+  await expect(page.getByText("Нейтральная рабочая область для будущих кабинетов, CRM, аналитики и внутренних процессов.", { exact: true })).toBeVisible();
   await page.goto("/admin/catalog/");
 
   await expect(page.getByRole("heading", { name: "Каталог", exact: true })).toBeVisible();

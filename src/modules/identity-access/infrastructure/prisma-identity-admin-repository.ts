@@ -357,8 +357,6 @@ export class PrismaIdentityAdminRepository implements IdentityAdminRepository {
     const consumed = await this.prisma.platformRecoveryToken.updateMany({ where: { id: token.id, consumedAt: null, revokedAt: null, expiresAt: { gt: input.now } }, data: { consumedAt: input.now } });
     if (consumed.count !== 1) return null;
     await this.prisma.account.updateMany({ where: { userId: token.userId, providerId: "credential" }, data: { password: input.passwordHash } });
-    await this.prisma.twoFactor.deleteMany({ where: { userId: token.userId } });
-    await this.prisma.user.update({ where: { id: token.userId }, data: { twoFactorEnabled: false } });
     await this.prisma.platformRecoveryToken.updateMany({ where: { userId: token.userId, consumedAt: null, revokedAt: null }, data: { revokedAt: input.now } });
     await this.prisma.session.deleteMany({ where: { userId: token.userId } });
     return token.userId;

@@ -20,9 +20,11 @@ Exact v4 — неизменяемый approval artifact с исходным SHA-
 `04_BACKLOG.md`, `DELIVERY_STATE.yaml` и Task Manager, а не тексту approval handoff.
 
 Новый approved remediation plan от 2026-10-06 — активный execution source.
-Он не переоткрывает исторические задачи v4. Подключение runtime pipeline,
-снятие текущего требования TOTP и production readiness ещё требуют выполнения
-MP-00–MP-10; закрытый v4 не является доказательством этих результатов.
+Он не переоткрывает исторические задачи v4. MP-00 согласовал owner decisions;
+MP-01 удаляет текущий TOTP contour с password/session regressions и новой
+forward migration, delivery evidence хранится в Task Manager. Подключение
+runtime pipeline и production readiness требуют оставшихся MP-02–MP-10;
+закрытый v4 не является доказательством этих результатов.
 До отдельной release-команды владельца разрешены только доработки и
 non-production проверки, не production rollout.
 

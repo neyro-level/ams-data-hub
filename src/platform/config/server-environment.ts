@@ -40,7 +40,6 @@ const authEnvironmentSchema = z.object({
   BETTER_AUTH_SECRET: z.string().trim().min(32),
   BETTER_AUTH_URL: z.string().trim().url(),
   BETTER_AUTH_TRUSTED_PROXY_CIDRS: optionalEnvironmentValue,
-  ADMIN_TOTP_REQUIRED: optionalEnvironmentValue,
   CLIENT_ACCESS_ENABLED: optionalEnvironmentValue,
 });
 
@@ -48,7 +47,6 @@ export interface AuthEnvironment {
   secret: SecretValue;
   baseUrl: string;
   trustedProxyCidrs: string[];
-  adminTotpRequired: boolean;
   clientAccessEnabled: boolean;
 }
 
@@ -88,7 +86,6 @@ export function readAuthEnvironment(
     BETTER_AUTH_SECRET: secret,
     BETTER_AUTH_URL: baseUrl,
     BETTER_AUTH_TRUSTED_PROXY_CIDRS: env.BETTER_AUTH_TRUSTED_PROXY_CIDRS,
-    ADMIN_TOTP_REQUIRED: env.ADMIN_TOTP_REQUIRED,
     CLIENT_ACCESS_ENABLED: env.CLIENT_ACCESS_ENABLED,
   });
   if (!parsed.success) {
@@ -101,23 +98,12 @@ export function readAuthEnvironment(
     throw new Error("Better Auth URL must use HTTPS outside loopback development");
   }
 
-  const isProduction = env.APP_ENV === "production";
-  const adminTotpRequired = parseExplicitBoolean(
-    parsed.data.ADMIN_TOTP_REQUIRED,
-    "ADMIN_TOTP_REQUIRED",
-    isProduction,
-  );
-  if (isProduction && !adminTotpRequired) {
-    throw new Error("ADMIN_TOTP_REQUIRED must be true in production");
-  }
-
   return {
     secret: resolveSecretRef(betterAuthSecretRef, {
       BETTER_AUTH_SECRET: parsed.data.BETTER_AUTH_SECRET,
     }),
     baseUrl: url.origin,
     trustedProxyCidrs: parseTrustedProxyCidrs(parsed.data.BETTER_AUTH_TRUSTED_PROXY_CIDRS),
-    adminTotpRequired,
     clientAccessEnabled: parseExplicitBoolean(
       parsed.data.CLIENT_ACCESS_ENABLED,
       "CLIENT_ACCESS_ENABLED",

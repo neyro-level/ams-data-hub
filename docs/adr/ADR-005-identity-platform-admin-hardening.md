@@ -1,6 +1,6 @@
 # ADR-005: Identity And Platform Admin Hardening Contract
 
-**Status:** active, amended by owner 2026-10-06; MP-01 runtime transition pending
+**Status:** active, amended by owner 2026-10-06; MP-01 runtime transition implemented, delivery tracked in Task Manager
 **Scope:** `PLATFORM_ADMIN = enabled`; product-owned identity contract; changes do not authorize production release.
 
 ## Decision
@@ -12,8 +12,9 @@ and their audit evidence.
 
 The 2026-10-06 owner amendment supersedes the earlier factor requirement:
 current release TOTP is NOT REQUIRED, OQ-09 DEFERRED until an explicit post-pilot
-decision. MP-01 removes the existing plugin, session factor gate and factor-only
-recovery/schema. This ADR states the approved target, not completed removal.
+decision. MP-01 removes the plugin, session factor gate and factor-only recovery/
+schema with a new forward migration. Exact-head verification and delivery are
+recorded separately; this auth contract does not claim full production readiness.
 
 The transition is additive and forward-fixable: new schema fields/tables are
 introduced before an enforcement switch; legacy sessions and bootstrap access

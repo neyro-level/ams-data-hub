@@ -40,9 +40,18 @@ test("API responses are not cacheable", async ({ page }) => {
 
 test("authentication endpoint throttles repeated invalid credentials", async ({ page }, testInfo) => {
   const username = `missing_${testInfo.project.name.replace(/[^a-z0-9]/gi, "_")}`;
+  // Keep this endpoint/IP bucket independent from successful auth scenarios.
+  // Production rate limits and the expected five-attempt threshold stay intact.
+  const throttleIp = {
+    "mobile-375": "198.51.100.41",
+    "tablet-768": "198.51.100.42",
+    "desktop-1280": "198.51.100.43",
+    "desktop-1440": "198.51.100.44",
+  }[testInfo.project.name] ?? "198.51.100.45";
   const responses = [];
   for (let attempt = 0; attempt < 6; attempt += 1) {
     responses.push(await page.request.post("/api/auth/sign-in/username", {
+      headers: { "x-forwarded-for": throttleIp },
       data: { username, password: "not-a-real-password" },
     }));
   }

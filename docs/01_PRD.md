@@ -29,8 +29,9 @@ operational pipeline. Реальная Source composition, worker/scheduler,
 DB-to-snapshot assembly и operations executors ещё требуют MP-02–MP-09.
 
 Owner decision 2026-10-06: текущая версия не требует 2FA/TOTP; OQ-09 DEFERRED,
-возврат к вопросу — post-pilot по явному решению владельца. Существующий
-legacy TOTP-код подлежит удалению в MP-01 с auth regression proof.
+возврат к вопросу — post-pilot по явному решению владельца. MP-01 удаляет
+legacy TOTP plugin, login branch, principal/env gate и factor schema новой
+forward migration. Auth regression и delivery evidence принадлежат Task Manager.
 Username/password, свежая enabled session, server authorization, rate limits
 и RLS сохраняются. Разрешены YRL/Vladis, Domclick XML, Avito v3 и CIAN v2;
 формат принадлежит SourceAdapter, producer semantics — SourceProfile.

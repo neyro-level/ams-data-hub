@@ -13,7 +13,6 @@ import type {
 export interface PrincipalFactoryOptions {
   correlationId?: string;
   selectedOrganizationId?: string | null;
-  platformAdminMfaVerified?: boolean;
 }
 
 export interface PrincipalState {
@@ -93,9 +92,6 @@ export async function getPrincipalResolutionByUserId(
   let principal: PrincipalContext;
   let autoSelectedOrganizationId: string | null = null;
   if (user.systemRole === "PLATFORM_ADMIN") {
-    if (!options.platformAdminMfaVerified) {
-      return { state: null, organizationChoices: [], autoSelectedOrganizationId: null };
-    }
     principal = {
       kind: "platform-admin",
       userId: user.id,

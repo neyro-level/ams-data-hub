@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { verifyPassword } from "better-auth/crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   completeAccountSetup,
@@ -54,32 +55,70 @@ describe("account setup token lifecycle", () => {
 });
 
 describe("platform recovery token lifecycle", () => {
-  it("consumes recovery once and revokes sessions and the old second factor", async () => {
+  it("consumes password recovery once and revokes old sessions", async () => {
     const prisma = getPrismaClient();
     const recoveryToken = "integration-recovery-token-must-be-long-enough";
     const tokenHash = createHash("sha256").update(recoveryToken).digest("hex");
     await prisma.user.create({
       data: {
-        id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", twoFactorEnabled: true,
+        id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN",
         accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "legacy" } },
-        sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000), twoFactorVerifiedAt: new Date() } },
-        twoFactors: { create: { id: "recovery-factor", secret: "secret", backupCodes: "[]" } },
+        sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
         recoveryTokens: { create: { tokenHash, expiresAt: new Date(Date.now() + 60_000) } },
       },
     });
 
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toEqual({ userId });
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
-    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { twoFactorEnabled: true, sessions: true, twoFactors: true, recoveryTokens: true } });
-    expect(result.twoFactorEnabled).toBe(false);
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { sessions: true, recoveryTokens: true, accounts: true } });
     expect(result.sessions).toHaveLength(0);
-    expect(result.twoFactors).toHaveLength(0);
     expect(result.recoveryTokens[0]?.consumedAt).not.toBeNull();
+    expect(await verifyPassword({ hash: result.accounts[0]!.password!, password: "A recovered secure password" })).toBe(true);
+  });
+
+  it.each(["expired", "revoked"])("rejects a %s recovery token without changing password or sessions", async (state) => {
+    const prisma = getPrismaClient();
+    const recoveryToken = `integration-${state}-recovery-token-long-enough`;
+    await prisma.user.create({ data: {
+      id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN",
+      accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "unchanged-synthetic-hash" } },
+      sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
+      recoveryTokens: { create: { tokenHash: createHash("sha256").update(recoveryToken).digest("hex"), expiresAt: state === "expired" ? new Date(0) : new Date(Date.now() + 60_000), revokedAt: state === "revoked" ? new Date() : null } },
+    } });
+    await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { accounts: true, sessions: true, recoveryTokens: true } });
+    expect(result.accounts[0]?.password).toBe("unchanged-synthetic-hash");
+    expect(result.sessions).toHaveLength(1);
+    expect(result.recoveryTokens[0]?.consumedAt).toBeNull();
+  });
+
+  it("allows one concurrent consume, revokes siblings and does not re-enable a disabled account", async () => {
+    const prisma = getPrismaClient();
+    const recoveryToken = "integration-concurrent-recovery-token-long-enough";
+    const tokenHash = createHash("sha256").update(recoveryToken).digest("hex");
+    await prisma.user.create({ data: {
+      id: userId, name: "Disabled recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", disabledAt: new Date(),
+      accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "legacy" } },
+      sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
+      recoveryTokens: { create: [{ tokenHash, expiresAt: new Date(Date.now() + 60_000) }, { tokenHash: "synthetic-sibling-hash", expiresAt: new Date(Date.now() + 60_000) }] },
+    } });
+    const results = await Promise.all([
+      completePlatformRecovery({ token: recoveryToken, password: "First secure recovered password" }),
+      completePlatformRecovery({ token: recoveryToken, password: "Second secure recovered password" }),
+    ]);
+    expect(results.filter(Boolean)).toEqual([{ userId }]);
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { disabledAt: true, accounts: true, sessions: true, recoveryTokens: true } });
+    expect(result.disabledAt).not.toBeNull();
+    expect(result.sessions).toHaveLength(0);
+    expect(result.recoveryTokens.find((record) => record.tokenHash !== tokenHash)?.revokedAt).not.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
+    const password = results[0] ? "First secure recovered password" : "Second secure recovered password";
+    expect(await verifyPassword({ hash: result.accounts[0]!.password!, password })).toBe(true);
   });
 });
 
 describe("fresh principal enforcement", () => {
-  it("denies a password-only platform admin and a multi-membership user without an explicit organization", async () => {
+  it("accepts an enabled platform admin without factor state while retaining setup, disable and membership gates", async () => {
     const prisma = getPrismaClient();
     const firstOrganization = await prisma.organization.create({ data: { slug: "principal-first", name: "Principal first" } });
     const secondOrganization = await prisma.organization.create({ data: { slug: "principal-second", name: "Principal second" } });
@@ -93,8 +132,7 @@ describe("fresh principal enforcement", () => {
       },
     });
 
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: false })).resolves.toBeNull();
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toMatchObject({
+    await expect(getPrincipalStateByUserId(userId)).resolves.toMatchObject({
       principal: { kind: "platform-admin", userId },
     });
 
@@ -105,14 +143,14 @@ describe("fresh principal enforcement", () => {
         expiresAt: new Date(Date.now() + 60_000),
       },
     });
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
     await prisma.accountSetupToken.updateMany({
       where: { userId },
       data: { revokedAt: new Date() },
     });
 
     await prisma.user.update({ where: { id: userId }, data: { disabledAt: new Date() } });
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
     await prisma.user.update({ where: { id: userId }, data: { disabledAt: null } });
 
     await prisma.user.update({ where: { id: userId }, data: { systemRole: "USER" } });
