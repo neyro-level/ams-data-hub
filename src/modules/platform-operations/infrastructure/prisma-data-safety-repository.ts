@@ -1,4 +1,5 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DataSafetyRepository, DataSafetySnapshot } from "../application/data-safety-service.ts";
 
 const selectState = { jobsFrozen: true, frozenAt: true, reconciledAt: true } as const;
@@ -6,7 +7,8 @@ const selectState = { jobsFrozen: true, frozenAt: true, reconciledAt: true } as 
 export class PrismaDataSafetyRepository implements DataSafetyRepository {
   public constructor(private readonly transaction: DatabaseTransaction) {}
 
-  public freeze(reason: string, now: Date): Promise<DataSafetySnapshot> {
+  public async freeze(reason: string, now: Date): Promise<DataSafetySnapshot> {
+    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
     return this.transaction.dataSafetyState.upsert({
       where: { id: "global" },
       create: { id: "global", jobsFrozen: true, freezeReason: reason, frozenAt: now, reconciledAt: null, unfrozenAt: null },

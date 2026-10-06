@@ -52,7 +52,12 @@ describe("approved remediation canon", () => {
   it("does not equate contracts and operation requests with runtime readiness", () => {
     const architecture = read("docs/03_ARCHITECTURE.md");
     expect(architecture).toContain("foundation evidence, not production readiness");
-    expect(architecture).toContain("SourceExecutionService and scheduled source execution are pending");
+    expect(architecture).toContain("SourceExecutionService now provides scoped application orchestration");
+    expect(architecture).toContain("Concrete server composition now binds scoped Prisma loading");
+    expect(architecture).toContain("Snapshot build/publish");
+    expect(architecture).toContain("publication is not performed in the import transaction");
+    expect(architecture).toContain("Broken runs leave current");
+    expect(architecture).toContain("service unit tests are not production composition proof");
     expect(architecture).toContain("missing executors");
     expect(read("docs/OPERATIONS.md")).toContain("An Admin request or contract test");
     expect(read("docs/DELIVERY_STATE.yaml")).toContain("readiness: NOT_PRODUCTION_READY");

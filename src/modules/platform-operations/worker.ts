@@ -31,6 +31,9 @@ export interface OutboxDrainDependencies {
   reliability: ReliabilityWorker;
   heartbeat: (workerId: string) => Promise<unknown>;
   handle?: (event: ClaimedReliabilityEvent, signal?: AbortSignal) => Promise<void>;
+  /** Exact topics supported by the supplied handler. The default worker must
+   * leave future-executor intents pending instead of terminally failing them. */
+  topics?: readonly string[];
 }
 
 function outboxError(code: string, retryable: boolean) {
@@ -210,6 +213,7 @@ export async function drainOutboxWithDependencies(
 ): Promise<DrainOutboxResult> {
   const { boss, reliability } = dependencies;
   const eventHandler = dependencies.handle ?? handleEvent;
+  const topics = dependencies.topics ?? (dependencies.handle ? undefined : ["platform.maintenance.requested"]);
   const maxEvents = z.number().int().min(1).max(100).parse(options.maxEvents ?? 25);
   const shutdownDrainTimeoutMs = z.number().int().min(10).max(300_000).parse(
     options.shutdownDrainTimeoutMs ?? 30_000,
@@ -241,7 +245,7 @@ export async function drainOutboxWithDependencies(
   }
 
   while (handled < maxEvents && !options.signal?.aborted) {
-    const claimed = await reliability.claim(options.workerId);
+    const claimed = await reliability.claim(options.workerId, undefined, topics);
     if (!claimed) {
       break;
     }

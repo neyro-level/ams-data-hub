@@ -1,4 +1,5 @@
 import "server-only";
+export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
 
 import { createUlid } from "@ams-data-hub/data-contracts";
 import { createInventoryIdentityCommands } from "./application/inventory-identity-commands.ts";

@@ -25,7 +25,7 @@ export class StreamingRawArtifact {
   private readonly releaseCapacity: () => void;
 
   constructor(
-    private readonly response: SafeOutboundStreamResult,
+    private readonly response: Omit<SafeOutboundStreamResult, "finalUrl">,
     private readonly storage: StreamingObjectStorage,
     private readonly maxBytes: number,
   ) {

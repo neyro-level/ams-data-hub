@@ -445,6 +445,9 @@ model Project {
   sources                  Source[]
   sourceCredentialRefs     SourceCredentialRef[]
   sourceManualRunRequests  SourceManualRunRequest[]
+  sourceRevisions          SourceRevision[]
+  sourceRevisionRecords    SourceRevisionRecord[]
+  sourceSafetyPolicies     SourceSafetyPolicy[]
   agents                   Agent[]
   agentExternalIdentities  AgentExternalIdentity[]
   agentSourceEvidence      AgentSourceEvidence[]
@@ -851,10 +854,88 @@ model Source {
   developmentIdentities DevelopmentExternalIdentity[]
   priceObservations     PriceObservation[]
   sharedMediaAssets     SharedMediaAsset[]
+  revisions             SourceRevision[] @relation("SourceRevisions")
+  lastGoodRevision      SourceRevision? @relation("SourceLastGood", fields: [organizationId, projectId, id, lastGoodRevisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, sourceKey])
   @@index([projectId, enabled])
+}
+
+enum SourceRevisionStatus {
+  PENDING
+  STAGED
+  SUSPICIOUS
+  REJECTED
+  FAILED
+  GOOD
+}
+
+model SourceSafetyPolicy {
+  id             String @id @default(cuid())
+  organizationId String
+  projectId      String
+  policy         Json
+  version        Int @default(1)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  project        Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, projectId, id])
+}
+
+model SourceRevision {
+  id                     String @id @default(cuid())
+  organizationId         String
+  projectId              String
+  sourceId               String
+  sourceVersion          Int
+  baseLastGoodRevisionId String?
+  adapterKey             String @db.VarChar(128)
+  adapterVersion         String @db.VarChar(64)
+  profileKey             String @db.VarChar(128)
+  profileVersion         String @db.VarChar(64)
+  safetyPolicy           Json
+  safetyPolicyVersion    Int?
+  status                 SourceRevisionStatus @default(PENDING)
+  sequence               Int?
+  rawStorageKey          String? @db.VarChar(512)
+  rawArtifactHash        String? @db.Char(64)
+  rawByteCount           Int?
+  normalizedContentHash  String? @db.Char(64)
+  recordCount            Int @default(0)
+  invalidRecordCount     Int @default(0)
+  safetyAnalysis         Json?
+  failedStage            String? @db.VarChar(64)
+  failureCode            String? @db.VarChar(120)
+  startedAt              DateTime @default(now()) @db.Timestamptz(3)
+  completedAt            DateTime? @db.Timestamptz(3)
+  source                 Source @relation("SourceRevisions", fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: NoAction, onUpdate: NoAction)
+  project                Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
+  lastGoodFor            Source[] @relation("SourceLastGood")
+  records                SourceRevisionRecord[]
+
+  @@unique([organizationId, projectId, sourceId, id])
+  @@unique([sourceId, sequence])
+  @@index([projectId, sourceId, status])
+}
+
+model SourceRevisionRecord {
+  organizationId String
+  projectId      String
+  sourceId       String
+  revisionId     String
+  externalId     String @db.VarChar(240)
+  orderKey       String @db.VarChar(1920)
+  inventoryUid   String @db.VarChar(26)
+  recordHash     String @db.Char(64)
+  payload        Json
+  revision       SourceRevision @relation(fields: [organizationId, projectId, sourceId, revisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction)
+  project        Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([revisionId, externalId])
+  @@unique([revisionId, orderKey])
+  @@index([projectId, sourceId, revisionId])
 }
 
 model InventoryIdentity {

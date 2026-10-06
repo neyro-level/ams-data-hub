@@ -154,6 +154,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       { jobName: "outbox-claim", correlationId: `outbox-claim-${input.workerId}-${input.now}` },
       async (transaction) => {
       const claimable = {
+        ...(input.topics === undefined ? {} : { topic: { in: [...input.topics] } }),
         OR: [
           { status: OutboxStatus.PENDING, availableAt: { lte: now } },
           { status: OutboxStatus.PROCESSING, lockedAt: { lte: expiredLease } },

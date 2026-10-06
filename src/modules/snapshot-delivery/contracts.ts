@@ -1,6 +1,16 @@
 import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { z } from "zod";
 
+export const SNAPSHOT_BUILD_REQUEST_TOPIC = "snapshot.build.request";
+const sourceBuildId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);
+/** Private, value-free outbox intent, not a public snapshot or publish receipt. */
+export const sourceGoodSnapshotBuildRequestSchema = z.object({
+  schemaVersion: z.literal(1), organizationId: sourceBuildId, projectId: sourceBuildId,
+  sourceId: sourceBuildId, sourceRevisionId: sourceBuildId,
+  sourceRevisionSequence: z.number().int().positive(),
+}).strict();
+export type SourceGoodSnapshotBuildRequest = z.infer<typeof sourceGoodSnapshotBuildRequestSchema>;
+
 export const SNAPSHOT_DATASET_KINDS = [
   "geo",
   "developers",

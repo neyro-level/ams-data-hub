@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-00 / 2026-10-06
+### Remediation runtime state — MP-03 in progress / 2026-10-06
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -59,8 +59,41 @@ remediation program preserves these boundaries while connecting them:
   buffers and cancellation regression; SDK/network remain mocked, not provider
   or production Source execution proof.
 - MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
-  but the permanent worker entrypoint currently runs outbox only; concrete
-  SourceExecutionService and scheduled source execution are pending.
+  but the permanent worker entrypoint currently runs outbox only.
+  SourceExecutionService now provides scoped application orchestration and
+  resolves registered descriptors, SecretRef, policy and Last Good before intake.
+  Reference-owned intake resolves the endpoint lazily on the server through the
+  existing SecretRef environment resolver and Safe Outbound gateway. Its response
+  excludes final URL; initial/stream errors expose only fixed safe codes without
+  causes. Jobs and DTOs carry scoped IDs, not resolved credentials.
+  The service resolves executable parser/normalizer bindings by exact registered
+  adapter/profile versions. Synthetic registry regressions cover YRL/Vladis,
+  Domclick, Avito v3 and CIAN v2 with real bounded parsers; this does not yet prove
+  the durable runtime composition or activate those families in production.
+  Concrete server composition now binds scoped Prisma loading, reference-owned
+  intake, raw spool/S3 capability, executable parsers, per-record normalization,
+  bounded durable staging, Safety Engine and GOOD apply. Records are appended in
+  batches capped at 100 records/4 MiB; semantic hashing reads sorted stored hash
+  metadata rather than materializing a feed. GOOD, identities and Last Good
+  commit together after fresh configuration/service/freeze checks.
+  Project status/service changes take the shared safety lock before the UPDATE
+  statement, avoiding FK/key-lock inversion. Legacy identity commands and Source
+  apply share a source-scoped identity lock. YRL area units normalize to square
+  metres; configured rental periods must resolve explicitly, otherwise validation
+  rejects the record rather than manufacturing a canonical value. Missing-record
+  grace is now revision-bound: only SAFE nonempty non-baseline GOOD runs advance
+  absence; both run/time thresholds govern inactivation. Broken runs leave current
+  identities, events and Last Good untouched; final transaction failures roll
+  back lifecycle and GOOD together. GOOD also records an idempotent
+  `snapshot.build.request` intent through the transaction-bound reliability
+  repository. Its payload contains scoped IDs and the GOOD revision sequence,
+  never raw data/endpoints. Enqueue failure rolls back GOOD/identities/pointer;
+  publication is not performed in the import transaction. The default outbox
+  worker claims only its registered maintenance topic; snapshot intents stay
+  PENDING until a real executor is wired, not failed/completed by a noop handler.
+  Snapshot build/publish
+  execution and scheduled source execution remain MP-04/MP-05/MP-08;
+  service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.
