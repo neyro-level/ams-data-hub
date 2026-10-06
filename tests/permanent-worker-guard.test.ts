@@ -1,7 +1,21 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { acquirePermanentOutboxWorkerGuard } from "../src/modules/platform-operations/infrastructure/permanent-worker-guard.ts";
 
 describe("permanent outbox worker guard", () => {
+  it("reports guardian connection loss once and detaches only on deliberate release", async () => {
+    const client = Object.assign(new EventEmitter(), { query: vi.fn(async () => ({ rows: [{ acquired: true }] })), release: vi.fn() });
+    const lost = vi.fn(); const release = await acquirePermanentOutboxWorkerGuard({ connect: async () => client }, lost);
+    client.emit("error", new Error("synthetic disconnect")); client.emit("end");
+    expect(lost).toHaveBeenCalledOnce(); await release();
+    expect(client.listenerCount("error") + client.listenerCount("end")).toBe(0);
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+  it("does not report its own unlock/close as guardian loss", async () => {
+    const client = Object.assign(new EventEmitter(), { query: vi.fn(async () => ({ rows: [{ acquired: true }] })), release: vi.fn() });
+    const lost = vi.fn(); const release = await acquirePermanentOutboxWorkerGuard({ connect: async () => client }, lost);
+    await release(); client.emit("end"); expect(lost).not.toHaveBeenCalled();
+  });
   it("holds one advisory lock for the process lifetime and releases it once", async () => {
     const query = vi
       .fn()

@@ -10,7 +10,7 @@ interface WorkerSignalSource {
 export async function runWorkerProcessLifecycle<T>(options: {
   signals: WorkerSignalSource;
   shutdownTimeoutMs: number;
-  run(signal: AbortSignal): Promise<T>;
+  run(signal: AbortSignal, requestShutdown: () => void): Promise<T>;
   close(): Promise<void>;
   onTimeout(): void;
 }): Promise<T> {
@@ -20,12 +20,13 @@ export async function runWorkerProcessLifecycle<T>(options: {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const stop = () => {
-    controller.abort();
     timeout ??= setTimeout(options.onTimeout, options.shutdownTimeoutMs);
+    controller.abort();
   };
   options.signals.once("SIGINT", stop); options.signals.once("SIGTERM", stop);
-  try { return await options.run(controller.signal); }
+  try { return await options.run(controller.signal, stop); }
   finally {
+    timeout ??= setTimeout(options.onTimeout, options.shutdownTimeoutMs);
     try { await options.close(); }
     finally {
       clearTimeout(timeout);

@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { PoolClient } from "pg";
 import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { getSourceWorkerReadiness } from "../../src/modules/platform-operations/server.ts";
 import { SOURCE_IMPORT_QUEUE, sourceManualJobId } from "../../src/modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -41,7 +42,8 @@ function childWorker(env: NodeJS.ProcessEnv, mode: string) {
     child.once("close", (code, signal) => done({ code, signal }));
   });
   return { child, exited, event: (name: string) => eventually(async () => events.has(name), Boolean),
-    stopped: () => output.includes("source_worker_stopped"), timedOut: () => output.includes("WORKER_SHUTDOWN_TIMEOUT") };
+    stopped: () => output.includes("source_worker_stopped"), timedOut: () => output.includes("WORKER_SHUTDOWN_TIMEOUT"),
+    guardLost: () => output.includes("WORKER_GUARD_LOST") };
 }
 function stop(child: ChildProcess) {
   if (process.platform === "win32") child.send("emit-sigterm");
@@ -79,6 +81,10 @@ async function setup() {
     SYNTHETIC_SHUTDOWN_REGION: "ru-1", SYNTHETIC_SHUTDOWN_ACCESS: "synthetic-shutdown-access", SYNTHETIC_SHUTDOWN_SECRET: "synthetic-shutdown-secret" };
   const workers: ReturnType<typeof childWorker>[] = [];
   const launch = (mode: string) => { const worker = childWorker(env, mode); workers.push(worker); return worker; };
+  const healthcheck = (workerId = env.OUTBOX_WORKER_ID) => {
+    const worker = childWorker({ ...env, OUTBOX_WORKER_ID: workerId }, "healthcheck"); workers.push(worker); return worker;
+  };
+  const readiness = () => getSourceWorkerReadiness(env.OUTBOX_WORKER_ID);
   const request = (key: string) => sourceRegistryCommands.requestManualSourceRun(admin, { ...target, idempotencyKey: `${key}-${suffix}` });
   const read = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
     source: await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }),
@@ -108,10 +114,42 @@ async function setup() {
     // Exact mkdtemp-owned test directory only; never remove other spool artifacts.
     await rm(directory, { recursive: true, force: true });
   };
-  return { admin, target, directory, launch, request, read, nativeJob, spools, assertLocksFree, cleanup };
+  return { admin, target, directory, launch, healthcheck, readiness, request, read, nativeJob, spools, assertLocksFree, cleanup };
 }
 
 describe(`actual source-worker child shutdown: ${evidence}; synthetic transport, owner-login DB (not queue ACL proof)`, () => {
+  it("qualifies only its exact owner and refreshes during a stalled import; read-only CLI and shutdown agree", async () => {
+    const context = await setup();
+    try {
+      expect((await context.readiness()).heartbeat.status).toBe("unknown");
+      await context.request("health-stall"); const worker = context.launch("upload"); await worker.event("upload-consumed");
+      const initial = await eventually(context.readiness, (value) => value.heartbeat.status === "healthy");
+      expect(initial).toMatchObject({ pgBoss: "connected", sourceConsumer: "active" });
+      expect(await waitExit(context.healthcheck(), 30_000)).toEqual({ code: 0, signal: null });
+      expect(await waitExit(context.healthcheck("absent-owner"), 30_000)).toEqual({ code: 1, signal: null });
+      const next = await eventually(context.readiness, (value) => value.heartbeat.status === "healthy"
+        && value.heartbeat.lastHeartbeatAt !== initial.heartbeat.lastHeartbeatAt, 45_000);
+      expect(next.heartbeat.lastHeartbeatAt).not.toBe(initial.heartbeat.lastHeartbeatAt);
+      stop(worker.child); expect(await waitExit(worker)).toEqual({ code: 0, signal: null });
+      expect(await context.readiness()).toMatchObject({ pgBoss: "unconfirmed", sourceConsumer: "unconfirmed", heartbeat: { status: "unknown" } });
+      expect(await waitExit(context.healthcheck(), 30_000)).toEqual({ code: 1, signal: null });
+      expect(await context.spools()).toEqual([]); await context.assertLocksFree();
+    } finally { await context.cleanup(); }
+  }, 120_000);
+
+  it("loss of the original permanent guardian stops the actual CLI and releases its locks", async () => {
+    const context = await setup();
+    try {
+      await context.request("guardian-loss"); const worker = context.launch("upload"); await worker.event("upload-consumed");
+      const lock = await getPrismaPool().query<{ pid: number }>("SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 4278803 AND objid = 17311 AND objsubid = 2 AND granted");
+      expect(lock.rows).toHaveLength(1);
+      await getPrismaPool().query("SELECT pg_terminate_backend($1)", [lock.rows[0]!.pid]);
+      expect(await waitExit(worker)).toEqual({ code: 1, signal: null }); expect(worker.guardLost()).toBe(true); expect(worker.stopped()).toBe(false);
+      await context.assertLocksFree(); const facts = await context.read();
+      expect(facts.source.lastGoodRevisionId).toBeNull(); expect(facts.identities).toEqual([]);
+      // Fatal loss can leave a TTL-qualified row and a crash orphan in this exact test-owned directory.
+    } finally { await context.cleanup(); }
+  }, 60_000);
   it.each(["headers", "upload"])("%s abort preserves durable retry/manual state, LastGood and clean spool; restart succeeds", async (mode) => {
     const context = await setup();
     try {

@@ -28,7 +28,7 @@ describe("worker runtime health", () => {
   afterAll(clearHeartbeat);
 
   it("accepts a database heartbeat through two intervals and then reports stale", async () => {
-    const now = new Date("2026-10-03T20:00:00.000Z");
+    const now = new Date(Date.now() + 60_000);
     await recordRuntimeHeartbeat({ runtime: OUTBOX_WORKER_RUNTIME, workerId, now });
     await expect(
       assertOutboxWorkerHeartbeatHealthy(

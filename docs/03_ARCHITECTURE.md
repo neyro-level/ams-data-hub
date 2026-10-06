@@ -61,7 +61,15 @@ remediation program preserves these boundaries while connecting them:
 - MP-03/MP-04: concrete import orchestration and source queue/scheduler ports exist,
   with an explicit combined `source-worker` command, native schedule reconciliation
   and a durable manual-request dispatcher. Production Compose still selects
-  `outbox-worker`; command composition is not production activation or health proof.
+  `outbox-worker`; command composition is not production activation. Source has
+  an opt-in read-only `source-healthcheck` against an exact-owner qualified
+  heartbeat: startup reconciliation, active consumer lifecycle and an existing
+  pg-boss connection/Source queue probe precede publication. A serial independent
+  pump uses DB time; future/stale timestamps are nonhealthy. Observations expire
+  after 120 seconds, and abrupt death may leave a row until TTL. Controlled stop
+  waits for in-flight publication before exact-row removal. Guardian loss is
+  fatal; consumer settlement starts the bounded cleanup watchdog. No schema or
+  role grants expand, and existing outbox deployment/readiness stays unchanged.
   SourceExecutionService now provides scoped application orchestration and
   resolves registered descriptors, SecretRef, policy and Last Good before intake.
   Reference-owned intake resolves the endpoint lazily on the server through the

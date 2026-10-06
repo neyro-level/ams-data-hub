@@ -14,6 +14,8 @@ import {
   OUTBOX_WORKER_RUNTIME,
   recordRuntimeHeartbeat,
 } from "./infrastructure/runtime-heartbeat.ts";
+export { recordSourceWorkerHeartbeat, clearSourceWorkerHeartbeat, assertSourceWorkerId } from "./infrastructure/runtime-heartbeat.ts";
+export { assertSourceWorkerHealthy } from "./infrastructure/readiness-runtime.ts";
 import { acquirePermanentOutboxWorkerGuard } from "./infrastructure/permanent-worker-guard.ts";
 import { assertOutboxWorkerHeartbeatHealthy } from "./infrastructure/readiness-runtime.ts";
 import { getPrismaPool } from "../../platform/database/prisma/client.ts";
@@ -321,8 +323,8 @@ export async function runOutboxWorker(
   }
 }
 
-export function acquireOutboxWorkerGuard() {
-  return acquirePermanentOutboxWorkerGuard(getPrismaPool());
+export function acquireOutboxWorkerGuard(onConnectionLost?: () => void) {
+  return acquirePermanentOutboxWorkerGuard(getPrismaPool(), onConnectionLost);
 }
 
 export function checkOutboxWorkerHealth() {

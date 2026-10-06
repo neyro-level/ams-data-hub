@@ -4,6 +4,8 @@ import {
   drainOutbox,
   runOutboxWorker,
   runReliabilityRetention,
+  assertSourceWorkerHealthy,
+  assertSourceWorkerId,
 } from "../modules/platform-operations/worker.ts";
 import { getLogger } from "../platform/observability/logger.ts";
 import { runSourceWorker } from "../infrastructure/source-worker-runtime.ts";
@@ -25,6 +27,11 @@ async function main() {
     return;
   }
 
+  if (command === "source-healthcheck") {
+    await assertSourceWorkerHealthy(argument ?? process.env.OUTBOX_WORKER_ID ?? "");
+    return;
+  }
+
   if (command === "outbox-drain") {
     const result = await drainOutbox({ workerId: argument ?? "ams-data-hub-worker" });
     logger.info({ event: "outbox_drain_finished", ...result }, "outbox drain finished");
@@ -35,18 +42,23 @@ async function main() {
   }
 
   if (command === "outbox-worker" || command === "source-worker") {
+    const workerId = argument ?? process.env.OUTBOX_WORKER_ID ?? (command === "source-worker" ? "" : `ams-data-hub-worker-${process.pid}`);
+    if (command === "source-worker") assertSourceWorkerId(workerId);
     const shutdownDrainTimeoutMs = Number(process.env.OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS ?? 30_000);
     const result = await runWorkerProcessLifecycle({ signals: process, shutdownTimeoutMs: shutdownDrainTimeoutMs,
       close: closePrismaContext,
       onTimeout: () => { logger.error({ code: "WORKER_SHUTDOWN_TIMEOUT" }, "worker shutdown deadline exceeded"); process.exit(1); },
-      run: async (signal) => {
+      run: async (signal, requestShutdown) => {
         let releaseWorkerGuard: (() => Promise<void>) | undefined;
         try {
-          releaseWorkerGuard = await acquireOutboxWorkerGuard();
+          releaseWorkerGuard = await acquireOutboxWorkerGuard(command === "source-worker" ? () => {
+            logger.error({ code: "WORKER_GUARD_LOST" }, "permanent worker guard connection lost"); process.exit(1);
+          } : undefined);
           return await (command === "source-worker" ? runSourceWorker : runOutboxWorker)({
-            workerId: argument ?? process.env.OUTBOX_WORKER_ID ?? `ams-data-hub-worker-${process.pid}`,
+            workerId,
             pollIntervalMs: Number(process.env.OUTBOX_POLL_DELAY_MS ?? 1_000),
             shutdownDrainTimeoutMs,
+            onConsumerStopped: requestShutdown,
             signal,
           });
         } finally { await releaseWorkerGuard?.(); }
@@ -67,7 +79,7 @@ async function main() {
 
   if (command !== "maintenance-smoke") {
     throw new Error(
-      "Usage: worker module-smoke | healthcheck | maintenance-smoke | outbox-worker [worker-id] | source-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
+      "Usage: worker module-smoke | healthcheck | source-healthcheck [worker-id] | maintenance-smoke | outbox-worker [worker-id] | source-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
     );
   }
   logger.info({ event: "worker_maintenance_smoke_ok" }, "maintenance smoke passed");

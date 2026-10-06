@@ -60,6 +60,19 @@ PENDING → PROCESSING → PROCESSED
 
 ## Implementation And Evidence Map
 
+The opt-in combined Source command publishes a separate exact-owner
+`source-worker` heartbeat only after reconciliation and an existing pg-boss
+connection/Source queue probe. Independent serial renewal continues during
+long jobs. Probe errors/timeouts revoke qualification; no overlapping probe or
+late publication is allowed. Readers use DB time and a 120-second TTL, reject
+future/stale observations and never substitute another owner. Controlled stop
+awaits in-flight publication before removing the exact row. The CLI owns the
+permanent process guard and fatal cleanup deadline, including consumer failure
+without a signal. Abrupt death can leave the prior observation until TTL;
+qualified readiness is not a live connection assertion. Existing outbox mode
+and deployment choice remain unchanged. Executable procedures and synthetic
+process-proof limits are recorded in `OPERATIONS.md`.
+
 | E05 guarantee | Target implementation | Required evidence |
 | --- | --- | --- |
 | Atomic enqueue | E04 command writes outbox/idempotency/audit via one transaction | PostgreSQL rollback test: enqueue failure and business failure leave no partial rows |

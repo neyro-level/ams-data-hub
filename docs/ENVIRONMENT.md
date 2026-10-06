@@ -14,7 +14,7 @@ Use `.env.example` as the value-free project template.
 | `BETTER_AUTH_SECRET` | server | secret, production-only value |
 | `BETTER_AUTH_URL` | server/public origin | exact app URL |
 | `RELEASE_SHA` | all production runtimes | exact deployed commit; required in production |
-| `OUTBOX_WORKER_ID` | production worker | stable identity of the single permanent worker |
+| `OUTBOX_WORKER_ID` | production worker / explicit source-worker | stable identity of the single permanent worker; Source CLI/healthcheck require this identity or the same explicit worker-id argument, never a probe PID |
 | `PGBOSS_SCHEMA` | worker/migrator | explicit queue schema |
 | `PGBOSS_RUNTIME_ROLE` | migrator | role receiving pg-boss runtime privileges |
 
@@ -136,8 +136,23 @@ The worker-only Compose template now has a 640 MiB private tmpfs for the bounded
 512 MiB aggregate raw-spool reservation plus overhead, a pinned 30-second
 process shutdown deadline and 60-second stop grace.
 Web/migrator remain at 64 MiB and the default command remains outbox-worker.
-This is repository preparation, not a deployed capacity or Linux signal proof;
-source readiness remains MP04.7.
+This is repository preparation, not a deployed capacity or Linux signal proof.
+
+Source readiness uses a separate `source-worker` RuntimeHeartbeat with exact
+worker identity and PostgreSQL time. A serial 30-second pump publishes only
+after startup reconciliation and a successful probe of the existing pg-boss
+connection/Source queue, independently of a long import. The probe has a
+five-second qualification timeout: failure revokes readiness, a late result
+cannot publish, and no replacement probe overlaps an unsettled original.
+Readiness confirms pg-boss/consumer observations within the 120-second heartbeat
+TTL, not a new live connection opened by a health reader. Future/stale clocks
+are nonhealthy; another owner never masks an absent row. Stop/consumer failure
+await in-flight publication and clear the exact row. The process watchdog also
+starts on consumer settlement, bounding a stuck probe cleanup without an OS
+signal. Permanent guardian loss is fatal with WORKER_GUARD_LOST; abrupt death
+can leave a qualified row until TTL and an orphan spool. `source-healthcheck`
+only reads this qualified row. Existing outbox health/default deployment remain
+unchanged; no new schema, grants, credentials or live activation are introduced.
 
 ## PostgreSQL Evidence Transition
 

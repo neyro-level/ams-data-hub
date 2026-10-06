@@ -33,7 +33,7 @@ These fixtures use explicit persisted synthetic safety policies and mocked
 HTTP/SDK transport; they do not recalibrate live profiles or prove provider
 compatibility. The combined `source-worker` command now owns native pg-boss
 source consumption and startup/between-job schedule reconciliation. Production
-activation and the remaining worker health/delivery gates are pending. No production
+activation and the remaining exact-head delivery gate are pending. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
@@ -95,6 +95,23 @@ registered SIGTERM handler through test IPC; it does not prove an OS Unix signal
 The Linux exact-head delivery gate must run the same regression with OS SIGTERM.
 Fatal termination does not guarantee spool cleanup or immediate lease recovery.
 
+For an explicitly selected Source command, use the same stable configured
+`OUTBOX_WORKER_ID` (or the same explicit argument) for `source-worker` and
+`source-healthcheck`. The latter is a read-only qualified heartbeat probe:
+pg-boss connected and Source consumer active mean successfully observed within
+the 120-second TTL. Startup/reconciliation, queue failures, stale/future clocks
+and another owner's heartbeat cannot fabricate readiness. A serial 30-second
+pump keeps the observation current through long imports, revokes failed probes
+and awaits in-flight writes before exact-row cleanup. A five-second probe timeout
+never starts another probe until its original settles. Consumer settlement
+starts the CLI watchdog even without SIGTERM. Original permanent guardian loss
+is process-fatal; after abrupt death a row can remain qualified until TTL.
+No Source production healthcheck or deployment mode is silently selected.
+The reusable `runSourceWorker()` API does not acquire the permanent process
+guard itself: actual CLI `main` owns that guard and watchdog. Embedded callers
+must provide their own process ownership/lifecycle; direct invocation is not a
+single-permanent-runtime or process-fatal-deadline guarantee.
+
 ### Development commands
 
 Canonical mode is Windows-native checkout plus native PostgreSQL 18.
@@ -122,7 +139,8 @@ The production default permanent worker is still an outbox worker, not proof of
 production source ingestion. SourceExecutionService is implemented by MP-03;
 explicit local combined worker/scheduler/manual composition is implemented
 within MP-04. Concurrency and controlled shutdown have local runtime evidence;
-health and exact-head delivery gates remain open. Real snapshot
+Source health now has its explicit command and exact-owner qualification;
+exact-head delivery remains open. Real snapshot
 assembly is MP-05, and operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate

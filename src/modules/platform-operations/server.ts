@@ -7,4 +7,4 @@ export {
   requestMaintenance,
   unfreezeMutatingJobs,
 } from "./infrastructure/platform-admin-runtime.ts";
-export { getOperationalReadiness } from "./infrastructure/readiness-runtime.ts";
+export { getOperationalReadiness, getSourceWorkerReadiness } from "./infrastructure/readiness-runtime.ts";

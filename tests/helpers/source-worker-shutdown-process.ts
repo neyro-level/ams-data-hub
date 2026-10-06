@@ -64,5 +64,6 @@ S3Client.prototype.send = (async (command: unknown, options?: { abortSignal?: Ab
   }
   return { ETag: "synthetic-shutdown" };
 }) as typeof S3Client.prototype.send;
-process.argv = [process.execPath, "src/worker/main.ts", "source-worker"];
+process.argv = [process.execPath, "src/worker/main.ts", mode === "healthcheck" ? "source-healthcheck" : "source-worker"];
 await import("../../src/worker/main.ts");
+if (mode === "healthcheck" && process.connected) process.disconnect();
