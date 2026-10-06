@@ -113,6 +113,7 @@ export const inventoryMediaProjectionInputSchema = z.object({
   sourceId: z.string().min(1).max(128),
   sourceRevisionId: z.string().min(1).max(128),
   inventoryUid: z.string().min(1).max(26),
+  expectedRecordHash: z.string().regex(/^[a-f0-9]{64}$/u),
 }).strict();
 export type InventoryMediaProjectionInput = z.output<typeof inventoryMediaProjectionInputSchema>;
 export interface InventoryMediaProjectionResult {

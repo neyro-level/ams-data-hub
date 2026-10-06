@@ -5,7 +5,9 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => ({
   ...await original<typeof import("../../src/platform/http/safe-outbound.ts")>(),
   safeOutboundStream: gateway.feed, safeOutboundBuffered: gateway.media,
 }));
-import { createSourceExecutionServer, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { createSourceExecutionServer, createInventoryPublicProjectionServer, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { serializePublicDto } from "@ams-data-hub/data-contracts";
+import { syntheticCanonicalInventory } from "../fixtures/canonical-inventory.ts";
 import { createMediaAssetsServer } from "../../src/modules/media-assets/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import type { PlatformAdminPrincipal, PrincipalContext } from "../../src/platform/authorization/principal.ts";
@@ -71,12 +73,12 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
         observedAt: new Date().toISOString(), items: urls.map((sourceUrl, position) => ({ sourceUrl, position, entityType: "INVENTORY",
           entityUid: first.identity.uid, kind: "LISTING_IMAGE" as const, rightsBasis: "LICENSED" as const, license: "synthetic" })) });
       await mirror(first.source.lastGoodRevisionId!, [a, b]);
-      const input = { ...target, sourceRevisionId: first.source.lastGoodRevisionId!, inventoryUid: first.identity.uid };
+      const input = { ...target, sourceRevisionId: first.source.lastGoodRevisionId!, inventoryUid: first.identity.uid, expectedRecordHash: first.identity.normalizedHash };
       expect((await media.projectInventoryMedia(job, input)).media).toHaveLength(2);
       provide([a]); expect(await runtime.run(target)).toMatchObject({ state: "GOOD" }); const second = await read();
       gateway.media.mockRejectedValue(new Error("PRODUCER_OFF"));
       expect(await mirror(second.source.lastGoodRevisionId!, [a])).toMatchObject({ mediaStatus: "WARNING" });
-      const currentInput = { ...input, sourceRevisionId: second.source.lastGoodRevisionId! };
+      const currentInput = { ...input, sourceRevisionId: second.source.lastGoodRevisionId!, expectedRecordHash: second.identity.normalizedHash };
       // Malicious/stale relation claims the new revision without persisted membership.
       await runInPrincipalDatabaseTransaction(admin, (tx) => tx.mediaSource.updateMany({
         where: { ...target, canonicalSourceUrl: b }, data: { sourceRevisionId: currentInput.sourceRevisionId } }));
@@ -95,6 +97,15 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
       expect(projected.warnings).toEqual(["MEDIA_MIRROR_WARNING"]);
       expect(JSON.stringify(projected)).not.toMatch(/https:|sourceUrl|storageKey|originalFileName/u);
       expect(gateway.media).toHaveBeenCalledTimes(outboundCount); expect(workerTransactions).toBe(2);
+      const canonical = syntheticCanonicalInventory({ ...target, uid: second.identity.uid, normalizedHash: second.identity.normalizedHash,
+        sourceHash: second.identity.sourceHash, media: [{ sourceUrl: a, position: 0 }] });
+      const publicProjection = await createInventoryPublicProjectionServer(storage)(job, { entity: canonical, sourceRevisionId: currentInput.sourceRevisionId });
+      expect(JSON.parse(serializePublicDto(publicProjection.inventory)).media).toEqual(projected.media);
+      expect(publicProjection.warnings).toEqual(["MEDIA_MIRROR_WARNING"]);
+      storage.head.mockClear();
+      await expect(workerMedia.projectInventoryMedia(job, { ...currentInput, expectedRecordHash: first.identity.normalizedHash }))
+        .rejects.toThrow("MEDIA_PROJECTION_REVISION_NOT_FOUND");
+      expect(storage.head).not.toHaveBeenCalled();
       await expect(workerMedia.projectInventoryMedia(job, input)).rejects.toThrow("MEDIA_PROJECTION_REVISION_NOT_FOUND");
       const reader = createProjectJobPrincipal({ ...scope, jobName: "media-projection" });
       await database.runInPrincipalDatabaseTransaction(reader, async (tx) => {

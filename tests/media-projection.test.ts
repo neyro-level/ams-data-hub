@@ -4,7 +4,7 @@ import type { InventoryMediaProjectionState } from "../src/modules/media-assets/
 import type { PrincipalContext } from "../src/platform/authorization/principal.ts";
 import type { DatabaseTransaction } from "../src/platform/database/transaction.ts";
 
-const input = { organizationId: "org", projectId: "project", sourceId: "source", sourceRevisionId: "revision", inventoryUid: "uid" };
+const input = { organizationId: "org", projectId: "project", sourceId: "source", sourceRevisionId: "revision", inventoryUid: "uid", expectedRecordHash: "a".repeat(64) };
 const principal: PrincipalContext = { kind: "project-job", organizationId: "org", projectId: "project", jobName: "snapshot", correlationId: "synthetic" };
 const digest = "a".repeat(64);
 function fixture(): InventoryMediaProjectionState {

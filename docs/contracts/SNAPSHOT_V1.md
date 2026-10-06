@@ -36,6 +36,7 @@ ADR-015. The server-owned `media-assets.projectInventoryMedia` query resolves
 inventory image references from the scoped immutable GOOD record and its
 `draft.imageUrls`, not from caller-provided URLs. It requires the pinned current
 LastGood revision, matching MediaSource revision/entity/position membership,
+and an `expectedRecordHash` pin matching the canonical inventory normalized hash,
 same-scope MediaAsset, valid rights and verified immutable storage HEAD. HEAD
 is outside database transactions; a second database read rejects a revision
 or relation change during IO. Public output contains only digest references
@@ -47,3 +48,14 @@ own fresh consent-gated projection. Forward migration
 the server-owned `media-projection` database purpose; import writes and FORCE
 RLS are unchanged. Historical fact revisions for missing-grace
 inventory and full snapshot build/delivery composition remain MP-05 work.
+
+`ingestion-core.createInventoryPublicProjectionServer(storage)` composes the
+scoped media query with the existing public inventory mapper. It accepts only
+server-owned persisted canonical facts and a server-selected revision. The
+hash pin binds their version; it does not authenticate arbitrary request JSON.
+Scope and UID come from the validated entity, not separate caller overrides.
+Public media order is position then ref; identical `(position, ref)` relations
+are deduplicated, but one asset at different positions is retained. Conflicting
+assets or metadata at one position are omitted with `MEDIA_RELATION_AMBIGUOUS`.
+Positions are never renumbered after an omission. No path copies source URLs
+from the internal entity into the public DTO.

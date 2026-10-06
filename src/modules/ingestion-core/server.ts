@@ -1,5 +1,6 @@
 import "server-only";
 export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
+export { createInventoryPublicProjectionServer } from "./infrastructure/inventory-public-projection-server.ts";
 
 import { createUlid } from "@ams-data-hub/data-contracts";
 import { createInventoryIdentityCommands } from "./application/inventory-identity-commands.ts";

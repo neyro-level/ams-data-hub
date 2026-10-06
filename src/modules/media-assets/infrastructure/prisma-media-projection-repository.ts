@@ -14,7 +14,7 @@ export class PrismaMediaProjectionRepository implements MediaProjectionRepositor
     });
     if (!source) return null;
     const records = await this.transaction.sourceRevisionRecord.findMany({
-      where: { ...scope, revisionId: input.sourceRevisionId, inventoryUid: input.inventoryUid,
+      where: { ...scope, revisionId: input.sourceRevisionId, inventoryUid: input.inventoryUid, recordHash: input.expectedRecordHash,
         revision: { status: "GOOD" } }, take: 2, select: { payload: true },
     });
     if (records.length !== 1) return null;
