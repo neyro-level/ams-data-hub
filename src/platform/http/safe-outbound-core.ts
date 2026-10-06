@@ -44,6 +44,16 @@ export interface SafeOutboundResult {
   finalUrl: URL;
 }
 
+export interface SafeOutboundStreamResult {
+  status: number;
+  contentType: string;
+  contentLength: number | null;
+  body: AsyncIterable<Uint8Array>;
+  finalUrl: URL;
+  /** Required when abandoning a response without consuming its body. */
+  close(): void;
+}
+
 export type SafeOutboundErrorCode =
   | "INVALID_URL"
   | "PROTOCOL_DENIED"
@@ -53,6 +63,7 @@ export type SafeOutboundErrorCode =
   | "TOO_MANY_REDIRECTS"
   | "TIMEOUT"
   | "RESPONSE_TOO_LARGE"
+  | "RESPONSE_TRUNCATED"
   | "CONTENT_TYPE_DENIED"
   | "HTTP_STATUS_DENIED";
 
@@ -71,6 +82,7 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const DEFAULT_MAX_REDIRECTS = 3;
 const MAX_TIMEOUT_MS = 60_000;
 const MAX_RESPONSE_BYTES = 50 * 1024 * 1024;
+const MAX_STREAM_BYTES = 256 * 1024 * 1024;
 
 const blockedAddresses = new BlockList();
 for (const [network, prefix] of [
@@ -212,21 +224,33 @@ function parseUrl(input: string | URL): URL {
   }
 }
 
-export async function executeSafeOutbound(
+async function openSafeOutbound(
   input: string | URL,
   policy: SafeOutboundPolicy,
   dependencies: SafeOutboundDependencies,
-): Promise<SafeOutboundResult> {
+  maximumBytes: number,
+): Promise<SafeOutboundStreamResult> {
   if (policy.allowedContentTypes.length === 0) {
     throw new SafeOutboundError("CONTENT_TYPE_DENIED", "At least one outbound content type is required");
   }
 
   const timeoutMs = boundedInteger(policy.timeoutMs, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, "timeoutMs");
-  const maxBytes = boundedInteger(policy.maxBytes, DEFAULT_MAX_BYTES, MAX_RESPONSE_BYTES, "maxBytes");
+  const maxBytes = boundedInteger(policy.maxBytes, DEFAULT_MAX_BYTES, maximumBytes, "maxBytes");
   const maxRedirects = boundedInteger((policy.maxRedirects ?? DEFAULT_MAX_REDIRECTS) + 1, DEFAULT_MAX_REDIRECTS + 1, 11, "maxRedirects") - 1;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: SafeOutboundTransportResponse | undefined;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    clearTimeout(timeout);
+    controller.abort();
+    controller.signal.removeEventListener("abort", abortResponse);
+  };
+  // Enforce the deadline even if a consumer pauses or never starts reading.
+  const abortResponse = () => response?.abort();
+  controller.signal.addEventListener("abort", abortResponse, { once: true });
 
   try {
     let currentUrl = parseUrl(input);
@@ -266,33 +290,84 @@ export async function executeSafeOutbound(
       }
 
       const contentLength = response.headers["content-length"];
-      if (contentLength && (!/^\d+$/.test(contentLength) || Number(contentLength) > maxBytes)) {
+      if (contentLength !== undefined && (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(Number(contentLength)) || Number(contentLength) > maxBytes)) {
         throw new SafeOutboundError("RESPONSE_TOO_LARGE", "Outbound response exceeds the byte limit");
       }
-
-      const chunks: Uint8Array[] = [];
-      let receivedBytes = 0;
-      const iterator = response.body[Symbol.asyncIterator]();
-      while (true) {
-        const next = await raceAbort(iterator.next(), controller.signal);
-        if (next.done) break;
-        receivedBytes += next.value.byteLength;
-        if (receivedBytes > maxBytes) {
-          throw new SafeOutboundError("RESPONSE_TOO_LARGE", "Outbound response exceeds the byte limit");
-        }
-        chunks.push(next.value);
-      }
-
-      const body = new Uint8Array(receivedBytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        body.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return { status: response.status, contentType, body, finalUrl: currentUrl };
+      const expectedBytes = contentLength === undefined ? null : Number(contentLength);
+      const transport = response;
+      let consumed = false;
+      const body: AsyncIterable<Uint8Array> = {
+        [Symbol.asyncIterator]: async function* () {
+          if (consumed) throw new SafeOutboundError("INVALID_URL", "Outbound body is single-use");
+          consumed = true;
+          const iterator = transport.body[Symbol.asyncIterator]();
+          let receivedBytes = 0;
+          try {
+            while (true) {
+              if (controller.signal.aborted) {
+                throw new SafeOutboundError("TIMEOUT", "Outbound request timed out or was closed");
+              }
+              const next = await raceAbort(iterator.next(), controller.signal);
+              if (next.done) break;
+              receivedBytes += next.value.byteLength;
+              if (receivedBytes > maxBytes) {
+                throw new SafeOutboundError("RESPONSE_TOO_LARGE", "Outbound response exceeds the byte limit");
+              }
+              yield next.value;
+            }
+            if (expectedBytes !== null && receivedBytes !== expectedBytes) {
+              throw new SafeOutboundError("RESPONSE_TRUNCATED", "Outbound body length differs from its declaration");
+            }
+          } finally {
+            close();
+            controller.signal.removeEventListener("abort", abortResponse);
+            // Do not let a stalled upstream iterator hold cancellation open.
+            void iterator.return?.().catch(() => undefined);
+          }
+        },
+      };
+      return { status: transport.status, contentType, contentLength: expectedBytes, body, finalUrl: currentUrl, close };
     }
+  } catch (error) {
+    close();
+    controller.signal.removeEventListener("abort", abortResponse);
+    throw error;
+  }
+}
+
+export function executeSafeOutboundStream(
+  input: string | URL,
+  policy: SafeOutboundPolicy,
+  dependencies: SafeOutboundDependencies,
+): Promise<SafeOutboundStreamResult> {
+  if (policy.purpose !== "feed") {
+    return Promise.reject(new SafeOutboundError("PROTOCOL_DENIED", "Streaming intake is reserved for feed policies"));
+  }
+  return openSafeOutbound(input, policy, dependencies, MAX_STREAM_BYTES);
+}
+
+/** Bounded small-file compatibility API; never use it for large feed ingestion. */
+export async function executeSafeOutbound(
+  input: string | URL,
+  policy: SafeOutboundPolicy,
+  dependencies: SafeOutboundDependencies,
+): Promise<SafeOutboundResult> {
+  const stream = await openSafeOutbound(input, policy, dependencies, MAX_RESPONSE_BYTES);
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  try {
+    for await (const chunk of stream.body) {
+      chunks.push(chunk);
+      receivedBytes += chunk.byteLength;
+    }
+    const body = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { status: stream.status, contentType: stream.contentType, body, finalUrl: stream.finalUrl };
   } finally {
-    clearTimeout(timeout);
-    response?.abort();
+    stream.close();
   }
 }

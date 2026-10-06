@@ -8,15 +8,17 @@ import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 
 import {
   executeSafeOutbound,
+  executeSafeOutboundStream,
   SafeOutboundError,
   type SafeOutboundDependencies,
   type SafeOutboundPolicy,
   type SafeOutboundResult,
+  type SafeOutboundStreamResult,
   type SafeOutboundTransportResponse,
 } from "./safe-outbound-core";
 
 export { SafeOutboundError } from "./safe-outbound-core";
-export type { SafeOutboundPolicy, SafeOutboundResult } from "./safe-outbound-core";
+export type { SafeOutboundPolicy, SafeOutboundResult, SafeOutboundStreamResult } from "./safe-outbound-core";
 
 function firstHeader(headers: IncomingHttpHeaders, name: string): string | undefined {
   const value = headers[name];
@@ -81,9 +83,19 @@ const dependencies: SafeOutboundDependencies = {
  * validated twice and the connection is pinned to the second safe address so
  * a later resolver lookup cannot redirect the socket to a private network.
  */
-export function safeOutboundRequest(
+export function safeOutboundBuffered(
   input: string | URL,
   policy: SafeOutboundPolicy,
 ): Promise<SafeOutboundResult> {
   return executeSafeOutbound(input, policy, dependencies);
 }
+
+export function safeOutboundStream(
+  input: string | URL,
+  policy: SafeOutboundPolicy,
+): Promise<SafeOutboundStreamResult> {
+  return executeSafeOutboundStream(input, policy, dependencies);
+}
+
+/** @deprecated Use explicit buffered or streaming mode. */
+export const safeOutboundRequest = safeOutboundBuffered;
