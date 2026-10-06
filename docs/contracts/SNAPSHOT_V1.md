@@ -3,10 +3,13 @@
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
-Verification order is fail-closed: strict manifest schema; trusted non-revoked
+Verification order is fail-closed: bounded raw JSON manifest shape; strict
+manifest schema; trusted non-revoked
 Ed25519 `keyId`; signature; expected `projectId` and supported `schemaMajor`;
 strictly increasing `publishSequence`; complete dataset set; exact compressed
-`bytes` and SHA-256; gzip/JSON; project-supplied Zod schemas; reference integrity.
+`bytes` for every file and SHA-256 for every verified copy; only then bounded
+gzip/JSON; project-supplied Zod schemas; reference integrity. A late invalid file
+never allows an earlier dataset to inflate or execute its caller schema.
 
 The consumer atomically applies the returned datasets only when `accepted` is
 `true`, then sends the authenticated ACK. Every rejection preserves `nextState`
@@ -29,7 +32,17 @@ Zod, and raw/validated counts must match the signed manifest. Invalid UTF-8 is
 rejected, never decoded with replacement characters. Schema/reference exceptions
 return fixed rejection codes and retain exact last-good. The byte/count budgets
 bound artifact work, not arbitrary allocations by trusted policy callbacks or
-prior downloading. Full all-file preflight remains MP-07.3 work.
+prior downloading. The raw manifest is capped at thirteen file entries and
+10,000 source revision identifiers before Zod/canonicalization; raw identifier
+strings are at most 1,024 characters (the signed schema still trims and caps
+identifiers at 240). Scalar/key/date/signature lengths and safe integers are
+checked before schema cloning. Oversized/malformed shape returns
+`MANIFEST_INVALID`; resource policy failures return `SNAPSHOT_LIMIT_EXCEEDED`.
+Referenced bodies must be own Uint8Array properties. Bounded private compressed
+copies bind hashes to later use, including mutable/shared input buffers. Reused
+file keys are permitted for compatible consumers, but charged/decoded per kind;
+extra unreferenced files are ignored. Inputs are parsed JSON and trusted byte
+containers/policy, not a sandbox for arbitrary getters, proxies or callbacks.
 
 `descriptionHtmlSafe` is the only HTML-bearing public inventory field. Ingestion
 sanitizes raw descriptions with `p`, `br`, `ul`, `ol`, `li`, `strong`, `em` and no

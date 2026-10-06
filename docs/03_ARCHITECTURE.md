@@ -128,8 +128,10 @@ remediation program preserves these boundaries while connecting them:
   overrides. Native gunzip has a finite output bound constrained by remaining
   compressed/decoded budget, including concatenated members. Fatal UTF-8,
   raw-before-Zod cardinality and fixed callback-error rejections retain last-good.
-  Full all-file preflight and complete adversarial coverage remain the next
-  MP-07 checkpoints; artifact budgets are not arbitrary callback/RSS limits.
+  Raw manifest shape bounds precede schema/crypto allocations; complete trust,
+  scope, sequence, set, lengths and all-copy hashes precede any decompression.
+  Private bounded copies prevent hash-to-use mutation. Complete adversarial
+  coverage/review remains MP-07.4; artifact budgets are not callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

@@ -1,10 +1,13 @@
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { gunzipSync } from "node:zlib";
+import { isUint8Array } from "node:util/types";
 import { z } from "zod";
 import { resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
+import { isResourceBoundedManifest } from "./manifest-preflight.ts";
 
 export { DEFAULT_SNAPSHOT_VERIFIER_LIMITS, MAX_SNAPSHOT_VERIFIER_LIMITS, resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
+export { MAX_SNAPSHOT_SOURCE_REVISIONS } from "./manifest-preflight.ts";
 
 export const SNAPSHOT_DATASET_KINDS = [
   "geo", "developers", "developments", "buildings", "prices", "media", "inventory",
@@ -67,6 +70,7 @@ export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
   const limits = resolveSnapshotVerifierLimits(policy);
   return function verifySnapshot(input: VerifySnapshotInput): VerifySnapshotResult {
     const reject = (reason: SnapshotVerifierRejection): VerifySnapshotResult => ({ accepted: false, reason, nextState: input.lastGood });
+    if (!isResourceBoundedManifest(input.manifest, SNAPSHOT_DATASET_KINDS.length)) return reject("MANIFEST_INVALID");
     const parsed = snapshotManifestV1Schema.safeParse(input.manifest);
     if (!parsed.success) return reject("MANIFEST_INVALID");
     const manifest = parsed.data;
@@ -89,13 +93,27 @@ export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
       compressedBytes += file.bytes;
       if (compressedBytes > limits.maxTotalSnapshotBytes) return reject("SNAPSHOT_LIMIT_EXCEEDED");
     }
+    // Validate every referenced length before copying/hashing any artifact.
+    const referencedBodies = new Map<SnapshotDatasetKind, Uint8Array>();
+    for (const file of manifest.files) {
+      if (!Object.hasOwn(input.files, file.key)) return reject("FILE_MISSING");
+      const body = input.files[file.key];
+      if (!isUint8Array(body)) return reject("FILE_MISSING");
+      if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
+      referencedBodies.set(file.kind, body);
+    }
+    const verifiedFiles = new Map<SnapshotDatasetKind, Uint8Array>();
+    for (const file of manifest.files) {
+      // Own bounded copies prevent a callback/shared-buffer mutation after hash.
+      const body = Buffer.from(referencedBodies.get(file.kind)!);
+      if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
+      if (digest(body) !== file.sha256) return reject("FILE_HASH_MISMATCH");
+      verifiedFiles.set(file.kind, body);
+    }
     const datasets = {} as Record<SnapshotDatasetKind, readonly unknown[]>;
     let snapshotBytes = compressedBytes;
     for (const file of manifest.files) {
-      const body = input.files[file.key];
-      if (!body) return reject("FILE_MISSING");
-      if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
-      if (digest(body) !== file.sha256) return reject("FILE_HASH_MISMATCH");
+      const body = verifiedFiles.get(file.kind)!;
       let value: unknown;
       const maxOutputLength = Math.min(limits.maxDecompressedFileBytes, limits.maxTotalSnapshotBytes - snapshotBytes);
       if (maxOutputLength <= 0) return reject("SNAPSHOT_LIMIT_EXCEEDED");
