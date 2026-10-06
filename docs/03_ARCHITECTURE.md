@@ -66,6 +66,10 @@ remediation program preserves these boundaries while connecting them:
   existing SecretRef environment resolver and Safe Outbound gateway. Its response
   excludes final URL; initial/stream errors expose only fixed safe codes without
   causes. Jobs and DTOs carry scoped IDs, not resolved credentials.
+  The service resolves executable parser/normalizer bindings by exact registered
+  adapter/profile versions. Synthetic registry regressions cover YRL/Vladis,
+  Domclick, Avito v3 and CIAN v2 with real bounded parsers; this does not yet prove
+  the durable runtime composition or activate those families in production.
   Concrete persistence/intake composition and scheduled execution are pending
   MP-03.4–MP-04; service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state

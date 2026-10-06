@@ -3,7 +3,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { ProjectJobPrincipal } from "../../../platform/authorization/principal.ts";
 import { defineSecretRef, type SecretRef } from "../../../platform/security/secret-ref.ts";
-import { adapterProfileRegistry, type AdapterProfileRegistry, type SourceAdapterDescriptor, type SourceProfileDescriptor } from "../domain/adapter-profile-registry.ts";
+import { type SourceAdapterDescriptor, type SourceProfileDescriptor } from "../domain/adapter-profile-registry.ts";
+import { resolveExecutableSourceAdapter } from "../domain/executable-adapter-registry.ts";
 import { BOOTSTRAP_SOURCE_SAFETY_POLICY, type SourceSafetyPolicy } from "../domain/safety-engine.ts";
 import type { StoredSource } from "./ports/source-registry-repository.ts";
 import type { SourceImportResult, SourceImportTarget } from "./import-pipeline.ts";
@@ -55,6 +56,7 @@ export interface ResolvedSourceExecution {
   endpointReference: SecretRef;
   adapter: SourceAdapterDescriptor;
   profile: SourceProfileDescriptor;
+  executableAdapter: ReturnType<typeof resolveExecutableSourceAdapter>;
   safetyPolicy: SourceSafetyPolicy;
   lastGood: SourceExecutionState["lastGood"];
 }
@@ -65,7 +67,6 @@ export class SourceExecutionService {
   constructor(private readonly dependencies: {
     load(principal: ProjectJobPrincipal, sourceId: string): Promise<SourceExecutionState | null>;
     run(context: ResolvedSourceExecution): Promise<SourceImportResult>;
-    registry?: AdapterProfileRegistry;
   }) {}
 
   async run(target: SourceImportTarget): Promise<SourceImportResult> {
@@ -86,7 +87,8 @@ export class SourceExecutionService {
       }
       if (!source.enabled) throw new Error("SOURCE_EXECUTION_DISABLED");
       if (state.serviceState !== "ACTIVE") throw new Error("SOURCE_EXECUTION_PROJECT_BLOCKED");
-      const { adapter, profile } = (this.dependencies.registry ?? adapterProfileRegistry).assertCompatible(source);
+      const executableAdapter = resolveExecutableSourceAdapter(source);
+      const { adapter, profile } = executableAdapter;
       if (source.safetyPolicyId !== null && state.safetyPolicy === null) throw new Error("SOURCE_EXECUTION_POLICY_MISSING");
       if (source.lastGoodRevisionId !== (state.lastGood?.revisionId ?? null)) throw new Error("SOURCE_EXECUTION_LAST_GOOD_MISSING");
       if (state.lastGood && (!Number.isInteger(state.lastGood.recordCount) || state.lastGood.recordCount < 0)) {
@@ -94,7 +96,7 @@ export class SourceExecutionService {
       }
       const safetyPolicy = state.safetyPolicy ?? profile.configuration?.safetyPolicy ?? BOOTSTRAP_SOURCE_SAFETY_POLICY;
       const endpointReference = defineSecretRef(source.endpointCredentialRefName);
-      return safeResult(await this.dependencies.run({ target: { ...target }, principal, source, endpointReference, adapter, profile, safetyPolicy, lastGood: state.lastGood }), target.sourceId);
+      return safeResult(await this.dependencies.run({ target: { ...target }, principal, source, endpointReference, adapter, profile, executableAdapter, safetyPolicy, lastGood: state.lastGood }), target.sourceId);
     } catch (error) {
       // No cause, stack, URL, ref name or arbitrary repository error enters a job result.
       const code = error instanceof Error && SAFE_FAILURE_CODES.has(error.message)
