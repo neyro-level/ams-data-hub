@@ -11,6 +11,40 @@
 **Pilot evidence date:** 2026-10-02  
 **Pilot feed:** Vladis/Vt24 advert-feed for Bastion  
 **SemVer rationale:** PATCH — architecture unchanged; Bastion pilot release gaps, lifecycle grace, delivery key management and document consistency corrected.  
+
+## Owner amendment — 2026-10-06 / MP-00.1
+
+Current release policy: **2FA/TOTP = NOT IMPLEMENTED / NOT REQUIRED**.
+OQ-09 is **DEFERRED**. Revisit only post-pilot by an explicit owner decision.
+This is the approved target policy, not a claim that legacy TOTP code has
+already been removed: runtime cleanup and auth regression proof belong to
+MP-01 of `AMS-DATA-HUB-REMEDIATION-2026-10`. Password/session security,
+server-side authorization, disabled-user denial, rate limits and RLS remain
+mandatory. 2FA is not a permanent requirement of this architecture.
+
+## Owner amendment — 2026-10-06 / MP-00.2
+
+Allowed production adapter/profile families: **YRL / Vladis, Domclick XML,
+Avito v3 and CIAN v2**. Producer-specific behavior belongs to `SourceProfile`;
+format-specific behavior belongs to `SourceAdapter`. Project-specific `if/else`
+inside parser core is forbidden. Domclick's currently supported YRL-compatible
+format reuses the YRL adapter with a distinct producer profile.
+This approves the families, not production activation: exact registry versions,
+calibration, safety policy and runtime composition must be verified before
+enablement. Current implementations and bounded exceptions are recorded in
+`sources/MARKETPLACE_XML_FORMATS_V1.md`; MP-02–MP-04 connect the runtime.
+
+## Owner amendment — 2026-10-06 / MP-00.3
+
+Newbuilding Import Foundation is an allowed Hub capability:
+`input → staging → dry-run → reviewed plan hash → explicit manual apply → audit/revision`.
+Reuse `shared-catalog` and its authorized, transaction-bound preview/apply
+boundary. Source/project binding, stale-plan rejection, provenance, rights and
+append-only price evidence remain mandatory. There is no automatic scheduler,
+uncontrolled ingestion or source-media publication fallback in this capability.
+`DATA_MODEL.md` records the implemented foundation. Final snapshot integration
+and end-to-end proof remain MP-05/MP-09 work, not completed by this approval.
+
 ---
 
 # 0. EXECUTIVE DECISION
@@ -6221,7 +6255,7 @@ Document quality:
 | OQ-06 | Whether a future producer field provides reliable explicit employee-departure signal. | Data architecture | Before enabling any automatic departure rule | OPEN; no auto-DEPARTED meanwhile |
 | OQ-07 | Whether a future project needs Hub-managed long-form Development editorial; default remains Lite repository. | Project architect | On first real trigger | OPEN / trigger-based |
 | OQ-08 | Exact lead-form retention period and legal basis per client/operator policy. | Client/operator + AMS legal/security | Before lead forms go live | OPEN |
-| OQ-09 | Require 2FA for Hub Admin. Pilot baseline does not add it automatically; reassess after pilot as owner decision. | AMS owner / security | Post-pilot review, before broader commercial scale | DEFERRED |
+| OQ-09 | Current release: 2FA/TOTP = NOT IMPLEMENTED / NOT REQUIRED. No mandatory TOTP for Hub Admin; legacy runtime cleanup is MP-01. | AMS owner / security | Post-pilot / explicit owner decision only | DEFERRED |
 
 Open questions do not weaken current hard invariants. A question marked OPEN cannot bypass the release gate when its `Close by` milestone has arrived. Any answer that changes contracts requires an explicit versioned decision/ADR.
 

@@ -18,6 +18,22 @@ pnpm dev:db:status
 pnpm dev:start
 ```
 
+## Active remediation execution boundary
+
+`AMS-DATA-HUB-REMEDIATION-2026-10 v1` is approved for implementation and
+non-production verification, not deployment. MP-00 reconciles canon; MP-01
+removes legacy TOTP runtime/schema/recovery branches. The target current policy
+has no factor enrollment requirement; preserve password/session security,
+rate limiting and explicit server permissions.
+
+The current permanent worker is an outbox worker, not proof of source ingestion
+or a source scheduler. SourceExecutionService and worker composition are MP-03/
+MP-04, real snapshot assembly is MP-05, and operations build/publish/rollback/
+ACK executors plus delivery routes are MP-08. An Admin request or contract test
+does not prove execution. Use synthetic local runtime fixtures until separate
+authorization for real feeds/PII/provider operations. MP-10 proof precedes any
+separately authorized exact-main release.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app

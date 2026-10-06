@@ -11,7 +11,7 @@
 
 | Contract | Required integration scenarios |
 | --- | --- |
-| E02 identity | disabled/revoked user loses access on next request; multi-membership has no implicit tenant; setup/recovery/TOTP gates deny before completion |
+| E02 identity | disabled/revoked user loses access on next request; multi-membership has no implicit tenant; setup/account recovery remain guarded; MP-01 proves authorized password-only Admin under the amended ADR-005 policy |
 | E03 isolation | missing DB context, cross-tenant read/write and cross-tenant relation are denied; `web`/`worker` cannot bypass RLS; every inventory table is covered |
 | E04 command | authorization/context precede persistence; a failed business, audit or outbox operation rolls back the complete transaction; stale result leaves no partial data |
 | E05 reliability | competing workers cannot complete one lease; same idempotency key with changed payload conflicts; retry exhaustion creates one safe dead-letter notification; shutdown leaves an explicit recoverable lease state |

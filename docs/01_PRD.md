@@ -16,14 +16,24 @@ AMS Data Hub управляет организациями и проектами
 - Пользователь организации работает только с разрешёнными проектами.
 - Независимый сайт получает signed snapshot или Exit Bundle для `DATA_MODE=local`.
 
-## Реализованная область
+## Реализованный фундамент и активная доработка
 
-Identity/session, явный tenant principal, TOTP для Platform Admin, organizations,
+Identity/session, явный tenant principal, organizations,
 memberships, projects, audit, idempotency, outbox и worker; общий каталог
 `Region → City → District` и `Developer → Development → Building`; проектные
 контакты, агенты и consent, editorial, URL lifecycle; registry источников,
-XML-профили и safety/import contracts; signed snapshots, ACK, rollback,
-media mirror, fleet operations, alerts и Exit Bundle.
+XML-профили и safety/import contracts; snapshot composer/signing/storage,
+ACK/rollback contracts, media mirror, fleet requests, alerts и Exit Bundle.
+Это реализованные границы и компоненты, не доказательство готовности полного
+operational pipeline. Реальная Source composition, worker/scheduler,
+DB-to-snapshot assembly и operations executors ещё требуют MP-02–MP-09.
+
+Owner decision 2026-10-06: текущая версия не требует 2FA/TOTP; OQ-09 DEFERRED,
+возврат к вопросу — post-pilot по явному решению владельца. Существующий
+legacy TOTP-код подлежит удалению в MP-01 с auth regression proof.
+Username/password, свежая enabled session, server authorization, rate limits
+и RLS сохраняются. Разрешены YRL/Vladis, Domclick XML, Avito v3 и CIAN v2;
+формат принадлежит SourceAdapter, producer semantics — SourceProfile.
 
 Импорт новостроек использует typed staging, provenance, price observations,
 rights-bearing media, dry-run и явное подтверждение просмотренного diff.

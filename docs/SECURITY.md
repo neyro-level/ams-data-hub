@@ -55,14 +55,18 @@ operator creates identity
 → fresh principal resolution enables access
 ```
 
-Platform Admin authority requires verified TOTP in production. Multiple active
-memberships require explicit organization selection. Temporary passwords, when
+Current-release Platform Admin authority is based on a fresh persisted session,
+enabled user and explicit system role, with server-side permission/resource
+checks. TOTP is NOT REQUIRED; OQ-09 is DEFERRED until explicit post-pilot owner
+decision. Multiple active memberships require explicit organization selection. Temporary passwords, when
 used by migration tooling, are supplied through stdin and never bypass setup.
 
 ## Authentication Transition
 
-E02 makes Platform Admin authority conditional on verified TOTP and replaces
-permanent bootstrap passwords with one-time hashed setup and recovery material.
+The current owner amendment replaces E02's previous factor policy, not password/
+session or authorization security. Legacy runtime factor checks and TOTP-specific
+recovery still await MP-01 removal; this is not a completed runtime claim.
+One-time hashed account setup/password recovery material remains protected.
 Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins are exact;
 CSRF/origin protection stays enabled. The production deployment must define
 the exact reverse-proxy IP/CIDR boundary in `BETTER_AUTH_TRUSTED_PROXY_CIDRS`
@@ -73,6 +77,17 @@ never reveal tokens, secrets or recovery material.
 
 The complete implementation/evidence contract is
 [`ADR-005`](adr/ADR-005-identity-platform-admin-hardening.md).
+
+## Remediation publication and runtime boundary
+
+The four approved XML families retain Safe Outbound, XXE protection and
+SourceProfile/SourceAdapter separation. The newbuilding capability permits only
+staging, dry-run, reviewed hash, explicit manual apply and transaction-bound
+audit/revision. No approval enables live feeds or production schedules here.
+Safe HTML remains limited to ingestion-sanitized `descriptionHtmlSafe`; raw HTML
+is forbidden. Original media URLs are provenance, not an approved public media
+fallback. MP-06 corrects the current public DTO/scanner, MP-07 bounds verifier
+decompression, and MP-09/MP-10 must prove the final composed runtime.
 
 ## Tenant Isolation Transition
 
