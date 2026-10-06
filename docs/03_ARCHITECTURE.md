@@ -52,7 +52,9 @@ remediation program preserves these boundaries while connecting them:
 - MP-02: explicit buffered media and single-use feed stream modes exist. The
   private raw spool hashes incrementally, uploads through a separately verified
   streaming storage capability and reopens bounded parser input. Source/adapter
-  intake-policy binding and the full large-feed proof remain MP-02.4/MP-02.5;
+  intake-policy binding uses the narrowest SourceSafety/adapter/hard ceiling
+  for HTTP, spool and parser. Attempt reservation is capped at four leases and
+  512 MiB total per worker process; the full large-feed proof remains MP-02.5.
   these ports alone do not prove production Source execution or provider support.
 - MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
   but the permanent worker entrypoint currently runs outbox only; concrete

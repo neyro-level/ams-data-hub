@@ -8,6 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import type { SafeOutboundStreamResult } from "../../../platform/http/safe-outbound.ts";
 import { createSourceArtifactKey, MAX_STREAMING_OBJECT_BYTES, type StreamingObjectStorage } from "../../../platform/storage/object-storage.ts";
 import type { RawArtifactReceipt } from "../application/import-pipeline.ts";
+import { reserveRawSpool } from "./raw-spool-budget.ts";
 
 /** One attempt-owned private disk lease; no path/endpoint is a persisted DTO. */
 export class StreamingRawArtifact {
@@ -19,6 +20,7 @@ export class StreamingRawArtifact {
   private receipt: RawArtifactReceipt | undefined;
   private state: "NEW" | "WRITING" | "STORED" | "FAILED" | "DISPOSED" = "NEW";
   private persistence: Promise<RawArtifactReceipt> | undefined;
+  private readonly releaseCapacity: () => void;
 
   constructor(
     private readonly response: SafeOutboundStreamResult,
@@ -29,6 +31,11 @@ export class StreamingRawArtifact {
       response.close();
       throw new Error("RAW_ARTIFACT_LIMIT_INVALID");
     }
+    if (response.contentLength !== null && response.contentLength > maxBytes) {
+      response.close();
+      throw new Error("RAW_ARTIFACT_TOO_LARGE");
+    }
+    try { this.releaseCapacity = reserveRawSpool(maxBytes); } catch (error) { response.close(); throw error; }
   }
 
   persist(): Promise<RawArtifactReceipt> {
@@ -112,7 +119,7 @@ export class StreamingRawArtifact {
       reader.destroy();
       await closed;
     }));
-    if (!this.directory) return;
+    if (!this.directory) { this.releaseCapacity(); return; }
     const directory = resolve(this.directory);
     // Delete only this mkdtemp-owned immediate child, never a caller path.
     if (dirname(directory) !== this.spoolRoot || !basename(directory).startsWith("ams-data-hub-raw-")) {
@@ -121,5 +128,6 @@ export class StreamingRawArtifact {
     await rm(directory, { recursive: true, force: true });
     this.directory = undefined;
     this.file = undefined;
+    this.releaseCapacity();
   }
 }
