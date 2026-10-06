@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectJobPrincipal } from "../src/platform/authorization/principal.ts";
+import type { DatabaseTransaction } from "../src/platform/database/transaction.ts";
 import {
   createSourceJobs,
   drainSourceJobQueue,
   PgBossSourceJobQueue,
+  PrismaSourceJobRepository,
   SOURCE_IMPORT_QUEUE,
   SOURCE_SCHEDULE_CRON,
   sourceImportJobSchema,
@@ -27,11 +29,29 @@ function context(overrides: Partial<SourceJobExecutionContext> = {}): SourceJobE
 }
 
 describe("source jobs", () => {
+  it("bounds the global scheduling query without reading tenant Project relations", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const repository = new PrismaSourceJobRepository({ source: { findMany } } as unknown as DatabaseTransaction);
+    await expect(repository.listSchedulingSources()).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 10_001, orderBy: { id: "asc" } }));
+    expect(findMany.mock.calls[0]![0].select).not.toHaveProperty("project");
+    findMany.mockResolvedValue(Array.from({ length: 10_001 }, () => ({})));
+    await expect(repository.listSchedulingSources()).rejects.toThrow("SOURCE_SCHEDULE_REGISTRY_LIMIT");
+  });
+  it("rejects duplicate or oversized schedule registries before queue mutation", async () => {
+    const boss = { createQueue: vi.fn(), schedule: vi.fn(), unschedule: vi.fn(), getSchedules: vi.fn() } as unknown as SourceScheduleBoss;
+    const queue = new PgBossSourceJobQueue(boss);
+    await expect(queue.reconcileSchedules([scheduled, scheduled])).rejects.toThrow("SOURCE_SCHEDULE_REGISTRY_INVALID");
+    await expect(queue.reconcileSchedules(Array.from({ length: 10_001 }, (_, index) => ({ ...scheduled, sourceId: `source-${index}` }))))
+      .rejects.toThrow("SOURCE_SCHEDULE_REGISTRY_INVALID");
+    expect(boss.createQueue).not.toHaveBeenCalled(); expect(boss.unschedule).not.toHaveBeenCalled();
+  });
   it("uses an exclusive pg-boss queue and a stable singleton per source", async () => {
     const boss = {
       createQueue: vi.fn().mockResolvedValue(undefined),
       schedule: vi.fn().mockResolvedValue(undefined),
       unschedule: vi.fn().mockResolvedValue(undefined),
+      getSchedules: vi.fn().mockResolvedValue([{ key: "deleted" }, { key: "source-1" }]),
     } as unknown as SourceScheduleBoss;
     const queue = new PgBossSourceJobQueue(boss);
 
@@ -53,6 +73,8 @@ describe("source jobs", () => {
     );
     expect(boss.unschedule).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, "manual");
     expect(boss.unschedule).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, "disabled");
+    expect(boss.unschedule).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, "deleted");
+    expect(boss.unschedule).not.toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, "source-1");
   });
 
   it("blocks a suspended project before import", async () => {

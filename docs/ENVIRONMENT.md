@@ -77,8 +77,18 @@ Only outbound HTTP and SDK transport are replaced; SourceExecutionServer is
 not called directly by the test. Import results are typed and only a GOOD
 result pinned to that Source may complete the job. FAILED/absent/cross-source
 results fail it with a value-free code; queue payload IDs are bounded and no
-endpoint override is accepted. This is not scheduler/manual-request/production
-proof. Scheduler/manual bridge, concurrency, controlled shutdown and source
+endpoint override is accepted. At startup and every 60 seconds between jobs,
+the same runtime reconciles persisted Source schedules with native pg-boss
+UTC five-minute ticks. Disabled, manual-only and deleted Source schedules are
+removed; every job freshly checks Source scope, enablement, cadence and Project
+service state before import. Global reconciliation reads only Source metadata,
+not tenant-private Project relations, and rejects over 10,000 Sources or native
+schedules instead of silently truncating the registry. This is not
+provider attestation: synthetic PostgreSQL proof waits for a real native cron
+tick to produce a SCHEDULED job and GOOD through the default runtime, verifies
+orphan removal, then changes the Source to manual-only and verifies unscheduling.
+HTTP and SDK transports alone are replaced. This is not
+manual-request/production proof. Manual bridge, concurrency, controlled shutdown and source
 health proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
 not intake capacity proof for the up-to-256 MiB source spool.
 

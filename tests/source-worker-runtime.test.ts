@@ -17,8 +17,8 @@ describe("source worker command composition", () => {
     const controller = new AbortController(); const fetched: string[] = [];
     const boss = { createQueue: vi.fn(), fetch: vi.fn(async (name: string) => {
       fetched.push(name); if (name === SOURCE_IMPORT_QUEUE) controller.abort(); return [];
-    }), complete: vi.fn(), fail: vi.fn() };
-    const resolveStorage = vi.fn(); const repository = { listSchedulingSources: vi.fn(), loadExecutionContext: vi.fn() };
+    }), complete: vi.fn(), fail: vi.fn(), schedule: vi.fn(), unschedule: vi.fn(), getSchedules: vi.fn(async () => []) };
+    const resolveStorage = vi.fn(); const repository = { listSchedulingSources: vi.fn(async () => []), loadExecutionContext: vi.fn() };
     const heartbeat = vi.fn(); const reliability = { claim: vi.fn(async () => null), takeOver: vi.fn(), complete: vi.fn(), fail: vi.fn() };
     expect(await runSourceWorkerWithDependencies({ workerId: "synthetic", signal: controller.signal },
       { boss, repository, resolveStorage, outbox: { boss: { ...boss, send: vi.fn() }, reliability, heartbeat } }))
@@ -26,5 +26,22 @@ describe("source worker command composition", () => {
     expect(fetched).toEqual(["outbox.dispatch", SOURCE_IMPORT_QUEUE]);
     expect(boss.createQueue).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, expect.objectContaining({ policy: "exclusive" }));
     expect(heartbeat).toHaveBeenCalled(); expect(resolveStorage).not.toHaveBeenCalled(); expect(queue.stop).not.toHaveBeenCalled();
+    expect(repository.listSchedulingSources).toHaveBeenCalledOnce();
+  });
+  it("refreshes persisted schedules during the maintenance loop", async () => {
+    const controller = new AbortController(); let clock = 100_000; let cycles = 0;
+    const time = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const boss = { createQueue: vi.fn(), schedule: vi.fn(), unschedule: vi.fn(), getSchedules: vi.fn(async () => []),
+      complete: vi.fn(), fail: vi.fn(), fetch: vi.fn(async (name: string) => {
+        if (name === SOURCE_IMPORT_QUEUE) { clock += 60_001; if (++cycles === 2) controller.abort(); }
+        return [];
+      }) };
+    const repository = { listSchedulingSources: vi.fn(async () => []), loadExecutionContext: vi.fn() };
+    const reliability = { claim: vi.fn(async () => null), takeOver: vi.fn(), complete: vi.fn(), fail: vi.fn() };
+    try {
+      await runSourceWorkerWithDependencies({ workerId: "synthetic", signal: controller.signal, pollIntervalMs: 10 },
+        { boss, repository, resolveStorage: vi.fn(), outbox: { boss: { ...boss, send: vi.fn() }, reliability, heartbeat: vi.fn() } });
+      expect(repository.listSchedulingSources).toHaveBeenCalledTimes(2);
+    } finally { time.mockRestore(); }
   });
 });

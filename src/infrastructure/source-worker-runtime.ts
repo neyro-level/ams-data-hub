@@ -4,14 +4,14 @@ import { z } from "zod";
 import type { PgBoss } from "pg-boss";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 import { createSourceExecutionServer } from "../modules/ingestion-core/server.ts";
-import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, SOURCE_IMPORT_QUEUE,
+import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, PgBossSourceJobQueue,
   type SourceJobRepository } from "../modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss, createOutboxDrainDependencies, drainOutboxWithDependencies,
   type OutboxDrainDependencies } from "../modules/platform-operations/worker.ts";
 
 export interface SourceWorkerOptions { workerId: string; signal: AbortSignal; pollIntervalMs?: number; shutdownDrainTimeoutMs?: number }
 export interface SourceWorkerDependencies {
-  boss: Pick<PgBoss, "createQueue" | "fetch" | "complete" | "fail">;
+  boss: Pick<PgBoss, "createQueue" | "fetch" | "complete" | "fail" | "schedule" | "unschedule" | "getSchedules">;
   repository: SourceJobRepository;
   resolveStorage(scope: ProjectStorageScope): ProjectObjectStorage;
   outbox: OutboxDrainDependencies;
@@ -21,17 +21,20 @@ export interface SourceWorkerDependencies {
 export async function runSourceWorkerWithDependencies(options: SourceWorkerOptions, dependencies: SourceWorkerDependencies) {
   const pollIntervalMs = z.number().int().min(10).max(60_000).parse(options.pollIntervalMs ?? 1_000);
   if (options.signal.aborted) return { fetched: 0, completed: 0, failed: 0 };
-  await dependencies.boss.createQueue(SOURCE_IMPORT_QUEUE, { policy: "exclusive", retryLimit: 3, retryDelay: 30,
-    retryBackoff: true, retryDelayMax: 900, expireInSeconds: 3_600, deleteAfterSeconds: 86_400 });
   const sourceJobs = createSourceJobs({ repository: dependencies.repository,
-    // Schedule reconciliation is owned by MP04.3, never a no-op completion path.
-    queue: { reconcileSchedules: async () => { throw new Error("SOURCE_SCHEDULE_RECONCILIATION_NOT_BOUND"); } },
+    queue: new PgBossSourceJobQueue(dependencies.boss),
     runImport: async (_principal, target) => {
       return createSourceExecutionServer(dependencies.resolveStorage({ organizationId: target.organizationId,
         projectId: target.projectId })).run(target);
     } });
   const totals = { fetched: 0, completed: 0, failed: 0 };
+  await sourceJobs.reconcileSchedules();
+  let nextReconcileAt = Date.now() + 60_000;
   while (!options.signal.aborted) {
+    if (Date.now() >= nextReconcileAt) {
+      await sourceJobs.reconcileSchedules();
+      nextReconcileAt = Date.now() + 60_000;
+    }
     const outbox = await drainOutboxWithDependencies({ workerId: options.workerId, signal: options.signal,
       ...(options.shutdownDrainTimeoutMs === undefined ? {} : { shutdownDrainTimeoutMs: options.shutdownDrainTimeoutMs }) }, dependencies.outbox);
     if (options.signal.aborted) break;

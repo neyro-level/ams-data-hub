@@ -14,7 +14,7 @@ import * as database from "../../src/platform/database/transaction.ts";
 import type { DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
 describe("native source-worker queue to persisted import", () => {
-  it("executes GOOD through the default runtime and retries FAILED without replacing Last Good", async () => {
+  it("reconciles native schedules, executes GOOD on a real cron tick and retries FAILED without replacing Last Good", async () => {
     const suffix = randomUUID().slice(0, 8);
     const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-worker-admin", correlationId: randomUUID() };
     const scope = await database.runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -27,10 +27,12 @@ describe("native source-worker queue to persisted import", () => {
     const feedRef = `SYNTHETIC_WORKER_FEED_${suffix.toUpperCase()}`;
     const source = await sourceRegistryCommands.createSource(admin, { ...scope, sourceKey: "synthetic", name: "Synthetic worker",
       endpointCredentialRef: feedRef, adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0",
-      datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+      datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "SCHEDULED", cadenceMinutes: 60 },
       safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" });
     const target = { ...scope, sourceId: source.sourceId };
     await sourceRegistryCommands.setSourceEnabled(admin, { ...target, version: source.version, enabled: true });
+    await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: target.sourceId },
+      data: { updatedAt: new Date(Date.now() - 61 * 60_000) } }));
     vi.stubEnv(feedRef, "https://synthetic.example.invalid/worker.xml");
     vi.stubEnv("PROJECT_STORAGE_BINDINGS", JSON.stringify([{ ...scope, bucketRef: "SYNTHETIC_WORKER_BUCKET", endpointRef: "SYNTHETIC_WORKER_ENDPOINT",
       regionRef: "SYNTHETIC_WORKER_REGION", accessKeyIdRef: "SYNTHETIC_WORKER_ACCESS", secretAccessKeyRef: "SYNTHETIC_WORKER_SECRET" }]));
@@ -53,6 +55,13 @@ describe("native source-worker queue to persisted import", () => {
       }
       return execute(tx);
     }));
+    const originalSystem = database.runInSystemJobDatabaseTransaction;
+    const schedulerRole = vi.spyOn(database, "runInSystemJobDatabaseTransaction").mockImplementation(async (context, execute) =>
+      originalSystem(context, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user")).toEqual([{ rolbypassrls: false }]);
+        return execute(tx);
+      }));
     try {
       const execute = async (xml: string, expected: "completed" | "retry") => {
         const bytes = new TextEncoder().encode(xml);
@@ -60,11 +69,26 @@ describe("native source-worker queue to persisted import", () => {
           finalUrl: new URL(process.env[feedRef]!), body: (async function* () { yield bytes; })(), close: vi.fn() });
         const boss = await getPgBoss();
         await boss.createQueue(SOURCE_IMPORT_QUEUE, { policy: "exclusive", retryLimit: 3, retryDelay: 30 });
-        const jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...target, trigger: "MANUAL" }, { singletonKey: target.sourceId });
-        expect(jobId).toEqual(expect.any(String));
+        let jobId: string | null = null;
+        if (expected === "completed") {
+          await boss.schedule(SOURCE_IMPORT_QUEUE, "*/5 * * * *", { schemaVersion: 1, ...target, sourceId: "deleted-synthetic", trigger: "SCHEDULED" },
+            { key: "deleted-synthetic", singletonKey: "deleted-synthetic", tz: "UTC" });
+        } else {
+          await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: target.sourceId },
+            data: { schedulePolicy: { mode: "MANUAL_ONLY" } } }));
+          jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...target, trigger: "MANUAL" }, { singletonKey: target.sourceId });
+          expect(jobId).toEqual(expect.any(String));
+        }
         const controller = new AbortController(); const complete = boss.complete.bind(boss); const fail = boss.fail.bind(boss);
+        const timeout = setTimeout(() => controller.abort(), 380_000);
         const completed = vi.spyOn(boss, "complete").mockImplementation(async (name, id, data, options) => {
-          const result = await complete(name, id, data, options); if (name === SOURCE_IMPORT_QUEUE && id === jobId) controller.abort(); return result;
+          const queued = name === SOURCE_IMPORT_QUEUE && typeof id === "string" ? await boss.getJobById(SOURCE_IMPORT_QUEUE, id) : null;
+          const result = await complete(name, id, data, options);
+          if (queued && (queued.data as { sourceId?: string }).sourceId === target.sourceId) {
+            if (expected === "completed") { expect(queued.data).toMatchObject({ ...target, trigger: "SCHEDULED" }); jobId = queued.id; }
+            controller.abort();
+          }
+          return result;
         });
         const failed = vi.spyOn(boss, "fail").mockImplementation(async (name, id, data, options) => {
           const result = await fail(name, id, data, options); if (name === SOURCE_IMPORT_QUEUE && id === jobId) controller.abort(); return result;
@@ -73,9 +97,13 @@ describe("native source-worker queue to persisted import", () => {
           const result = await runSourceWorker({ workerId: `synthetic-worker-${suffix}`, signal: controller.signal, pollIntervalMs: 10 });
           expect(result[expected === "completed" ? "completed" : "failed"]).toBeGreaterThanOrEqual(1);
           if (expected === "retry") expect(failed).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, jobId, { status: "FAILED", code: "SOURCE_IMPORT_FAILED" });
-        } finally { completed.mockRestore(); failed.mockRestore(); }
+        } finally { clearTimeout(timeout); completed.mockRestore(); failed.mockRestore(); }
         const inspect = await getPgBoss();
+        expect(jobId).toEqual(expect.any(String));
         expect((await inspect.getJobById(SOURCE_IMPORT_QUEUE, jobId!))?.state).toBe(expected);
+        const schedules = await inspect.getSchedules(SOURCE_IMPORT_QUEUE);
+        expect(schedules.map((schedule) => schedule.key)).not.toContain("deleted-synthetic");
+        expect(schedules.some((schedule) => schedule.key === target.sourceId)).toBe(expected === "completed");
         await stopPgBoss();
       };
       await execute('<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>1000</value></price></offer></realty-feed>', "completed");
@@ -90,6 +118,6 @@ describe("native source-worker queue to persisted import", () => {
         expect(await tx.outboxEvent.count({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request", status: "PENDING" } })).toBe(1);
       });
       expect(scopedReads).toBeGreaterThan(4); expect(uploads).toBeGreaterThan(0); expect(gateway).toHaveBeenCalledTimes(2);
-    } finally { await stopPgBoss(); role.mockRestore(); sdk.mockRestore(); vi.unstubAllEnvs(); gateway.mockReset(); }
-  }, 30_000);
+    } finally { await stopPgBoss(); schedulerRole.mockRestore(); role.mockRestore(); sdk.mockRestore(); vi.unstubAllEnvs(); gateway.mockReset(); }
+  }, 420_000);
 });
