@@ -48,7 +48,11 @@ export interface GoodRevisionReceipt {
 
 export interface ImportPipelineDependencies<TRaw, TParsed, TNormalized, TResolved> {
   safeIntake: { acquire(target: SourceImportTarget): Promise<TRaw> };
-  rawArtifactStore: { put(target: SourceImportTarget, raw: TRaw): Promise<RawArtifactReceipt> };
+  rawArtifactStore: {
+    put(target: SourceImportTarget, raw: TRaw): Promise<RawArtifactReceipt>;
+    release?(target: SourceImportTarget, raw: TRaw, receipt?: RawArtifactReceipt): Promise<void>;
+  };
+  onCleanupFailure?(target: SourceImportTarget, code: "RAW_ARTIFACT_CLEANUP_FAILED"): Promise<void>;
   parser: { parse(raw: TRaw, target: SourceImportTarget): Promise<TParsed> };
   validator: { validate(parsed: TParsed, target: SourceImportTarget): Promise<void> };
   normalizer: { normalize(parsed: TParsed, target: SourceImportTarget): Promise<TNormalized> };
@@ -108,11 +112,15 @@ export async function runSourceImport<TRaw, TParsed, TNormalized, TResolved>(
   dependencies: ImportPipelineDependencies<TRaw, TParsed, TNormalized, TResolved>,
 ): Promise<SourceImportResult> {
   let stage: ImportPipelineStage = "SAFE_INTAKE";
+  let acquiredRaw: TRaw | undefined;
+  let artifactReceipt: RawArtifactReceipt | undefined;
   try {
     await dependencies.repository.recordAttemptStarted(target);
     const raw = await dependencies.safeIntake.acquire(target);
+    acquiredRaw = raw;
     stage = "RAW_ARTIFACT";
     const rawArtifact = await dependencies.rawArtifactStore.put(target, raw);
+    artifactReceipt = rawArtifact;
     stage = "PARSE";
     const parsed = await dependencies.parser.parse(raw, target);
     stage = "VALIDATE";
@@ -163,6 +171,16 @@ export async function runSourceImport<TRaw, TParsed, TNormalized, TResolved>(
       // Failure evidence is best-effort here; it must never let one Source reject the batch.
     }
     return { state: "FAILED", sourceId: target.sourceId, failedStage: stage, code };
+  } finally {
+    if (acquiredRaw !== undefined && dependencies.rawArtifactStore.release) {
+      try {
+        await dependencies.rawArtifactStore.release(target, acquiredRaw, artifactReceipt);
+      } catch {
+        // Cleanup must not turn an already committed GOOD into a false FAILED,
+        // nor reject another independent Source. Emit only a value-free signal.
+        try { await dependencies.onCleanupFailure?.(target, "RAW_ARTIFACT_CLEANUP_FAILED"); } catch { /* observer failure is isolated */ }
+      }
+    }
   }
 }
 

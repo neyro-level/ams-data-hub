@@ -34,6 +34,25 @@ does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any
 separately authorized exact-main release.
 
+## Streaming raw artifacts — remediation foundation
+
+MP-02 separates `safeOutboundBuffered` (small files/media, maximum 50 MiB)
+from `safeOutboundStream` (HTTPS feeds, caller limit up to 256 MiB). A feed
+response is single-use; consumers must consume it or call `close`. The
+whole-request timeout also closes an unread response. Large raw feeds do not
+use buffered `ObjectStorage.get`.
+
+Each import attempt uses a private random disk lease under the OS temporary
+directory, incrementally hashes raw bytes, uploads a fresh file stream with
+known length/checksum, and reopens the local spool for the parser. Persisted
+receipts contain only the immutable storage key, SHA-256 and byte count.
+Normal completion and error paths close readers and remove the attempt lease;
+cleanup failures emit a value-free operational signal without rewriting an
+already committed GOOD. Capacity/concurrency and crash-orphan handling require
+the MP-02.4 / worker binding; `finally` is not crash recovery. Actual Timeweb
+streaming/checksum compatibility is unverified here: tests use synthetic storage
+and mocked SDK consumption, not provider credentials or real feeds.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app
