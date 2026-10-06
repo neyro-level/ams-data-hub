@@ -1,6 +1,9 @@
 import { createPublicDtoMapper, type PublicDto } from "@ams-data-hub/data-contracts";
 import {
   publicInventoryDtoSchema,
+  DESCRIPTION_HTML_SAFE_TAGS,
+  descriptionHtmlSafeSchema,
+  type DescriptionHtmlSafe,
   type InventoryEntity,
   type PublicInventoryDto,
   type SparseValue,
@@ -83,15 +86,15 @@ export function normalizeTimestamp(rawTimestamp: string): TimestampNormalization
 }
 
 export function normalizeDescription(rawDescription: string): {
-  descriptionHtmlSafe: string;
+  descriptionHtmlSafe: DescriptionHtmlSafe;
   descriptionText: string;
 } {
-  const descriptionHtmlSafe = sanitizeHtml(rawDescription, {
-    allowedTags: ["p", "br", "ul", "ol", "li", "strong", "em"],
+  const descriptionHtmlSafe = descriptionHtmlSafeSchema.parse(sanitizeHtml(rawDescription, {
+    allowedTags: [...DESCRIPTION_HTML_SAFE_TAGS],
     allowedAttributes: {},
     disallowedTagsMode: "discard",
     nonTextTags: ["script", "style", "textarea", "option", "iframe", "object"],
-  }).trim();
+  }).trim());
   const descriptionText = sanitizeHtml(descriptionHtmlSafe, {
     allowedTags: [],
     allowedAttributes: {},

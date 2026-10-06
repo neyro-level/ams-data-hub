@@ -1,10 +1,12 @@
 import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { descriptionHtmlSafeSchema } from "@ams-data-hub/realty-contracts";
 import { SnapshotCompositionError } from "./snapshot-error.ts";
 
 const forbiddenKeyPatterns = [
   /^apartmentnumberprivate$/u,
   /(?:^|_)rawhtml$/u,
   /(?:^|_)feedhtml$/u,
+  /^rawdescriptionhtml$/u,
   /endpoint(?:url)?$/u,
   /credential(?:s|ref|refs)?$/u,
   /(?:secret|password|token|apikey)$/u,
@@ -43,7 +45,13 @@ function scan(value: CanonicalJsonValue, path: string): void {
     if (forbiddenKeyPatterns.some((pattern) => pattern.test(keyToken))) {
       throw new SnapshotCompositionError("SNAPSHOT_PRIVACY_FORBIDDEN_FIELD", `${path}.${key}`);
     }
-    scan(nested, `${path}.${key}`);
+    if (key === "descriptionHtmlSafe") {
+      if (!descriptionHtmlSafeSchema.safeParse(nested).success) {
+        throw new SnapshotCompositionError("SNAPSHOT_PRIVACY_RAW_HTML", `${path}.${key}`);
+      }
+    } else {
+      scan(nested, `${path}.${key}`);
+    }
   }
 }
 
