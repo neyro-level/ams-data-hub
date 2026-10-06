@@ -9,7 +9,7 @@ reference foundation to the product-owned Data Hub application.
 | ADR-002 | Superseded | Product boundary is now `03_ARCHITECTURE.md` plus the approved v4 implementation artifact |
 | ADR-003 | Active | Safe native PostgreSQL test foundation |
 | ADR-004 | Superseded | Product identity is owned by `03_ARCHITECTURE.md`; import history is in `CHANGELOG.md` |
-| ADR-005 | Active | Identity and Platform Admin hardening |
+| ADR-005 | Active, amended 2026-10-06 | Current release has no TOTP requirement; password/session/role/tenant protections remain; MP-01 runtime removal pending |
 | ADR-006 | Active | PostgreSQL tenant isolation and runtime identities |
 | ADR-007 | Active | Command atomicity and repository boundary |
 | ADR-008 | Active | Outbox-plus-queue reliability |

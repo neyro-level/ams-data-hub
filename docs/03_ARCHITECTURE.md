@@ -44,6 +44,31 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
+### Remediation runtime state — MP-00 / 2026-10-06
+
+The module map is foundation evidence, not production readiness. The approved
+remediation program preserves these boundaries while connecting them:
+
+- MP-02: outbound feed intake is currently buffered; bounded streaming is pending.
+- MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
+  but the permanent worker entrypoint currently runs outbox only; concrete
+  SourceExecutionService and scheduled source execution are pending.
+- MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
+  application pipeline. Real 13-dataset projectors, input resolution and
+  build/sign/publication orchestration are pending.
+- MP-06/MP-07: sanitized HTML/public media corrections and bounded consumer
+  decompression are pending; the verifier currently calls unbounded gunzip.
+- MP-08: Operations UI records requests; missing executors and HTTP discovery/
+  delivery/ACK composition are not represented as completed operations.
+- MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
+  the closed historical v4 is not a PRODUCTION READY claim.
+
+Allowed families are YRL/Vladis, Domclick XML, Avito v3 and CIAN v2. Producer
+behavior is `SourceProfile`-owned; format behavior is `SourceAdapter`-owned;
+project-specific branching in parser core is forbidden. Family approval is not
+production activation. Manual newbuilding staging/reviewed-hash apply remains
+the bounded capability in `DATA_MODEL.md`, without automatic ingestion.
+
 | Boundary | State / first slice | Owns | Public boundary |
 | --- | --- | --- | --- |
 | `identity-access` | active | users, memberships, account setup, authentication administration | `contracts.ts`, `client.ts`, `server.ts`, `index.ts` |
@@ -110,15 +135,21 @@ versioned and secret/PII-safe; external delivery is after commit.
 ## Authentication and provisioning
 
 The supported system roles are `PLATFORM_ADMIN` and `USER`. A `USER` requires
-organization membership and an enabled client-access flag. Platform Admin
-authority requires verified TOTP for every authority-bearing session, and a
-user with several memberships must explicitly select the active organization.
+organization membership and an enabled client-access flag. The approved current
+release grants Platform Admin authority through a fresh persisted session,
+enabled user and `systemRole = PLATFORM_ADMIN`, followed by server-side
+permission/resource checks. No TOTP is required by the current policy. OQ-09
+is DEFERRED until an explicit post-pilot owner decision. A user with several
+memberships must explicitly select the active organization.
 
 The only bootstrap command is `pnpm admin:provision`. It accepts the password
 through stdin, creates or resets a `PLATFORM_ADMIN`, revokes existing sessions
-and requires TOTP enrollment before production authority is granted. Offline
-recovery uses the existing one-time platform recovery flow. Legacy role and
-bootstrap commands are transitional only.
+without introducing a current-release factor requirement. Account/password
+recovery remains protected and audited. Legacy role and bootstrap commands are
+transitional only. At this MP-00 checkpoint the existing TOTP plugin, session
+gate and factor-specific recovery still exist in code; MP-01 removes them with
+a forward migration and auth regressions. This pending implementation does not
+override the approved current policy.
 
 ## PII lifecycle
 

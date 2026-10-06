@@ -8,13 +8,16 @@ active_plan:
   source: AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md
   source_sha256: d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a
   inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
-  execution_status: GRAPH_READY
+  execution_status: IN_PROGRESS
+  current_epic: adh-mp-00
+  next_delivery_task: adh-mp-00-delivery
+  readiness: NOT_PRODUCTION_READY
   reconciliation: CLEAN
   managed_nodes: 97
   epics: 11
   implementation_tasks: 75
   delivery_tasks: 11
-  first_ready_tasks:
+  initial_ready_tasks:
     - adh-mp-00-1
     - adh-mp-00-2
     - adh-mp-00-3

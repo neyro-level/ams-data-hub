@@ -61,6 +61,14 @@ const ignoredFiles = new Set([
   "docs/AMS Data Hub Master Plan v1.md",
   "docs/AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json",
 ]);
+// Owner-approved planning artifacts may name synthetic pilot scenarios. Bind
+// this exception to exact reviewed bytes, not a directory or mutable path.
+const approvedPlanArtifacts = new Map([
+  ["AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md",
+    "d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a"],
+  ["docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json",
+    "371c3bbda3b7f8da30cff63a15b3685e1cef067dfb4e844083126509373b8f00"],
+]);
 
 function listContextFiles(root = ".", relativeRoot = "") {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -110,6 +118,15 @@ for (const file of trackedFiles) {
   if (!existsSync(file)) continue;
   const normalizedPath = file.replaceAll("\\", "/");
   if (ignoredFiles.has(normalizedPath)) continue;
+  const approvedHash = approvedPlanArtifacts.get(normalizedPath);
+  if (approvedHash) {
+    const actualHash = createHash("sha256").update(readFileSync(file)).digest("hex");
+    if (actualHash !== approvedHash) {
+      console.error(`Approved planning artifact hash changed: ${normalizedPath}`);
+      process.exit(1);
+    }
+    continue;
+  }
   if (normalizedPath.startsWith("config/") && !normalizedPath.startsWith("config/examples/")) {
     violations.add(normalizedPath);
   }

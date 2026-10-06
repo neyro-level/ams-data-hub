@@ -29,6 +29,12 @@
 
 ## Следующая граница
 
+MP-00 фиксирует owner amendments и синхронизирует текущий канон. Checkpoint
+implementation evidence находится в Beads; merge в `main` ещё требует отдельный
+MP-00 exact-head Gate и delivery ledger. Legacy TOTP-код до MP-01 остаётся
+неудалённым. Runtime Source/snapshot/operations composition не объявляется
+завершённой по существованию модулей или закрытию исторического графа.
+
 Активная доработка: MP-00–MP-10 нового remediation plan. Первая волна —
 согласование канона с owner decisions и удаление текущего требования TOTP.
 Далее — streaming intake, production composition, source worker/scheduler,

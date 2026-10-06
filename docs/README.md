@@ -30,7 +30,7 @@ non-production проверки, не production rollout.
 
 | Файл | Роль |
 | --- | --- |
-| `00_CONSTITUTION.MD.md` | утверждённый архитектурный input v3.1.2 без смысловой переработки |
+| `00_CONSTITUTION.MD.md` | архитектурный input v3.1.2 с явными owner amendments от 2026-10-06: текущая TOTP policy, feed families и manual newbuilding capability |
 | `DATA_MODEL.md` | подробная карта schema и migration policy |
 | `SECURITY.md` | trust boundaries, ПДн, auth, tenant isolation и secrets |
 | `ENVIRONMENT.md` | реестр переменных окружения без значений |
