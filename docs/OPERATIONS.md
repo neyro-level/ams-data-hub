@@ -17,8 +17,13 @@ source configuration, policy, identity and jobs-freeze checks.
 
 Local integration proof uses the actual application facade, PostgreSQL,
 filesystem, parser and S3 adapter with mocked HTTP/SDK transport. It is not a
-provider compatibility or production activation proof. Permanent source worker,
-full missing-record lifecycle, transactional snapshot outbox and four-family
+provider compatibility or production activation proof. Missing grace/inactivation
+and reactivation now execute only with safe GOOD apply; malformed, invalid,
+duplicate, empty and suspicious feeds leave current identities/events/Last Good
+unchanged. Baseline leaves pre-revision identities untouched. Synthetic rollback
+and competing-run regressions prove transaction failure/stale runs cannot commit
+partial inventory or overwrite a newer GOOD. Permanent source worker,
+transactional snapshot outbox and four-family
 runtime rehearsal remain their subsequent approved task gates. No production
 migration or credential creation is performed by the local test lifecycle.
 

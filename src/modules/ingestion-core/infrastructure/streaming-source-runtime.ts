@@ -21,6 +21,7 @@ const RECORD_BYTES = 2 * 1024 * 1024;
 const knownFailures = new Set([
   "SOURCE_DUPLICATE_EXTERNAL_ID", "SOURCE_EXECUTION_STALE", "SOURCE_EXECUTION_POLICY_STALE", "SOURCE_EXECUTION_IDENTITY_STALE",
   "SOURCE_REVISION_STAGING_CLOSED", "SOURCE_RECORD_INVALID", "SOURCE_RECORD_TOO_LARGE",
+  "SOURCE_REVISION_SAFETY_INVALID",
   "IMPORT_REQUIRES_APPROVAL", "IMPORT_REJECTED_BY_SAFETY_POLICY", "SOURCE_ENDPOINT_CREDENTIAL_UNAVAILABLE",
   "SOURCE_ENDPOINT_INTAKE_FAILED", "RAW_ARTIFACT_TOO_LARGE", "RAW_ARTIFACT_CAPACITY_EXCEEDED",
   "YRL_XML_MALFORMED", "YRL_NAMESPACE_MISMATCH", "YRL_ARTIFACT_TOO_LARGE", "YRL_OFFER_LIMIT_EXCEEDED",
@@ -89,7 +90,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     }
     stage = "STAGING";
     await flush();
-    // Stable semantic hash is derived from sorted persisted record hashes in
+    // Stable semantic hash uses sorted persisted record hashes in
     // bounded pages; never JSON.stringify the complete Source in memory.
     const semantic = createHash("sha256");
     let cursor = "";

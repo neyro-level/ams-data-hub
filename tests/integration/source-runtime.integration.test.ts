@@ -6,17 +6,18 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
   return { ...actual, safeOutboundStream: gateway };
 });
-import { createSourceExecutionServer, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { createSourceExecutionServer, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal, ProjectJobPrincipal } from "../../src/platform/authorization/principal.ts";
-import { BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/domain/safety-engine.ts";
+import { BOOTSTRAP_SOURCE_SAFETY_POLICY, type SourceSafetyPolicy } from "../../src/modules/ingestion-core/domain/safety-engine.ts";
+import { PrismaSourceExecutionRepository } from "../../src/modules/ingestion-core/infrastructure/prisma-source-execution-repository.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
 const feed = (...offers: string[]) => `<realty-feed xmlns="${namespace}">${offers.join("")}</realty-feed>`;
 
-async function setup(profileKey = "default-v1") {
+async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPolicy) {
   const principal: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-runtime-admin", correlationId: randomUUID() };
   const suffix = randomUUID().slice(0, 8);
   const scope = await runInPrincipalDatabaseTransaction(principal, async (tx) => {
@@ -29,8 +30,8 @@ async function setup(profileKey = "default-v1") {
   process.env[referenceName] = "https://synthetic.example.test/private.xml?token=synthetic-runtime-only";
   // Small normalization fixtures use an explicit project-owned test policy,
   // not the producer's calibrated 777-record live-feed threshold.
-  const safetyPolicyId = profileKey === "default-v1" ? "" : (await runInPrincipalDatabaseTransaction(principal,
-    (tx) => tx.sourceSafetyPolicy.create({ data: { ...scope, policy: BOOTSTRAP_SOURCE_SAFETY_POLICY } }))).id;
+  const safetyPolicyId = profileKey === "default-v1" && !policyOverride ? "" : (await runInPrincipalDatabaseTransaction(principal,
+    (tx) => tx.sourceSafetyPolicy.create({ data: { ...scope, policy: policyOverride ?? BOOTSTRAP_SOURCE_SAFETY_POLICY } }))).id;
   const source = await sourceRegistryCommands.createSource(principal, { ...scope,
     sourceKey: "synthetic", name: "Synthetic", endpointCredentialRef: referenceName,
     adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey, profileVersion: "1.0.0",
@@ -55,11 +56,133 @@ async function setup(profileKey = "default-v1") {
     revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { startedAt: "asc" } }),
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     records: await tx.sourceRevisionRecord.findMany({ where: target }),
+    events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
   }));
   return { principal, target, runtime, provide, read, uploaded: () => uploaded, cleanup: () => { delete process.env[referenceName]; gateway.mockReset(); } };
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("rolls back identity/lifecycle/GOOD changes when the final database transaction fails", async () => {
+    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+      deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 1 });
+    const original = PrismaSourceExecutionRepository.prototype.apply;
+    let fault: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
+      context.provide(feed(...all));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD" });
+      const baseline = await context.read();
+      // Fault injection is only a negative DB-commit boundary probe. The real
+      // apply executes first, including identities, events and GOOD/pointer.
+      fault = vi.spyOn(PrismaSourceExecutionRepository.prototype, "apply").mockImplementationOnce(async function (
+        this: PrismaSourceExecutionRepository, execution, revisionId, plan,
+      ) {
+        await original.call(this, execution, revisionId, plan);
+        throw new Error("SYNTHETIC_POST_GOOD_FAILURE");
+      });
+      context.provide(feed(...all.slice(0, 4)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "DATABASE_APPLY" });
+      const current = await context.read();
+      expect(current.source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
+      expect(current.identities).toEqual(baseline.identities);
+      expect(current.events).toEqual(baseline.events);
+      expect(current.revisions.at(-1)?.status).toBe("FAILED");
+    } finally { fault?.mockRestore(); context.cleanup(); }
+  });
+
+  it("serializes competing runs against the pinned Last Good instead of letting a stale run overwrite it", async () => {
+    const context = await setup();
+    try {
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      let calls = 0;
+      let release!: () => void;
+      const barrier = new Promise<void>((resolve) => { release = resolve; });
+      gateway.mockImplementation(async () => {
+        const price = ++calls * 2000;
+        if (calls === 2) release();
+        await barrier;
+        const bytes = new TextEncoder().encode(feed(offer("one", price)));
+        return { status: 200, contentType: "application/xml", contentLength: bytes.byteLength,
+          body: (async function* () { yield bytes; })(), close: vi.fn() };
+      });
+      const results = await Promise.all([context.runtime.run(context.target), context.runtime.run(context.target)]);
+      expect(results.map((result) => result.state).sort()).toEqual(["FAILED", "GOOD"]);
+      const winner = results.find((result) => result.state === "GOOD")!;
+      const current = await context.read();
+      expect(winner).toMatchObject({ state: "GOOD", sequence: 2, revisionId: current.source.lastGoodRevisionId });
+      expect(current.revisions.filter((revision) => revision.status === "GOOD")).toHaveLength(2);
+      expect(current.identities).toHaveLength(1);
+      expect(current.identities[0]!.sourceHash).toBe(winner.state === "GOOD" ? winner.rawArtifactHash : "");
+    } finally { context.cleanup(); }
+  });
+
+  it("advances missing grace only on safe GOOD runs and preserves inventory across broken runs", async () => {
+    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+      deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 2 });
+    try {
+      const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
+      context.provide(feed(...all));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const initial = await context.read();
+      const missingUid = initial.identities.find((item) => item.externalOfferId === "5")!.uid;
+      context.provide(feed(...all.slice(0, 4)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const grace = await context.read();
+      expect(grace.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "ACTIVE", missingGoodRuns: 1 });
+      expect(grace.events).toHaveLength(0);
+      for (const broken of ["<realty-feed>", feed(), feed(offer("1"), offer("1")), feed(offer("1")), feed(offer("1", -1))]) {
+        context.provide(broken);
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED" });
+        const current = await context.read();
+        expect(current.source.lastGoodRevisionId).toBe(grace.source.lastGoodRevisionId);
+        expect(current.identities).toEqual(grace.identities);
+        expect(current.events).toEqual(grace.events);
+      }
+      context.provide(feed(...all.slice(0, 4)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 3 });
+      const inactive = await context.read();
+      expect(inactive.identities).toHaveLength(5);
+      expect(inactive.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "INACTIVE", missingGoodRuns: 2 });
+      expect(inactive.events).toMatchObject([{ inventoryUid: missingUid, type: "INACTIVATED" }]);
+      context.provide(feed(...all));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 4 });
+      const reactivated = await context.read();
+      expect(reactivated.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "ACTIVE", missingGoodRuns: 0, missingSince: null });
+      expect(reactivated.events.map((event) => event.type)).toEqual(["INACTIVATED", "REACTIVATED"]);
+    } finally { context.cleanup(); }
+  });
+
+  it("preserves pre-revision identities on baseline and requires both run and elapsed-time grace", async () => {
+    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+      deactivationEnabled: true, inactiveAfterMissingHours: 24, inactiveAfterMissingGoodRuns: 1 });
+    const job: ProjectJobPrincipal = { kind: "project-job", jobName: "source-import", ...context.target, correlationId: randomUUID() };
+    try {
+      const legacy = await inventoryIdentityCommands.recordSeen(job, { ...context.target, externalOfferId: "legacy",
+        sourceHash: "a".repeat(64), normalizedHash: "b".repeat(64), seenAt: new Date(Date.now() - 48 * 3_600_000) });
+      const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
+      context.provide(feed(...all));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD" });
+      expect((await context.read()).identities.find((item) => item.uid === legacy.uid)).toMatchObject({ status: "ACTIVE", missingGoodRuns: 0, missingSince: null });
+      for (let run = 0; run < 2; run += 1) {
+        context.provide(feed(...all.slice(0, 4)));
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD" });
+      }
+      const grace = await context.read();
+      const missing = grace.identities.find((item) => item.externalOfferId === "5")!;
+      expect(missing).toMatchObject({ status: "ACTIVE", missingGoodRuns: 2 });
+      expect(grace.events).toHaveLength(0);
+      // Age only the isolated synthetic identity clock; immutable GOOD history
+      // remains untouched. The next real apply exercises elapsed-time policy.
+      await runInPrincipalDatabaseTransaction(job, (tx) => tx.inventoryIdentity.update({
+        where: { uid: missing.uid }, data: { missingSince: new Date(Date.now() - 25 * 3_600_000) },
+      }));
+      context.provide(feed(...all.slice(0, 4)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD" });
+      expect((await context.read()).identities.find((item) => item.uid === missing.uid)).toMatchObject({ status: "INACTIVE", missingGoodRuns: 3 });
+    } finally { context.cleanup(); }
+  });
+
   it("enforces persisted revision RLS and forbids cross-source or cleared Last Good pointers", async () => {
     const first = await setup();
     const second = await setup();

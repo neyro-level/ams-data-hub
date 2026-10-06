@@ -5,8 +5,9 @@ import type { DatabaseTransaction } from "../../../platform/database/transaction
 import type { ProjectJobPrincipal } from "../../../platform/authorization/principal.ts";
 import { PrismaDataSafetyRepository, assertMutatingJobsAllowed } from "../../platform-operations/server.ts";
 import type { SourceExecutionState, ResolvedSourceExecution } from "../application/source-execution-service.ts";
-import type { RawArtifactReceipt } from "../application/import-pipeline.ts";
-import type { SafetyAnalysisResult } from "../domain/safety-engine.ts";
+import { normalizedContentHash, type RawArtifactReceipt } from "../application/import-pipeline.ts";
+import { analyzeImportSafety, type SafetyAnalysisResult } from "../domain/safety-engine.ts";
+import { reconcileMissingInventory, type InventoryIdentityState } from "../domain/inventory-lifecycle.ts";
 import { sourceSafetyPolicySchema } from "../domain/source-safety-policy-schema.ts";
 import { createUlid } from "@ams-data-hub/data-contracts";
 import { PrismaSourceRegistryRepository } from "./prisma-source-registry-repository.ts";
@@ -121,6 +122,7 @@ export class PrismaSourceExecutionRepository {
 
   async plan(context: ResolvedSourceExecution, revisionId: string): Promise<SourceRuntimeMutationPlan> {
     const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: "STAGED" } });
+    this.assertSafeRevision(context, revision);
     const counts = await this.transaction.$queryRaw<{ createCount: bigint; updateCount: bigint }[]>(Prisma.sql`
       select count(*) filter (where i."uid" is null) as "createCount", count(*) filter (where i."uid" is not null) as "updateCount"
       from "SourceRevisionRecord" r left join "InventoryIdentity" i on i."organizationId" = r."organizationId"
@@ -128,15 +130,83 @@ export class PrismaSourceExecutionRepository {
       where r."revisionId" = ${revisionId}
     `);
     return { revisionId, sourceVersion: revision.sourceVersion, baseLastGoodRevisionId: revision.baseLastGoodRevisionId,
-      createCount: Number(counts[0]!.createCount), updateCount: Number(counts[0]!.updateCount), deactivateCount: 0 };
+      createCount: Number(counts[0]!.createCount), updateCount: Number(counts[0]!.updateCount),
+      deactivateCount: await this.reconcileMissing(context, revision, false) };
+  }
+
+  private assertSafeRevision(context: ResolvedSourceExecution, revision: {
+    safetyPolicy: Prisma.JsonValue; safetyAnalysis: Prisma.JsonValue; recordCount: number; invalidRecordCount: number;
+  }) {
+    const policy = sourceSafetyPolicySchema.parse(revision.safetyPolicy);
+    const analysis = analyzeImportSafety({ recordCount: revision.recordCount, invalidRecordCount: revision.invalidRecordCount,
+      previousGoodRecordCount: context.lastGood?.recordCount ?? null,
+      issues: revision.invalidRecordCount > 0 ? [{ severity: "CRITICAL", code: "SOURCE_RECORD_INVALID" }] : [],
+    }, policy);
+    if (analysis.disposition !== "SAFE" || normalizedContentHash(analysis) !== normalizedContentHash(revision.safetyAnalysis)) {
+      // Do not trust a status label or caller-supplied mutation plan as approval.
+      // Revision-bound manual approval belongs to the explicit review executor.
+      throw new Error("SOURCE_REVISION_SAFETY_INVALID");
+    }
+  }
+
+  private async reconcileMissing(context: ResolvedSourceExecution, revision: {
+    id: string; startedAt: Date; recordCount: number; safetyPolicy: Prisma.JsonValue;
+  }, apply: boolean): Promise<number> {
+    // A baseline never removes previous inventory, even if legacy identities
+    // predate revision persistence. Empty feeds never reconcile absence.
+    if (!context.lastGood || revision.recordCount === 0) return 0;
+    const policy = sourceSafetyPolicySchema.parse(revision.safetyPolicy);
+    let cursor = "";
+    let deactivated = 0;
+    while (true) {
+      const page = await this.transaction.$queryRaw<InventoryIdentityState[]>(Prisma.sql`
+        select i.* from "InventoryIdentity" i
+        where i."organizationId" = ${context.target.organizationId} and i."projectId" = ${context.target.projectId}
+          and i."sourceId" = ${context.target.sourceId} and i."status" = 'ACTIVE' and i."uid" > ${cursor}
+          and not exists (select 1 from "SourceRevisionRecord" r where r."revisionId" = ${revision.id} and r."externalId" = i."externalOfferId")
+        order by i."uid" limit 200
+      `);
+      if (!page.length) break;
+      const changes = page.map((current) => {
+        const decision = reconcileMissingInventory(current, policy, {
+          completedGoodRun: true, baseline: false, suspicious: false, occurredAt: revision.startedAt,
+        });
+        if (decision.outcome === "INACTIVATED") deactivated += 1;
+        return { current, decision };
+      }).filter(({ decision }) => decision.outcome !== "UNCHANGED");
+      if (apply && changes.length) {
+        const rows = changes.map(({ current, decision: { state } }) => Prisma.sql`(
+          ${state.uid}, ${current.version}::integer, ${state.status}::"InventoryLifecycleStatus",
+          ${state.missingGoodRuns}::integer, ${state.missingSince}::timestamptz, ${state.version}::integer
+        )`);
+        const updated = await this.transaction.$executeRaw(Prisma.sql`
+          update "InventoryIdentity" i set "status" = v.status, "missingGoodRuns" = v.runs,
+            "missingSince" = v.since, "version" = v.version, "updatedAt" = ${revision.startedAt}
+          from (values ${Prisma.join(rows)}) as v(uid, expected_version, status, runs, since, version)
+          where i."uid" = v.uid and i."version" = v.expected_version
+            and i."organizationId" = ${context.target.organizationId} and i."projectId" = ${context.target.projectId}
+            and i."sourceId" = ${context.target.sourceId}
+        `);
+        if (updated !== changes.length) throw new Error("SOURCE_EXECUTION_IDENTITY_STALE");
+        const events = changes.filter(({ decision }) => decision.event !== null);
+        if (events.length) await this.transaction.inventoryLifecycleEvent.createMany({ data: events.map(({ current, decision }) => ({
+          organizationId: context.target.organizationId, projectId: context.target.projectId,
+          inventoryUid: current.uid, type: decision.event!, occurredAt: revision.startedAt,
+        })) });
+      }
+      cursor = page.at(-1)!.uid;
+    }
+    return deactivated;
   }
 
   async apply(context: ResolvedSourceExecution, revisionId: string, plan: SourceRuntimeMutationPlan) {
     await this.lockSource(context);
     const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: "STAGED" } });
+    this.assertSafeRevision(context, revision);
     if (revision.sourceVersion !== context.source.version || revision.baseLastGoodRevisionId !== context.source.lastGoodRevisionId
       || plan.revisionId !== revisionId || plan.sourceVersion !== revision.sourceVersion || plan.baseLastGoodRevisionId !== revision.baseLastGoodRevisionId
-      || plan.createCount + plan.updateCount !== revision.recordCount || plan.deactivateCount !== 0) {
+      || plan.createCount + plan.updateCount !== revision.recordCount
+      || plan.deactivateCount !== await this.reconcileMissing(context, revision, false)) {
       throw new Error("SOURCE_EXECUTION_STALE");
     }
     const stale = await this.transaction.$queryRaw<{ count: bigint }[]>(Prisma.sql`
@@ -146,6 +216,9 @@ export class PrismaSourceExecutionRepository {
       where r."revisionId" = ${revisionId} and (i."uid" <> r."inventoryUid" or i."lastSeenAt" > ${revision.startedAt})
     `);
     if (stale[0]?.count !== 0n) throw new Error("SOURCE_EXECUTION_IDENTITY_STALE");
+    // Missing grace/state/events share the final GOOD transaction and roll back
+    // with any later constraint/outbox failure. No broken run reaches this path.
+    await this.reconcileMissing(context, revision, true);
     // CUID event ids are allocated by Prisma in bounded batches, not fabricated SQL ids.
     let cursor = "";
     while (true) {

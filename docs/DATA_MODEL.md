@@ -101,8 +101,20 @@ dangling pointers rather than inventing history or clearing Last Good.
 `InventoryIdentity` remains the stable UID/lifecycle owner across revisions;
 new/seen identity mutations and GOOD/Last Good changes occur only in the final
 transaction. Initial intake/S3/parsing and staging batches never mutate current
-inventory. Snapshot intent and full missing-record lifecycle are the subsequent
-MP-03.5/MP-03.6 tasks, not yet delivered by this foundation.
+inventory. Missing lifecycle uses bounded 200-identity pages and version-checked
+batch updates in the final GOOD transaction. Baseline and empty runs do not
+reconcile absence; failed/rejected/suspicious runs do not advance missing grace.
+Both missing-run and elapsed-time thresholds must pass before INACTIVATED;
+reactivation preserves the original UID. Lifecycle events and Last Good roll
+back together on final transaction failure. Persisted Safety Analysis is
+recomputed from the pinned policy/counts before planning/apply; STAGED alone is
+not approval. Transactional snapshot intent remains MP-03.6.
+
+An ACTIVE identity in missing grace may be absent from the newest GOOD feed.
+MP-05 snapshot resolution must retain its latest matching GOOD record facts
+from revision history (stable UID/normalized hash), not equate the newest feed's
+record set with the complete current inventory. INACTIVE identities are excluded
+from active listing projection without deleting their source history.
 
 Runtime access uses a scoped `source-import` project-job principal; tenant/client
 principals cannot read raw/private revision rows. No delete grant exists for
