@@ -161,6 +161,16 @@ DataSafetyState. Pool acquisition/transaction failure is fail-closed, not an
 excuse to proceed with the old admission cut. New scoped SELECT policies do
 not authorize writes to Source, catalog, agent or project facts.
 
+The project-state capture reader now selects scoped public contact candidates,
+consented ACTIVE visible agents, editorial facts without internal presentation
+notes, media-order policy and persistent URL entries/reservations, redirects,
+tombstones, confirmed listing links and lifecycle facts in that same caller cut.
+Reservations without an entry remain pinned; no replacement public URL IDs are
+allocated during capture. Private consent actors/bases and non-publishable agent
+data are not selected. These are private input facts, not public DTOs: media
+association capture, full resolver composition and its native replay proof
+remain required before MP-05.1 completion.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

@@ -12,6 +12,7 @@ import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { createCatalogSnapshotFactReader } from "../../src/modules/shared-catalog/server.ts";
 import { createSourceSnapshotFactReader } from "../../src/modules/ingestion-core/server.ts";
+import { createProjectStateSnapshotFactReader } from "../../src/modules/project-state/server.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 
@@ -44,6 +45,75 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it("captures scoped project facts in one cut and omits unconsented agents and admin metadata", async () => {
+    const scope = await setup();
+    const publicUid = createUlid();
+    const historicalRedirectDate = new Date("2026-09-01T00:00:00.000Z");
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.project.update({ where: { id: scope.projectId }, data: { notes: "synthetic-private-notes" } });
+      await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, phone: "+70000000001", messengers: [] } });
+      await tx.publicUrlIdReservation.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, subjectType: "AGENT", subjectUid: publicUid, publicUrlId: "1234567890123456" } });
+      const entrySubject = createUlid();
+      const entryReservation = await tx.publicUrlIdReservation.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, subjectType: "AGENT", subjectUid: entrySubject, publicUrlId: "1234567890123457" } });
+      const entry = await tx.projectUrlEntry.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, entityType: "AGENT", entityUid: entrySubject, reservationId: entryReservation.id,
+        slug: "synthetic-entry", canonicalPath: "/agents/synthetic-entry" } });
+      await tx.projectRedirect.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        urlEntryId: entry.id, fromPath: "/agents/old-synthetic-entry", toPath: entry.canonicalPath,
+        reason: "SLUG_CHANGE", createdAt: historicalRedirectDate } });
+      await tx.entityEditorial.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, entityType: "AGENT", entityUid: publicUid, faq: [],
+        shortDescription: "Synthetic public description", presentationNotes: "synthetic-private-editorial-notes" } });
+      await tx.agent.createMany({ data: [
+        { organizationId: scope.organizationId, projectId: scope.projectId, uid: publicUid,
+          slug: "public-synthetic", fullName: "Synthetic approved", showOnSite: true,
+          consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-private-actor", consentBasis: "synthetic-private-basis" },
+        { organizationId: scope.organizationId, projectId: scope.projectId, uid: createUlid(),
+          slug: "no-consent", fullName: "synthetic-private-name", showOnSite: true },
+        { organizationId: scope.organizationId, projectId: scope.foreignProjectId, uid: createUlid(),
+          slug: "foreign", fullName: "synthetic-foreign-name", showOnSite: true, consentConfirmedAt: new Date() },
+      ] });
+    });
+    async function capture(tx: DatabaseTransaction) {
+      const rows = new Map<string, CanonicalJsonValue[]>();
+      const revision = await createProjectStateSnapshotFactReader(tx).capture(scope,
+        (kind, page) => rows.set(kind, [...(rows.get(kind) ?? []), ...page]));
+      return { revision, rows };
+    }
+    await worker(scope, async (tx) => {
+      const before = await capture(tx);
+      expect(before.rows.get("agents")).toHaveLength(1);
+      expect(before.rows.get("agents")![0]).toMatchObject({ uid: publicUid, fullName: "Synthetic approved" });
+      expect(before.rows.get("contacts")![0]).toMatchObject({ phone: "+70000000001", version: 1 });
+      expect(before.rows.size).toBe(11);
+      expect(before.rows.get("urls")).toContainEqual(expect.objectContaining({ factType: "reservation",
+        subjectUid: publicUid, publicUrlId: "1234567890123456" }));
+      expect(before.rows.get("redirects")![0]).toMatchObject({ createdAt: historicalRedirectDate.toISOString() });
+      expect(before.rows.get("editorial")![0]).toMatchObject({ shortDescription: "Synthetic public description" });
+      const serialized = JSON.stringify([...before.rows]);
+      for (const forbidden of ["synthetic-private-notes", "synthetic-private-actor", "synthetic-private-basis",
+        "synthetic-private-name", "synthetic-foreign-name", "synthetic-private-editorial-notes",
+        "presentationNotes", "consentConfirmedBy", "consentBasis"]) {
+        expect(serialized).not.toContain(forbidden);
+      }
+      await runInPrincipalDatabaseTransaction(admin, async (other) => {
+        await other.projectPublicContact.update({ where: { organizationId_projectId: {
+          organizationId: scope.organizationId, projectId: scope.projectId } },
+        data: { phone: "+70000000002", version: { increment: 1 } } });
+        await other.agent.update({ where: { uid: publicUid }, data: { showOnSite: false, version: { increment: 1 } } });
+      });
+      expect(await capture(tx)).toEqual(before);
+      await expect(createProjectStateSnapshotFactReader(tx).capture({ organizationId: scope.organizationId,
+        projectId: scope.foreignProjectId }, () => undefined)).rejects.toThrow("SNAPSHOT_INPUT_PROJECT_MISSING");
+    });
+    const fresh = await worker(scope, capture);
+    expect(fresh.rows.get("agents")).toEqual([]);
+    expect(fresh.rows.get("contacts")![0]).toMatchObject({ phone: "+70000000002", version: 2 });
+  });
+
   it("reserves above existing publication, saves immutable complete input, and replays identical receipt", async () => {
     const scope = await setup();
     await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCurrentSnapshotManifest.create({ data: {
