@@ -84,8 +84,16 @@ remediation program preserves these boundaries while connecting them:
   grace is now revision-bound: only SAFE nonempty non-baseline GOOD runs advance
   absence; both run/time thresholds govern inactivation. Broken runs leave current
   identities, events and Last Good untouched; final transaction failures roll
-  back lifecycle and GOOD together. Snapshot outbox and scheduled execution remain
-  MP-03.6–MP-04; service unit tests are not production composition proof.
+  back lifecycle and GOOD together. GOOD also records an idempotent
+  `snapshot.build.request` intent through the transaction-bound reliability
+  repository. Its payload contains scoped IDs and the GOOD revision sequence,
+  never raw data/endpoints. Enqueue failure rolls back GOOD/identities/pointer;
+  publication is not performed in the import transaction. The default outbox
+  worker claims only its registered maintenance topic; snapshot intents stay
+  PENDING until a real executor is wired, not failed/completed by a noop handler.
+  Snapshot build/publish
+  execution and scheduled source execution remain MP-04/MP-05/MP-08;
+  service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.

@@ -119,7 +119,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     stage = "DATABASE_APPLY";
     const good = await transaction((repository) => repository.apply(context, revisionId!, plan));
     return { state: "GOOD", sourceId: context.target.sourceId, ...good, rawArtifactHash: receipt.rawArtifactHash,
-      normalizedContentHash: normalizedHash, snapshotTriggered: false };
+      normalizedContentHash: normalizedHash, snapshotTriggered: true };
   } catch (error) {
     const code = error instanceof Error && knownFailures.has(error.message) ? error.message : "IMPORT_PIPELINE_FAILED";
     if (revisionId) {

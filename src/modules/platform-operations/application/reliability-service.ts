@@ -125,11 +125,12 @@ export class ReliabilityService {
     });
   }
 
-  claim(workerId: string, leaseTimeoutMs = 300_000): Promise<ClaimedReliabilityEvent | null> {
+  claim(workerId: string, leaseTimeoutMs = 300_000, topics?: readonly string[]): Promise<ClaimedReliabilityEvent | null> {
     return this.repository.claimNextEvent({
       workerId: workerSchema.parse(workerId),
       now: this.now().toISOString(),
       leaseTimeoutMs: z.number().int().min(1_000).max(3_600_000).parse(leaseTimeoutMs),
+      ...(topics === undefined ? {} : { topics: z.array(identifierSchema).min(1).max(100).parse(topics) }),
     });
   }
 

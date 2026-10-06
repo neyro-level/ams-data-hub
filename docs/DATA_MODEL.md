@@ -108,7 +108,14 @@ Both missing-run and elapsed-time thresholds must pass before INACTIVATED;
 reactivation preserves the original UID. Lifecycle events and Last Good roll
 back together on final transaction failure. Persisted Safety Analysis is
 recomputed from the pinned policy/counts before planning/apply; STAGED alone is
-not approval. Transactional snapshot intent remains MP-03.6.
+not approval. Each applied GOOD records a durable `snapshot.build.request`
+outbox intent plus audited idempotency marker in the same transaction. The
+private payload carries only org/project/source/revision IDs and the Source
+revision sequence; it is not a snapshot publish sequence or a publish receipt.
+`snapshotTriggered=true` means the intent committed, not that a snapshot was
+built/published. Duplicate enqueue for the same GOOD returns the existing event.
+An enqueue failure rolls back GOOD, identities, lifecycle events and Last Good;
+no remote publication runs in this transaction.
 
 An ACTIVE identity in missing grace may be absent from the newest GOOD feed.
 MP-05 snapshot resolution must retain its latest matching GOOD record facts

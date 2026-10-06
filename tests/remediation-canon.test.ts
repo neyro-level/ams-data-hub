@@ -54,7 +54,8 @@ describe("approved remediation canon", () => {
     expect(architecture).toContain("foundation evidence, not production readiness");
     expect(architecture).toContain("SourceExecutionService now provides scoped application orchestration");
     expect(architecture).toContain("Concrete server composition now binds scoped Prisma loading");
-    expect(architecture).toContain("Snapshot outbox and scheduled execution remain");
+    expect(architecture).toContain("Snapshot build/publish");
+    expect(architecture).toContain("publication is not performed in the import transaction");
     expect(architecture).toContain("Broken runs leave current");
     expect(architecture).toContain("service unit tests are not production composition proof");
     expect(architecture).toContain("missing executors");

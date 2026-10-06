@@ -22,10 +22,25 @@ and reactivation now execute only with safe GOOD apply; malformed, invalid,
 duplicate, empty and suspicious feeds leave current identities/events/Last Good
 unchanged. Baseline leaves pre-revision identities untouched. Synthetic rollback
 and competing-run regressions prove transaction failure/stale runs cannot commit
-partial inventory or overwrite a newer GOOD. Permanent source worker,
-transactional snapshot outbox and four-family
+partial inventory or overwrite a newer GOOD. GOOD now records a transactional,
+idempotent `snapshot.build.request` outbox intent. `snapshotTriggered=true` is
+durable request evidence only; external build/sign/store/publish are subsequent
+executors, not part of the import transaction. Outbox enqueue failure rolls back
+the complete apply. Permanent source worker and four-family
 runtime rehearsal remain their subsequent approved task gates. No production
 migration or credential creation is performed by the local test lifecycle.
+
+Default outbox claim is restricted to its actual maintenance handler topic.
+Snapshot intents remain PENDING until the real build executor is registered;
+the real pg-boss default-drain regression also proves maintenance still completes.
+The concrete Source facade is exercised with `SET LOCAL ROLE ams_data_hub_worker`
+(NOBYPASSRLS), not just the setup login/application principal. A forward migration
+adds Project SELECT for runtime status checks while keeping existing project RLS
+and withholding Project mutation grants from the worker.
+Before enabling snapshot execution, use one complete handler registry for the
+shared `outbox.dispatch` queue or split executor queues. Topic-filtered database
+claim alone does not filter already-dispatched pg-boss jobs; specialized workers
+with incompatible handlers must not share that fetch queue.
 
 ### Development commands
 

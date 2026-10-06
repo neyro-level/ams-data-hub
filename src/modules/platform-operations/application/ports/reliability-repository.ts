@@ -28,6 +28,7 @@ export interface ClaimReliabilityEventInput {
   workerId: string;
   now: string;
   leaseTimeoutMs: number;
+  topics?: readonly string[];
 }
 
 export interface ClaimedReliabilityEvent {

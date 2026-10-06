@@ -12,6 +12,7 @@ import { sourceSafetyPolicySchema } from "../domain/source-safety-policy-schema.
 import { createUlid } from "@ams-data-hub/data-contracts";
 import { PrismaSourceRegistryRepository } from "./prisma-source-registry-repository.ts";
 import { lockSourceIdentities } from "./source-identity-lock.ts";
+import { enqueueSourceGoodSnapshot } from "./source-snapshot-intent.ts";
 
 export interface StagedSourceRecord {
   externalId: string;
@@ -255,6 +256,7 @@ export class PrismaSourceExecutionRepository {
     await this.transaction.source.update({ where: { id: context.target.sourceId }, data: {
       lastGoodRevisionId: revisionId, lastSuccessAt: revision.startedAt,
     } });
+    await enqueueSourceGoodSnapshot(this.transaction, context.principal, context.target, { revisionId, sequence });
     return { revisionId, sequence };
   }
 

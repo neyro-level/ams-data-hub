@@ -9,9 +9,14 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
 import { createSourceExecutionServer, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
-import type { PlatformAdminPrincipal, ProjectJobPrincipal } from "../../src/platform/authorization/principal.ts";
+import * as transactionRuntime from "../../src/platform/database/transaction.ts";
+import type { DatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import type { PlatformAdminPrincipal, PrincipalContext, ProjectJobPrincipal } from "../../src/platform/authorization/principal.ts";
 import { BOOTSTRAP_SOURCE_SAFETY_POLICY, type SourceSafetyPolicy } from "../../src/modules/ingestion-core/domain/safety-engine.ts";
 import { PrismaSourceExecutionRepository } from "../../src/modules/ingestion-core/infrastructure/prisma-source-execution-repository.ts";
+import { enqueueSourceGoodSnapshot } from "../../src/modules/ingestion-core/infrastructure/source-snapshot-intent.ts";
+import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
+import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -57,11 +62,116 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     records: await tx.sourceRevisionRecord.findMany({ where: target }),
     events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
+    intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
+      payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
   }));
   return { principal, target, runtime, provide, read, uploaded: () => uploaded, cleanup: () => { delete process.env[referenceName]; gateway.mockReset(); } };
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("keeps snapshot intent pending while the real default outbox drain completes maintenance", async () => {
+    const context = await setup();
+    const workerId = `mp03-reservation-${randomUUID().slice(0, 8)}`;
+    try {
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", snapshotTriggered: true });
+      const baseline = await context.read();
+      const now = new Date();
+      const maintenance = await runInPrincipalDatabaseTransaction(context.principal, (tx) => new PrismaReliabilityRepository(tx).enqueueEvent({
+        organizationId: context.target.organizationId, organizationScope: context.target.organizationId,
+        idempotencyScope: "mp03.maintenance", idempotencyKey: randomUUID(), requestHash: "a".repeat(64),
+        topic: "platform.maintenance.requested", payload: { operation: "synthetic-maintenance" },
+        actorType: "SYSTEM", actorId: "synthetic-admin", action: "platform.maintenance.requested",
+        entityType: "Project", entityId: context.target.projectId, source: "synthetic-runtime",
+        correlationId: randomUUID(), schemaVersion: 1, occurredAt: now.toISOString(), availableAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 24 * 3_600_000).toISOString(),
+      }));
+      await drainOutbox({ workerId, maxEvents: 25 });
+      await drainOutbox({ workerId, maxEvents: 25 });
+      const status = await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.outboxEvent.findUniqueOrThrow({ where: { id: maintenance.outboxEventId } }));
+      expect(status.status).toBe("PROCESSED");
+      expect((await context.read()).intents).toEqual(baseline.intents);
+    } finally {
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.runtimeHeartbeat.deleteMany({ where: { workerId } }));
+      context.cleanup();
+    }
+  });
+
+  it("executes real GOOD and outbox writes with the non-bypass worker database role", async () => {
+    const context = await setup();
+    const original = transactionRuntime.runInPrincipalDatabaseTransaction;
+    let checked = 0;
+    const failures: string[] = [];
+    async function runAsWorker<T>(principal: PrincipalContext, execute: (tx: DatabaseTransaction) => Promise<T>): Promise<T> {
+      return original(principal, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect(await tx.$queryRawUnsafe('SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user')).toEqual([{ rolbypassrls: false }]);
+        checked += 1;
+        try { return await execute(tx); } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          failures.push(message.match(/permission denied for (?:table|schema) [A-Za-z0-9_]+/u)?.[0]
+            ?? (error && typeof error === "object" && "code" in error ? String(error.code) : "DATABASE_EXECUTION_FAILED"));
+          throw error;
+        }
+      });
+    }
+    // Keep the production facade/SQL unchanged. The test fixture login is an
+    // owner for setup; explicitly lower the actual session role for execution.
+    const role = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation(runAsWorker);
+    try {
+      context.provide(feed(offer("one")));
+      const result = await context.runtime.run(context.target);
+      expect(result, JSON.stringify({ result, failures })).toMatchObject({ state: "GOOD", snapshotTriggered: true });
+      expect(checked).toBeGreaterThan(3);
+      role.mockRestore();
+      expect((await context.read()).intents).toHaveLength(1);
+    } finally { role.mockRestore(); context.cleanup(); }
+  });
+
+  it("commits one durable idempotent value-free snapshot intent per GOOD revision", async () => {
+    const context = await setup();
+    try {
+      context.provide(feed(offer("one")));
+      const result = await context.runtime.run(context.target);
+      expect(result).toMatchObject({ state: "GOOD", snapshotTriggered: true });
+      if (result.state !== "GOOD") throw new Error("SYNTHETIC_GOOD_REQUIRED");
+      const current = await context.read();
+      expect(current.intents).toHaveLength(1);
+      expect(current.intents[0]).toMatchObject({ status: "PENDING", attempts: 0,
+        payload: { schemaVersion: 1, ...context.target, sourceRevisionId: result.revisionId, sourceRevisionSequence: 1 } });
+      const job: ProjectJobPrincipal = { kind: "project-job", jobName: "source-import", ...context.target, correlationId: randomUUID() };
+      const duplicate = await runInPrincipalDatabaseTransaction(job, (tx) => enqueueSourceGoodSnapshot(tx, job, context.target, result));
+      expect(duplicate).toMatchObject({ duplicate: true, outboxEventId: current.intents[0]!.id });
+      expect((await context.read()).intents).toEqual(current.intents);
+      expect(JSON.stringify(current.intents)).not.toContain("synthetic.example.test");
+      expect(JSON.stringify(current.intents)).not.toContain("synthetic-runtime-only");
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2, snapshotTriggered: true });
+      expect((await context.read()).intents).toHaveLength(2);
+    } finally { context.cleanup(); }
+  });
+
+  it("rolls back GOOD, identities and lifecycle when transactional outbox enqueue fails", async () => {
+    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+      deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 1 });
+    let fault: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
+      context.provide(feed(...all));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD" });
+      const baseline = await context.read();
+      fault = vi.spyOn(PrismaReliabilityRepository.prototype, "enqueueEvent").mockRejectedValueOnce(new Error("SYNTHETIC_OUTBOX_UNAVAILABLE"));
+      context.provide(feed(...all.slice(0, 4)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "DATABASE_APPLY" });
+      const current = await context.read();
+      expect(current.source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
+      expect(current.identities).toEqual(baseline.identities);
+      expect(current.events).toEqual(baseline.events);
+      expect(current.intents).toEqual(baseline.intents);
+      expect(current.revisions.at(-1)?.status).toBe("FAILED");
+    } finally { fault?.mockRestore(); context.cleanup(); }
+  });
+
   it("rolls back identity/lifecycle/GOOD changes when the final database transaction fails", async () => {
     const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
       deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 1 });
@@ -86,6 +196,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       expect(current.source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
       expect(current.identities).toEqual(baseline.identities);
       expect(current.events).toEqual(baseline.events);
+      expect(current.intents).toEqual(baseline.intents);
       expect(current.revisions.at(-1)?.status).toBe("FAILED");
     } finally { fault?.mockRestore(); context.cleanup(); }
   });
@@ -138,6 +249,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         expect(current.source.lastGoodRevisionId).toBe(grace.source.lastGoodRevisionId);
         expect(current.identities).toEqual(grace.identities);
         expect(current.events).toEqual(grace.events);
+        expect(current.intents).toEqual(grace.intents);
       }
       context.provide(feed(...all.slice(0, 4)));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 3 });
@@ -195,6 +307,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         expect(await tx.$queryRawUnsafe('SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user')).toEqual([{ rolbypassrls: false }]);
         expect(await tx.sourceRevision.findMany({ where: first.target })).toEqual([]);
+        expect(await tx.project.findMany({ where: { organizationId: first.target.organizationId, id: first.target.projectId } })).toEqual([]);
         expect(await tx.sourceRevisionRecord.findMany({ where: first.target })).toEqual([]);
         expect((await tx.sourceRevision.updateMany({ where: { id: baseline.source.lastGoodRevisionId! }, data: { failureCode: "TEST_DENIED" } })).count).toBe(0);
       });
@@ -275,7 +388,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
     try {
       context.provide(feed(offer("one")));
       const result = await context.runtime.run(context.target);
-      expect(result).toMatchObject({ state: "GOOD", sourceId: context.target.sourceId, sequence: 1, snapshotTriggered: false });
+      expect(result).toMatchObject({ state: "GOOD", sourceId: context.target.sourceId, sequence: 1, snapshotTriggered: true });
       const first = await context.read();
       expect(first.source.lastGoodRevisionId).toBe(first.revisions[0]!.id);
       expect(first.revisions[0]).toMatchObject({ status: "GOOD", recordCount: 1, safetyPolicy: BOOTSTRAP_SOURCE_SAFETY_POLICY });
