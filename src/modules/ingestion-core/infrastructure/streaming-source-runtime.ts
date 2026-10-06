@@ -25,6 +25,7 @@ const knownFailures = new Set([
   "SOURCE_REVISION_STAGING_CLOSED", "SOURCE_RECORD_INVALID", "SOURCE_RECORD_TOO_LARGE",
   "SOURCE_REVISION_SAFETY_INVALID",
   "SOURCE_EXECUTION_LEASE_LOST",
+  "SOURCE_EXECUTION_ABORTED",
   "IMPORT_REQUIRES_APPROVAL", "IMPORT_REJECTED_BY_SAFETY_POLICY", "SOURCE_ENDPOINT_CREDENTIAL_UNAVAILABLE",
   "SOURCE_ENDPOINT_INTAKE_FAILED", "RAW_ARTIFACT_TOO_LARGE", "RAW_ARTIFACT_CAPACITY_EXCEEDED",
   "YRL_XML_MALFORMED", "YRL_NAMESPACE_MISMATCH", "YRL_ARTIFACT_TOO_LARGE", "YRL_OFFER_LIMIT_EXCEEDED",
@@ -34,25 +35,32 @@ const knownFailures = new Set([
   "MARKETPLACE_XML_FIELD_TOO_LONG", "MARKETPLACE_XML_RECORD_TOO_COMPLEX", "MARKETPLACE_XML_ROOT_INVALID", "MARKETPLACE_XML_UTF8_INVALID",
 ]);
 
-async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage, lease: SourceExecutionLease, manualRequestId?: string): Promise<SourceImportResult> {
+async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage, lease: SourceExecutionLease, manualRequestId?: string, shutdownSignal?: AbortSignal): Promise<SourceImportResult> {
+  const signal = shutdownSignal ? AbortSignal.any([lease.signal, shutdownSignal]) : lease.signal;
+  const assertRunning = () => {
+    lease.assertActive();
+    if (shutdownSignal?.aborted) throw new Error("SOURCE_EXECUTION_ABORTED");
+  };
   const transaction = <T>(run: (repository: PrismaSourceExecutionRepository) => Promise<T>) =>
     runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+      assertRunning();
       await lease.fence(tx);
       const result = await run(new PrismaSourceExecutionRepository(tx));
       await lease.fence(tx);
+      assertRunning();
       return result;
     });
   let stage: ImportPipelineStage = "SAFE_INTAKE";
   let revisionId: string | undefined;
   let raw: StreamingRawArtifact | undefined;
   const abortRaw = () => { void raw?.dispose().catch(() => undefined); };
-  lease.signal.addEventListener("abort", abortRaw, { once: true });
+  signal.addEventListener("abort", abortRaw, { once: true });
   try {
     const safetyPolicy = sourceSafetyPolicySchema.parse(context.safetyPolicy);
     revisionId = (await transaction((repository) => repository.begin(context, manualRequestId))).id;
-    const intake = createStreamingSourceIntake({ endpointReference: context.endpointReference, storage, adapter: context.adapter, safetyPolicy, signal: lease.signal });
+    const intake = createStreamingSourceIntake({ endpointReference: context.endpointReference, storage, adapter: context.adapter, safetyPolicy, signal });
     raw = await intake.safeIntake.acquire();
-    lease.assertActive();
+    assertRunning();
     stage = "RAW_ARTIFACT";
     const receipt = await raw.persist();
     let batch: StagedSourceRecord[] = [];
@@ -68,7 +76,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     for await (const record of context.executableAdapter.parse(raw.open(), {
       limits: intake.limits, ...(context.source.expectedNamespace ? { expectedNamespace: context.source.expectedNamespace } : {}),
     })) {
-      lease.assertActive();
+      assertRunning();
       stage = "NORMALIZE";
       const result = context.executableAdapter.normalize(record);
       stage = "VALIDATE";
@@ -109,6 +117,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     while (true) {
       const page = await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
         await lease.fence(tx);
+        assertRunning();
         return tx.sourceRevisionRecord.findMany({
         where: { ...context.target, revisionId, orderKey: { gt: cursor } }, orderBy: { orderKey: "asc" }, take: BATCH_RECORDS,
         select: { externalId: true, orderKey: true, recordHash: true },
@@ -137,6 +146,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
       normalizedContentHash: normalizedHash, snapshotTriggered: true };
   } catch (error) {
     const code = lease.signal.aborted ? "SOURCE_EXECUTION_LEASE_LOST"
+      : shutdownSignal?.aborted ? "SOURCE_EXECUTION_ABORTED"
       : error instanceof Error && knownFailures.has(error.message) ? error.message : "IMPORT_PIPELINE_FAILED";
     if (revisionId) {
       // Only attempt-owned non-GOOD status is cleaned up without the lost fence.
@@ -145,7 +155,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
     }
     return { state: "FAILED", sourceId: context.target.sourceId, failedStage: stage, code };
   } finally {
-    lease.signal.removeEventListener("abort", abortRaw);
+    signal.removeEventListener("abort", abortRaw);
     if (raw) {
       try { await raw.dispose(); } catch {
         getLogger().warn({ sourceId: context.target.sourceId, code: "RAW_ARTIFACT_CLEANUP_FAILED" }, "Source raw lease cleanup failed");
@@ -156,7 +166,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
 
 /** Application composition; callers configure only Source IDs. Storage is the
  * server-owned infrastructure dependency, never a per-Source payload adapter. */
-export function createSourceExecutionServer(storage: StreamingObjectStorage, options: { manualRequestId?: string } = {}) {
+export function createSourceExecutionServer(storage: StreamingObjectStorage, options: { manualRequestId?: string; signal?: AbortSignal } = {}) {
   if (options.manualRequestId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/u.test(options.manualRequestId)) throw new Error("SOURCE_MANUAL_REQUEST_INVALID");
   return {
     async run(target: SourceImportTarget): Promise<SourceImportResult> {
@@ -164,21 +174,26 @@ export function createSourceExecutionServer(storage: StreamingObjectStorage, opt
         typeof id === "string" && /^[A-Za-z0-9_-]{1,128}$/u.test(id))) {
         return { state: "FAILED", sourceId: "INVALID_SOURCE", failedStage: "SAFE_INTAKE", code: "SOURCE_EXECUTION_TARGET_INVALID" };
       }
+      if (options.signal?.aborted) return { state: "FAILED", sourceId: target.sourceId, failedStage: "SAFE_INTAKE", code: "SOURCE_EXECUTION_ABORTED" };
       let lease: SourceExecutionLease;
       try { lease = await acquireSourceExecutionGuard(getPrismaPool(), target); }
       catch (error) {
         return { state: "FAILED", sourceId: target.sourceId, failedStage: "SAFE_INTAKE",
-          code: error instanceof Error && error.message === "SOURCE_EXECUTION_BUSY" ? error.message : "SOURCE_EXECUTION_GUARD_UNAVAILABLE" };
+          code: options.signal?.aborted ? "SOURCE_EXECUTION_ABORTED"
+            : error instanceof Error && error.message === "SOURCE_EXECUTION_BUSY" ? error.message : "SOURCE_EXECUTION_GUARD_UNAVAILABLE" };
       }
       try {
         return await new SourceExecutionService({
           load: (principal, sourceId) => runInPrincipalDatabaseTransaction(principal, async (tx) => {
+            lease.assertActive();
+            if (options.signal?.aborted) throw new Error("SOURCE_EXECUTION_ABORTED");
             await lease.fence(tx);
             const state = await new PrismaSourceExecutionRepository(tx).load(principal, sourceId);
             await lease.fence(tx);
+            if (options.signal?.aborted) throw new Error("SOURCE_EXECUTION_ABORTED");
             return state;
           }),
-          run: (context) => execute(context, storage, lease, options.manualRequestId),
+          run: (context) => execute(context, storage, lease, options.manualRequestId, options.signal),
         }).run(target);
       } finally { await lease.release(); }
     },

@@ -7,6 +7,11 @@ import { runSourceWorker, runSourceWorkerWithDependencies } from "../src/infrast
 import { SOURCE_IMPORT_QUEUE } from "../src/modules/ingestion-core/worker.ts";
 
 describe("source worker command composition", () => {
+  it("does not open storage or queues when shutdown is already requested", async () => {
+    const controller = new AbortController(); controller.abort();
+    expect(await runSourceWorker({ workerId: "synthetic", signal: controller.signal })).toEqual({ fetched: 0, completed: 0, failed: 0 });
+    expect(queue.get).not.toHaveBeenCalled(); expect(queue.stop).not.toHaveBeenCalled();
+  });
   it("rejects missing storage configuration before connecting to pg-boss", async () => {
     vi.stubEnv("PROJECT_STORAGE_BINDINGS", "");
     try { await expect(runSourceWorker({ workerId: "synthetic", signal: new AbortController().signal })).rejects.toThrow("PROJECT_STORAGE_BINDINGS_INVALID");

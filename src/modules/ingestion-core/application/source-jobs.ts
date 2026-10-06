@@ -85,6 +85,9 @@ export function createSourceJobs(dependencies: SourceJobDependencies) {
       if (result?.state === "FAILED" && result.sourceId === job.sourceId && result.code === "SOURCE_EXECUTION_BUSY") {
         return { status: "DEFERRED", reason: "SOURCE_EXECUTION_BUSY" };
       }
+      if (result?.state === "FAILED" && result.sourceId === job.sourceId && result.code === "SOURCE_EXECUTION_ABORTED") {
+        return { status: "DEFERRED", reason: "WORKER_SHUTDOWN" };
+      }
       if (result?.state !== "GOOD" || result.sourceId !== job.sourceId) throw new Error("SOURCE_IMPORT_FAILED");
       return { status: "COMPLETED" };
     },

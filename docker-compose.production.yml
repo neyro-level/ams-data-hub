@@ -32,6 +32,9 @@ services:
 
   worker:
     <<: *runtime-hardening
+    stop_grace_period: 60s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=640m
     image: ${AMS_DATA_HUB_WORKER_IMAGE:?Set AMS_DATA_HUB_WORKER_IMAGE}
     restart: always
     network_mode: host
@@ -43,6 +46,7 @@ services:
     environment:
       APP_ENV: production
       NODE_ENV: production
+      OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS: "30000"
     healthcheck:
       test: ["CMD", "node", "--conditions=react-server", ".runtime/worker/worker/main.js", "healthcheck"]
       interval: 30s

@@ -33,7 +33,7 @@ These fixtures use explicit persisted synthetic safety policies and mocked
 HTTP/SDK transport; they do not recalibrate live profiles or prove provider
 compatibility. The combined `source-worker` command now owns native pg-boss
 source consumption and startup/between-job schedule reconciliation. Production
-activation and the remaining concurrency/shutdown/health gates are pending. No production
+activation and the remaining worker health/delivery gates are pending. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
@@ -75,7 +75,25 @@ unlock destroys its client. Existing source/version/policy/identity checks remai
 BUSY is a native 30-second deferral, not a failed execution: the pg-boss 12 adapter
 uses an atomic active-attempt CAS and retains retry count and manual request.
 Deferral infrastructure failure stops the consumer rather than terminally failing
-that request. This does not yet prove SIGTERM handling of an active import.
+that request. SIGINT/SIGTERM stop new fetch and cancel an active Source using
+the bound server-owned signal. Cancellation completes raw disposal and guard
+release before atomic WORKER_SHUTDOWN deferral; REQUESTED/CLAIMED remains
+recoverable and retries are not spent. Already committed GOOD is acknowledged.
+The CLI then closes the queue, permanent guard and Prisma pool. Its shutdown
+deadline includes acquisition, settlement and cleanup; timeout is fatal and
+leaves unsettled work for native lease recovery, never a fake graceful result.
+The worker-only Compose template uses 640 MiB tmpfs and 60-second stop grace;
+other roles and the default outbox-worker command remain unchanged. The deploy
+script uses this canonical Compose template; its separate migrator tmpfs stays
+64 MiB. No live environment or deployment is changed by this repository work.
+
+The native child-process regression uses the actual CLI, PostgreSQL and durable
+queues with synthetic HTTP/S3 transport. It covers cancellation before response
+headers and during upload, restart of the same deferred request, GOOD committed
+before native ACK, and a non-cancellable SDK fatal timeout. Windows invokes the
+registered SIGTERM handler through test IPC; it does not prove an OS Unix signal.
+The Linux exact-head delivery gate must run the same regression with OS SIGTERM.
+Fatal termination does not guarantee spool cleanup or immediate lease recovery.
 
 ### Development commands
 
@@ -103,7 +121,8 @@ rate limiting and explicit server permissions.
 The production default permanent worker is still an outbox worker, not proof of
 production source ingestion. SourceExecutionService is implemented by MP-03;
 explicit local combined worker/scheduler/manual composition is implemented
-within MP-04, whose concurrency/shutdown/health gates remain open. Real snapshot
+within MP-04. Concurrency and controlled shutdown have local runtime evidence;
+health and exact-head delivery gates remain open. Real snapshot
 assembly is MP-05, and operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate

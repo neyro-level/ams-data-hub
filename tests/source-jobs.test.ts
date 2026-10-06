@@ -230,20 +230,41 @@ describe("source jobs", () => {
       expect(sourceImportJobSchema.safeParse({ ...payload, ...patch }).success).toBe(false);
     }
   });
-  it("defers BUSY even at the terminal native retry without failing the durable manual request", async () => {
+  it.each([
+    ["SOURCE_EXECUTION_BUSY", "SOURCE_EXECUTION_BUSY"], ["SOURCE_EXECUTION_ABORTED", "WORKER_SHUTDOWN"],
+  ] as const)("defers %s even at the terminal native retry without failing the durable manual request", async (code, reason) => {
     const payload = { schemaVersion: 1 as const, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" as const,
       manualRequestId: "request" };
     const manual = { load: vi.fn(async () => ({ status: "REQUESTED" as const })), fail: vi.fn() };
     const jobs = createSourceJobs({ repository: { listSchedulingSources: vi.fn(), loadExecutionContext: vi.fn(async () => context()) },
       queue: { reconcileSchedules: vi.fn() }, manualRequests: manual,
-      runImport: vi.fn(async () => ({ state: "FAILED" as const, sourceId: "source-1", failedStage: "SAFE_INTAKE" as const, code: "SOURCE_EXECUTION_BUSY" })) });
+      runImport: vi.fn(async () => ({ state: "FAILED" as const, sourceId: "source-1", failedStage: "SAFE_INTAKE" as const, code })) });
     const job = { id: "busy", retryCount: 3, retryLimit: 3, data: payload };
     const boss = { fetch: vi.fn(async () => [job]), complete: vi.fn(), fail: vi.fn() };
     const defer = vi.fn();
     expect(await drainSourceJobQueue(boss as never, jobs, 1, defer)).toMatchObject({ deferred: 1, completed: 0, failed: 0 });
-    expect(defer).toHaveBeenCalledWith(job); expect(boss.fail).not.toHaveBeenCalled(); expect(manual.fail).not.toHaveBeenCalled();
+    expect(defer).toHaveBeenCalledWith(job, reason); expect(boss.fail).not.toHaveBeenCalled(); expect(manual.fail).not.toHaveBeenCalled();
     defer.mockRejectedValueOnce(new Error("private dispatch failure"));
     await expect(drainSourceJobQueue(boss as never, jobs, 1, defer)).rejects.toThrow("SOURCE_JOB_DEFERRAL_FAILED");
     expect(boss.fail).not.toHaveBeenCalled(); expect(manual.fail).not.toHaveBeenCalled();
+  });
+  it("does not fetch after shutdown and defers a job fetched simultaneously without invoking its handler", async () => {
+    const controller = new AbortController();
+    const job = { id: "shutdown-race", data: { schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" } };
+    const boss = { fetch: vi.fn(async () => { controller.abort(); return [job]; }), complete: vi.fn(), fail: vi.fn() };
+    const handler = { run: vi.fn(), onFailure: vi.fn() }; const defer = vi.fn();
+    expect(await drainSourceJobQueue(boss as never, handler, 1, defer, controller.signal)).toMatchObject({ fetched: 1, deferred: 1, failed: 0 });
+    expect(defer).toHaveBeenCalledWith(job, "WORKER_SHUTDOWN"); expect(handler.run).not.toHaveBeenCalled();
+    expect(handler.onFailure).not.toHaveBeenCalled(); expect(boss.complete).not.toHaveBeenCalled(); expect(boss.fail).not.toHaveBeenCalled();
+    expect(await drainSourceJobQueue(boss as never, handler, 1, defer, controller.signal)).toMatchObject({ fetched: 0 });
+    expect(boss.fetch).toHaveBeenCalledOnce();
+  });
+  it("acknowledges already committed GOOD even if shutdown arrives immediately before native acknowledgement", async () => {
+    const controller = new AbortController();
+    const job = { id: "shutdown-after-good", data: { schemaVersion: 1, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" } };
+    const boss = { fetch: vi.fn(async () => [job]), complete: vi.fn(), fail: vi.fn() }; const defer = vi.fn();
+    const handler = { run: vi.fn(async () => { controller.abort(); return { status: "COMPLETED" as const }; }) };
+    expect(await drainSourceJobQueue(boss as never, handler, 1, defer, controller.signal)).toMatchObject({ completed: 1, deferred: 0 });
+    expect(boss.complete).toHaveBeenCalledWith(SOURCE_IMPORT_QUEUE, job.id, { status: "COMPLETED" }); expect(defer).not.toHaveBeenCalled();
   });
 });

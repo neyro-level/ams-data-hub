@@ -23,7 +23,7 @@ Use `.env.example` as the value-free project template.
 | Variable | Scope | Notes |
 | --- | --- | --- |
 | `OUTBOX_POLL_DELAY_MS` | worker | idle poll delay; defaults to `1000` ms |
-| `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | maximum graceful drain wait for the active handler; defaults to `30000` ms |
+| `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | process shutdown deadline for active work, durable settlement and owned cleanup; defaults to `30000` ms |
 | `LOG_LEVEL` | server/worker | pino level |
 | `PROJECT_STORAGE_BINDINGS` | source-worker | value-free exact organization/project registry of five environment reference names; no implicit global S3 fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
@@ -121,9 +121,23 @@ SOURCE_EXECUTION_BUSY leaves the manual request unchanged. The version-pinned
 pg-boss 12 adapter atomically returns only the matching active Source job to
 created with a 30-second delay, retaining its row/payload/singleton and retry
 count. Stale attempt metadata cannot defer another attempt; contention never
-calls terminal request failure. Controlled SIGTERM shutdown and source
-health proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
-not intake capacity proof for the up-to-256 MiB source spool.
+calls terminal request failure. SIGINT/SIGTERM now stop fetch and cancel the
+active Source intake/upload/parser through a server-owned signal. Short fenced
+transactions check cancellation before work and before commit; an already
+committed GOOD is acknowledged, not relabelled aborted. A fetched-race job or
+controlled aborted attempt returns through the same atomic CAS with
+WORKER_SHUTDOWN, preserving its manual request and execution retry count.
+Raw cleanup and Source guard release precede settlement; queue stop, permanent
+guard release and Prisma pool close precede the successful process-stop log.
+The process-level deadline covers acquisition, active work, settlement and all
+cleanup. Expiry exits fatally with a fixed code; native lease expiry recovers
+unsettled durable work, and this is not a successful graceful stop.
+The worker-only Compose template now has a 640 MiB private tmpfs for the bounded
+512 MiB aggregate raw-spool reservation plus overhead, a pinned 30-second
+process shutdown deadline and 60-second stop grace.
+Web/migrator remain at 64 MiB and the default command remains outbox-worker.
+This is repository preparation, not a deployed capacity or Linux signal proof;
+source readiness remains MP04.7.
 
 ## PostgreSQL Evidence Transition
 

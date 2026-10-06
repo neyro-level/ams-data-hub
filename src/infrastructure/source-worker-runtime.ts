@@ -16,7 +16,7 @@ export interface SourceWorkerDependencies {
   repository: SourceJobRepository;
   manualRequests?: SourceManualRequestRepository;
   reconcileTerminalRequests?(): Promise<void>;
-  deferSourceJob?(job: JobWithMetadata<SourceImportJob>): Promise<void>;
+  deferSourceJob?(job: JobWithMetadata<SourceImportJob>, reason: "SOURCE_EXECUTION_BUSY" | "WORKER_SHUTDOWN"): Promise<void>;
   resolveStorage(scope: ProjectStorageScope): ProjectObjectStorage;
   outbox: OutboxDrainDependencies;
 }
@@ -30,7 +30,7 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
     queue: new PgBossSourceJobQueue(dependencies.boss),
     runImport: async (_principal, target, job) => {
       return createSourceExecutionServer(dependencies.resolveStorage({ organizationId: target.organizationId,
-        projectId: target.projectId }), job.manualRequestId ? { manualRequestId: job.manualRequestId } : {}).run(target);
+        projectId: target.projectId }), { signal: options.signal, ...(job.manualRequestId ? { manualRequestId: job.manualRequestId } : {}) }).run(target);
     } });
   const totals = { fetched: 0, completed: 0, failed: 0 };
   await sourceJobs.reconcileSchedules();
@@ -45,7 +45,7 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
     const outbox = await drainOutboxWithDependencies({ workerId: options.workerId, signal: options.signal,
       ...(options.shutdownDrainTimeoutMs === undefined ? {} : { shutdownDrainTimeoutMs: options.shutdownDrainTimeoutMs }) }, dependencies.outbox);
     if (options.signal.aborted) break;
-    const source = await drainSourceJobQueue(dependencies.boss, sourceJobs, 1, dependencies.deferSourceJob);
+    const source = await drainSourceJobQueue(dependencies.boss, sourceJobs, 1, dependencies.deferSourceJob, options.signal);
     totals.fetched += source.fetched; totals.completed += source.completed; totals.failed += source.failed;
     if (!options.signal.aborted && source.fetched === 0 && outbox.claimed === 0) {
       try { await delay(pollIntervalMs, undefined, { signal: options.signal }); }
@@ -56,12 +56,13 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
 }
 
 export async function runSourceWorker(options: SourceWorkerOptions) {
+  if (options.signal.aborted) return { fetched: 0, completed: 0, failed: 0 };
   // Reject missing bindings before opening a queue or attempting any intake.
   const resolveStorage = createProjectObjectStorageResolver();
   const boss = await getPgBoss();
   let terminalCursor = "";
   try { return await runSourceWorkerWithDependencies(options, { boss, resolveStorage,
-    deferSourceJob: (job) => deferSourceImportJob(boss, job),
+    deferSourceJob: (job, reason) => deferSourceImportJob(boss, job, reason),
     repository: createPrismaSourceJobRepository(), manualRequests: createPrismaSourceManualRequests(),
     reconcileTerminalRequests: async () => {
       const events = await listDeadLetterOutboxEvents(SOURCE_MANUAL_REQUEST_TOPIC, terminalCursor);

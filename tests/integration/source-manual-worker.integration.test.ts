@@ -137,7 +137,7 @@ describe("native manual Source execution", () => {
       const admission = new AbortController(); const nativeDb = contentionBoss.getDb(); const executeSql = nativeDb.executeSql.bind(nativeDb);
       const deferredSql = vi.spyOn(nativeDb, "executeSql").mockImplementation(async (text, values) => {
         const result = await executeSql(text, values);
-        if (text.includes("SOURCE_EXECUTION_BUSY") && text.includes("UPDATE pgboss.job")) admission.abort();
+        if (values?.[6] === "SOURCE_EXECUTION_BUSY" && text.includes("UPDATE pgboss.job")) admission.abort();
         return result;
       });
       const admissionTimeout = setTimeout(() => admission.abort(), 5_000);
