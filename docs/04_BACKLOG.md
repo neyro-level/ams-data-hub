@@ -41,12 +41,16 @@ atomic GOOD/Last Good и durable snapshot intent; GitHub mirror синхрони
 MP-06 доставлен PR #22 после exact-head RISKY Gate #226, merge
 `185cf150cf093e6858b824629ddc6e0994e63240`: public HTML/media contracts,
 scoped mirrored media и синтетическое producer-OFF proof; GitHub mirror совпадает.
-Текущий участок — MP-04 worker/scheduler runtime.
+MP-04 доставлен PR #23 после exact-head RISKY Gate #236, merge
+`8dd7f7e6913e941dc3eee5ebff58f412d0dd8bcd`: concrete Source worker/scheduler,
+manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
+подтвердил native cron и реальные OS SIGTERM. GitHub mirror совпадает.
+Текущий участок — MP-07 bounded snapshot verifier, затем MP-05 assembly.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-04/MP-05/MP-07–MP-10 нового remediation plan;
-MP-00–MP-03 и MP-06 закрыты.
+Активная доработка: MP-05/MP-07–MP-10 нового remediation plan;
+MP-00–MP-04 и MP-06 закрыты.
 Далее — production composition, source worker/scheduler,
 snapshot assembly, public contracts, verifier hardening, operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний

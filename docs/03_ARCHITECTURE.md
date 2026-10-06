@@ -104,7 +104,7 @@ remediation program preserves these boundaries while connecting them:
   worker claims only its registered maintenance topic; snapshot intents stay
   PENDING until a real executor is wired, not failed/completed by a noop handler.
   Snapshot build/publish
-  execution and scheduled source execution remain MP-04/MP-05/MP-08;
+  execution remains MP-05/MP-08; scheduled source execution is implemented;
   service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
@@ -123,8 +123,17 @@ remediation program preserves these boundaries while connecting them:
   a real storage provider. Complete snapshot orchestration,
   historical missing-grace fact selection and consent-gated agent projection
   remain subsequent gates.
-- MP-07: bounded consumer decompression remains pending; the verifier currently
-  calls unbounded gunzip.
+- MP-07: explicit immutable verifier policy now defines compressed/decompressed
+  file, record-count and total-work limits. Factory configuration rejects unsafe
+  overrides. Native gunzip has a finite output bound constrained by remaining
+  compressed/decoded budget, including concatenated members. Fatal UTF-8,
+  raw-before-Zod cardinality and fixed callback-error rejections retain last-good.
+  Raw manifest shape bounds precede schema/crypto allocations; complete trust,
+  scope, sequence, set, lengths and all-copy hashes precede any decompression.
+  Private bounded copies prevent hash-to-use mutation. Adversarial regressions
+  exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
+  boundaries, key rotation/revocation and last-good; delivery review/gate must
+  still pass before this epic is delivered. Budgets are not callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

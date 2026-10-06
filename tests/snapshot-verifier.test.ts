@@ -32,6 +32,29 @@ function resign(manifest: SnapshotManifestV1, patch: Partial<SnapshotManifestV1>
 }
 
 describe("snapshot verifier package", () => {
+  it("rejects signed declared compressed, aggregate and record-limit violations without replacing last-good", async () => {
+    const snapshot = await fixture();
+    const compressedTotal = snapshot.manifest.files.reduce((total, file) => total + file.bytes, 0);
+    for (const limits of [{ maxCompressedFileBytes: 1 }, { maxTotalSnapshotBytes: compressedTotal - 1 }]) {
+      const bounded = createSnapshotVerifier({ datasetSchemas, validateReferences: () => true, ...limits });
+      const result = bounded({ ...snapshot, ...base });
+      expect(result).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+      expect(result.nextState).toBe(base.lastGood);
+    }
+    const files = snapshot.manifest.files.map((file, index) => index === 0 ? { ...file, count: 2 } : file);
+    const countLimited = createSnapshotVerifier({ datasetSchemas, validateReferences: () => true, maxDatasetRecords: 1 });
+    const result = countLimited({ ...snapshot, manifest: resign(snapshot.manifest, { files }), ...base });
+    expect(result).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    expect(result.nextState).toBe(base.lastGood);
+  });
+
+  it("captures limits rather than trusting later policy mutation", async () => {
+    const policy = { datasetSchemas, validateReferences: () => true, maxCompressedFileBytes: 1 };
+    const bounded = createSnapshotVerifier(policy);
+    policy.maxCompressedFileBytes = 1_000_000;
+    expect(bounded({ ...await fixture(), ...base })).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+  });
+
   it("accepts a real Hub-composed and signed snapshot", async () => {
     const snapshot = await fixture();
     expect(verifier({ ...snapshot, ...base })).toMatchObject({ accepted: true, nextState: { publishSequence: 2 } });

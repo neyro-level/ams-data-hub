@@ -1,7 +1,13 @@
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { gunzipSync } from "node:zlib";
+import { isUint8Array } from "node:util/types";
 import { z } from "zod";
+import { resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
+import { isResourceBoundedManifest } from "./manifest-preflight.ts";
+
+export { DEFAULT_SNAPSHOT_VERIFIER_LIMITS, MAX_SNAPSHOT_VERIFIER_LIMITS, resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
+export { MAX_SNAPSHOT_SOURCE_REVISIONS } from "./manifest-preflight.ts";
 
 export const SNAPSHOT_DATASET_KINDS = [
   "geo", "developers", "developments", "buildings", "prices", "media", "inventory",
@@ -35,9 +41,10 @@ export type SnapshotVerifierRejection =
   | "MANIFEST_INVALID" | "UNKNOWN_KEY_ID" | "REVOKED_KEY_ID" | "INVALID_SIGNATURE"
   | "PROJECT_MISMATCH" | "SCHEMA_MAJOR_UNSUPPORTED" | "STALE_PUBLISH_SEQUENCE"
   | "DATASET_SET_INVALID" | "FILE_MISSING" | "FILE_BYTES_MISMATCH" | "FILE_HASH_MISMATCH"
-  | "FILE_GZIP_INVALID" | "DATASET_SCHEMA_INVALID" | "REFERENCE_INTEGRITY_INVALID";
+  | "FILE_GZIP_INVALID" | "DATASET_SCHEMA_INVALID" | "REFERENCE_INTEGRITY_INVALID"
+  | "SNAPSHOT_LIMIT_EXCEEDED";
 
-export interface SnapshotVerifierPolicy {
+export interface SnapshotVerifierPolicy extends Partial<SnapshotVerifierLimits> {
   datasetSchemas: Readonly<Record<SnapshotDatasetKind, z.ZodType<readonly unknown[]>>>;
   validateReferences(datasets: Readonly<Record<SnapshotDatasetKind, readonly unknown[]>>): boolean;
 }
@@ -60,8 +67,10 @@ function signingPayload(manifest: SnapshotManifestV1): Uint8Array {
 function digest(body: Uint8Array): string { return createHash("sha256").update(body).digest("hex"); }
 
 export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
+  const limits = resolveSnapshotVerifierLimits(policy);
   return function verifySnapshot(input: VerifySnapshotInput): VerifySnapshotResult {
     const reject = (reason: SnapshotVerifierRejection): VerifySnapshotResult => ({ accepted: false, reason, nextState: input.lastGood });
+    if (!isResourceBoundedManifest(input.manifest, SNAPSHOT_DATASET_KINDS.length)) return reject("MANIFEST_INVALID");
     const parsed = snapshotManifestV1Schema.safeParse(input.manifest);
     if (!parsed.success) return reject("MANIFEST_INVALID");
     const manifest = parsed.data;
@@ -78,19 +87,58 @@ export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
     if (input.lastGood && manifest.publishSequence <= input.lastGood.publishSequence) return reject("STALE_PUBLISH_SEQUENCE");
     const kinds = manifest.files.map((file) => file.kind);
     if (kinds.length !== SNAPSHOT_DATASET_KINDS.length || new Set(kinds).size !== kinds.length || SNAPSHOT_DATASET_KINDS.some((kind) => !kinds.includes(kind))) return reject("DATASET_SET_INVALID");
-    const datasets = {} as Record<SnapshotDatasetKind, readonly unknown[]>;
+    let compressedBytes = 0;
     for (const file of manifest.files) {
+      if (file.bytes > limits.maxCompressedFileBytes || file.count > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      compressedBytes += file.bytes;
+      if (compressedBytes > limits.maxTotalSnapshotBytes) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+    }
+    // Validate every referenced length before copying/hashing any artifact.
+    const referencedBodies = new Map<SnapshotDatasetKind, Uint8Array>();
+    for (const file of manifest.files) {
+      if (!Object.hasOwn(input.files, file.key)) return reject("FILE_MISSING");
       const body = input.files[file.key];
-      if (!body) return reject("FILE_MISSING");
+      if (!isUint8Array(body)) return reject("FILE_MISSING");
+      if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
+      referencedBodies.set(file.kind, body);
+    }
+    const verifiedFiles = new Map<SnapshotDatasetKind, Uint8Array>();
+    for (const file of manifest.files) {
+      // Own bounded copies prevent a callback/shared-buffer mutation after hash.
+      const body = Buffer.from(referencedBodies.get(file.kind)!);
       if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
       if (digest(body) !== file.sha256) return reject("FILE_HASH_MISMATCH");
-      let value: unknown;
-      try { value = JSON.parse(gunzipSync(body).toString("utf8")); } catch { return reject("FILE_GZIP_INVALID"); }
-      const dataset = policy.datasetSchemas[file.kind].safeParse(value);
-      if (!dataset.success || dataset.data.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
-      datasets[file.kind] = dataset.data;
+      verifiedFiles.set(file.kind, body);
     }
-    if (!policy.validateReferences(datasets)) return reject("REFERENCE_INTEGRITY_INVALID");
+    const datasets = {} as Record<SnapshotDatasetKind, readonly unknown[]>;
+    let snapshotBytes = compressedBytes;
+    for (const file of manifest.files) {
+      const body = verifiedFiles.get(file.kind)!;
+      let value: unknown;
+      const maxOutputLength = Math.min(limits.maxDecompressedFileBytes, limits.maxTotalSnapshotBytes - snapshotBytes);
+      if (maxOutputLength <= 0) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      try {
+        const decoded = gunzipSync(body, { maxOutputLength });
+        if (decoded.byteLength > maxOutputLength) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        snapshotBytes += decoded.byteLength;
+        value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(decoded));
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ERR_BUFFER_TOO_LARGE") return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        return reject("FILE_GZIP_INVALID");
+      }
+      if (!Array.isArray(value)) return reject("DATASET_SCHEMA_INVALID");
+      if (value.length > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      if (value.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
+      try {
+        const dataset = policy.datasetSchemas[file.kind].safeParse(value);
+        if (!dataset.success || !Array.isArray(dataset.data) || dataset.data.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
+        if (dataset.data.length > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        datasets[file.kind] = dataset.data;
+      } catch { return reject("DATASET_SCHEMA_INVALID"); }
+    }
+    try {
+      if (!policy.validateReferences(datasets)) return reject("REFERENCE_INTEGRITY_INVALID");
+    } catch { return reject("REFERENCE_INTEGRITY_INVALID"); }
     return { accepted: true, manifest, datasets, nextState: { projectId: manifest.projectId, schemaMajor: manifest.schemaMajor, publishSequence: manifest.publishSequence } };
   };
 }
