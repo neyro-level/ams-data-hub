@@ -21,8 +21,15 @@ positive safe integers at or below the ceilings; invalid configuration fails
 factory construction with `SNAPSHOT_VERIFIER_LIMIT_INVALID`. Limits are captured
 as immutable values, independent of later caller policy changes. Total snapshot
 work charges compressed and decoded bytes per dataset, not process RSS or
-external downloading. Declared compressed sizes/counts are checked now; actual
-bounded decoding and full preflight are the subsequent MP-07 checkpoints.
+external downloading. Native synchronous gunzip uses `maxOutputLength` set to
+the smaller of the per-file ceiling and remaining combined snapshot budget;
+concatenated members share that bound. This preserves the synchronous API without
+an unrestricted output allocation. Actual raw array counts are checked before
+Zod, and raw/validated counts must match the signed manifest. Invalid UTF-8 is
+rejected, never decoded with replacement characters. Schema/reference exceptions
+return fixed rejection codes and retain exact last-good. The byte/count budgets
+bound artifact work, not arbitrary allocations by trusted policy callbacks or
+prior downloading. Full all-file preflight remains MP-07.3 work.
 
 `descriptionHtmlSafe` is the only HTML-bearing public inventory field. Ingestion
 sanitizes raw descriptions with `p`, `br`, `ul`, `ol`, `li`, `strong`, `em` and no

@@ -125,9 +125,11 @@ remediation program preserves these boundaries while connecting them:
   remain subsequent gates.
 - MP-07: explicit immutable verifier policy now defines compressed/decompressed
   file, record-count and total-work limits. Factory configuration rejects unsafe
-  overrides, and declared compressed bytes/counts are bounded. Actual bounded
-  decompression and full manifest preflight remain the next MP-07 tasks; this
-  policy checkpoint alone does not close the hostile-artifact boundary.
+  overrides. Native gunzip has a finite output bound constrained by remaining
+  compressed/decoded budget, including concatenated members. Fatal UTF-8,
+  raw-before-Zod cardinality and fixed callback-error rejections retain last-good.
+  Full all-file preflight and complete adversarial coverage remain the next
+  MP-07 checkpoints; artifact budgets are not arbitrary callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

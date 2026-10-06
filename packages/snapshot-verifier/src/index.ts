@@ -90,18 +90,37 @@ export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
       if (compressedBytes > limits.maxTotalSnapshotBytes) return reject("SNAPSHOT_LIMIT_EXCEEDED");
     }
     const datasets = {} as Record<SnapshotDatasetKind, readonly unknown[]>;
+    let snapshotBytes = compressedBytes;
     for (const file of manifest.files) {
       const body = input.files[file.key];
       if (!body) return reject("FILE_MISSING");
       if (body.byteLength !== file.bytes) return reject("FILE_BYTES_MISMATCH");
       if (digest(body) !== file.sha256) return reject("FILE_HASH_MISMATCH");
       let value: unknown;
-      try { value = JSON.parse(gunzipSync(body).toString("utf8")); } catch { return reject("FILE_GZIP_INVALID"); }
-      const dataset = policy.datasetSchemas[file.kind].safeParse(value);
-      if (!dataset.success || dataset.data.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
-      datasets[file.kind] = dataset.data;
+      const maxOutputLength = Math.min(limits.maxDecompressedFileBytes, limits.maxTotalSnapshotBytes - snapshotBytes);
+      if (maxOutputLength <= 0) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      try {
+        const decoded = gunzipSync(body, { maxOutputLength });
+        if (decoded.byteLength > maxOutputLength) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        snapshotBytes += decoded.byteLength;
+        value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(decoded));
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ERR_BUFFER_TOO_LARGE") return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        return reject("FILE_GZIP_INVALID");
+      }
+      if (!Array.isArray(value)) return reject("DATASET_SCHEMA_INVALID");
+      if (value.length > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      if (value.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
+      try {
+        const dataset = policy.datasetSchemas[file.kind].safeParse(value);
+        if (!dataset.success || !Array.isArray(dataset.data) || dataset.data.length !== file.count) return reject("DATASET_SCHEMA_INVALID");
+        if (dataset.data.length > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+        datasets[file.kind] = dataset.data;
+      } catch { return reject("DATASET_SCHEMA_INVALID"); }
     }
-    if (!policy.validateReferences(datasets)) return reject("REFERENCE_INTEGRITY_INVALID");
+    try {
+      if (!policy.validateReferences(datasets)) return reject("REFERENCE_INTEGRITY_INVALID");
+    } catch { return reject("REFERENCE_INTEGRITY_INVALID"); }
     return { accepted: true, manifest, datasets, nextState: { projectId: manifest.projectId, schemaMajor: manifest.schemaMajor, publishSequence: manifest.publishSequence } };
   };
 }
