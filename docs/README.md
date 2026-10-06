@@ -10,13 +10,21 @@
 | Текущий продуктовый backlog | `04_BACKLOG.md` |
 | Готовность к выпуску, handover и rollback | `05_RELEASE_CHECKLIST.md` |
 | Визуальные правила публичной и приватной поверхности | `06_DESIGN_SYSTEM.md` |
-| Утверждённая программа реализации | `AMS Data Hub Master Plan v1.md` и `AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json` |
+| Активная программа доработок и production readiness | [`AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md`](../AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md) и `AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json` |
+| Завершённая программа реализации v4 | `AMS Data Hub Master Plan v1.md` и `AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json` |
 
 Утверждённый план остаётся на exact-пути, к которому привязаны inventory,
 Beads и execution ledger. Он не заменяет продуктовый backlog.
 Exact v4 — неизменяемый approval artifact с исходным SHA-256; execution graph
 завершён (82/82). Текущие статусы и дополнительные работы после v4 принадлежат
 `04_BACKLOG.md`, `DELIVERY_STATE.yaml` и Task Manager, а не тексту approval handoff.
+
+Новый approved remediation plan от 2026-10-06 — активный execution source.
+Он не переоткрывает исторические задачи v4. Подключение runtime pipeline,
+снятие текущего требования TOTP и production readiness ещё требуют выполнения
+MP-00–MP-10; закрытый v4 не является доказательством этих результатов.
+До отдельной release-команды владельца разрешены только доработки и
+non-production проверки, не production rollout.
 
 ## Самостоятельные расширения
 
@@ -28,6 +36,7 @@ Exact v4 — неизменяемый approval artifact с исходным SHA-
 | `ENVIRONMENT.md` | реестр переменных окружения без значений |
 | `OPERATIONS.md` | local runtime, deploy, rollback, backup/restore и incident recovery |
 | `DELIVERY_STATE.yaml` | machine-readable pointers на фактические delivery и restore proofs |
+| `AMS_DATA_HUB_REMEDIATION_ARCHITECT_HANDOFF_V1.md` | граф нового remediation plan, архитектурные зависимости, 30 DoD и границы доказательств |
 | `DH-00_CANON_MAPPING.md` | доказательство нормализации и переноса legacy-документов |
 | `research/VLADIS_VT24_CALIBRATION_2026-10-05.md` | обезличенное evidence трёх реальных тестовых прогонов профиля Vladis/VT24 и калиброванная safety policy |
 | `research/NEWBUILDING_AGGREGATOR_PILOT_2026-10-05.md` | обезличенное evidence пилота пяти карточек новостроек, 25 media files и gap matrix shared-каталога |

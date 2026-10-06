@@ -1,6 +1,25 @@
 schema_version: AMS_DATA_HUB_DELIVERY_STATE_V1
 project: ams-data-hub
 canonical_git: sourcecraft
+active_plan:
+  id: AMS-DATA-HUB-REMEDIATION-2026-10
+  version: v1
+  status: APPROVED
+  source: AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md
+  source_sha256: d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a
+  inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
+  execution_status: GRAPH_READY
+  reconciliation: CLEAN
+  managed_nodes: 97
+  epics: 11
+  implementation_tasks: 75
+  delivery_tasks: 11
+  first_ready_tasks:
+    - adh-mp-00-1
+    - adh-mp-00-2
+    - adh-mp-00-3
+  production_authorized: false
+# Historical completed program; retain exact v4 approval and delivery evidence.
 plan:
   id: AMS-DATA-HUB-IMPLEMENTATION-2026-01
   version: v4

@@ -1,8 +1,11 @@
 # Backlog — AMS Data Hub
 
 **Статус:** Active
-**Execution source:** `AMS-DATA-HUB-IMPLEMENTATION-2026-01 v4 APPROVED`, exact
-inventory и Task Manager. Этот файл — продуктовая сводка, не второй task graph.
+**Execution source:** `AMS-DATA-HUB-REMEDIATION-2026-10 v1 APPROVED`,
+`../AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md`,
+его отдельный inventory и Task Manager. Этот файл — продуктовая сводка,
+не второй task graph. `AMS-DATA-HUB-IMPLEMENTATION-2026-01 v4` завершён
+и сохраняется как историческая программа.
 
 ## Выполнено
 
@@ -26,8 +29,15 @@ inventory и Task Manager. Этот файл — продуктовая свод
 
 ## Следующая граница
 
-Production feed credentials, миграция production, runtime adapters, расписания
-и rollout — только отдельной release/операционной командой владельца.
+Активная доработка: MP-00–MP-10 нового remediation plan. Первая волна —
+согласование канона с owner decisions и удаление текущего требования TOTP.
+Далее — streaming intake, production composition, source worker/scheduler,
+snapshot assembly, public contracts, verifier hardening, operations executors
+и синтетическое end-to-end proof. Реализация runtime adapters и расписаний
+входит в утверждённую доработку; их включение на production — нет.
+
+Production feed credentials, миграция production и rollout — только отдельной
+release/операционной командой владельца после readiness gate.
 Синтетический contract PASS и закрытый graph не заменяют live proof.
 
 ## Delivery
