@@ -194,6 +194,7 @@ describe("source jobs", () => {
       blocked: 1,
       skipped: 0,
       failed: 0,
+      deferred: 0,
     });
     expect(boss.complete).toHaveBeenCalledWith(
       SOURCE_IMPORT_QUEUE,
@@ -228,5 +229,21 @@ describe("source jobs", () => {
       { endpointUrl: "https://private.invalid" }, { organizationId: "x".repeat(129) }, { projectId: "x".repeat(129) }]) {
       expect(sourceImportJobSchema.safeParse({ ...payload, ...patch }).success).toBe(false);
     }
+  });
+  it("defers BUSY even at the terminal native retry without failing the durable manual request", async () => {
+    const payload = { schemaVersion: 1 as const, organizationId: "org-1", projectId: "project-1", sourceId: "source-1", trigger: "MANUAL" as const,
+      manualRequestId: "request" };
+    const manual = { load: vi.fn(async () => ({ status: "REQUESTED" as const })), fail: vi.fn() };
+    const jobs = createSourceJobs({ repository: { listSchedulingSources: vi.fn(), loadExecutionContext: vi.fn(async () => context()) },
+      queue: { reconcileSchedules: vi.fn() }, manualRequests: manual,
+      runImport: vi.fn(async () => ({ state: "FAILED" as const, sourceId: "source-1", failedStage: "SAFE_INTAKE" as const, code: "SOURCE_EXECUTION_BUSY" })) });
+    const job = { id: "busy", retryCount: 3, retryLimit: 3, data: payload };
+    const boss = { fetch: vi.fn(async () => [job]), complete: vi.fn(), fail: vi.fn() };
+    const defer = vi.fn();
+    expect(await drainSourceJobQueue(boss as never, jobs, 1, defer)).toMatchObject({ deferred: 1, completed: 0, failed: 0 });
+    expect(defer).toHaveBeenCalledWith(job); expect(boss.fail).not.toHaveBeenCalled(); expect(manual.fail).not.toHaveBeenCalled();
+    defer.mockRejectedValueOnce(new Error("private dispatch failure"));
+    await expect(drainSourceJobQueue(boss as never, jobs, 1, defer)).rejects.toThrow("SOURCE_JOB_DEFERRAL_FAILED");
+    expect(boss.fail).not.toHaveBeenCalled(); expect(manual.fail).not.toHaveBeenCalled();
   });
 });

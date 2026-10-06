@@ -82,6 +82,9 @@ export function createSourceJobs(dependencies: SourceJobDependencies) {
         projectId: job.projectId,
         sourceId: job.sourceId,
       }, job);
+      if (result?.state === "FAILED" && result.sourceId === job.sourceId && result.code === "SOURCE_EXECUTION_BUSY") {
+        return { status: "DEFERRED", reason: "SOURCE_EXECUTION_BUSY" };
+      }
       if (result?.state !== "GOOD" || result.sourceId !== job.sourceId) throw new Error("SOURCE_IMPORT_FAILED");
       return { status: "COMPLETED" };
     },

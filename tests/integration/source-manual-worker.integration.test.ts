@@ -15,6 +15,9 @@ import type { PlatformAdminPrincipal, PrincipalContext, ProjectJobPrincipal } fr
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import * as database from "../../src/platform/database/transaction.ts";
 import type { DatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
+import { acquireSourceExecutionGuard } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { deferSourceImportJob, type SourceImportJob } from "../../src/modules/ingestion-core/worker.ts";
 
 describe("native manual Source execution", () => {
   it("runs the admin command through durable queues and does not reimport after both settlement crash windows", async () => {
@@ -122,6 +125,45 @@ describe("native manual Source execution", () => {
 
       // An old dispatch envelope must not terminally settle an executor-less intent.
       const reliability = new ReliabilityService(new PrismaReliabilityRepository());
+      // Real default worker admission contention at the last normal retry must
+      // preserve the request, native row and original execution retry budget.
+      const contended = await sourceRegistryCommands.requestManualSourceRun(admin, { ...target, idempotencyKey: `guard-contention-${suffix}` });
+      const contentionEvent = await reliability.claim(`guard-publisher-${suffix}`, 300_000, [SOURCE_MANUAL_REQUEST_TOPIC]);
+      const contentionBoss = await getPgBoss();
+      await dispatchSourceManualRequest(contentionBoss, contentionEvent!); await reliability.complete(contentionEvent!);
+      const contentionId = sourceManualJobId(contended.requestId);
+      await contentionBoss.getDb().executeSql("UPDATE pgboss.job SET retry_count = 3, retry_limit = 3 WHERE name = $1 AND id = $2::uuid", [SOURCE_IMPORT_QUEUE, contentionId]);
+      const guard = await acquireSourceExecutionGuard(getPrismaPool(), target);
+      const admission = new AbortController(); const nativeDb = contentionBoss.getDb(); const executeSql = nativeDb.executeSql.bind(nativeDb);
+      const deferredSql = vi.spyOn(nativeDb, "executeSql").mockImplementation(async (text, values) => {
+        const result = await executeSql(text, values);
+        if (text.includes("SOURCE_EXECUTION_BUSY") && text.includes("UPDATE pgboss.job")) admission.abort();
+        return result;
+      });
+      const admissionTimeout = setTimeout(() => admission.abort(), 5_000);
+      try { await runSourceWorker({ workerId: `guard-busy-${suffix}`, signal: admission.signal, pollIntervalMs: 10 }); }
+      finally { clearTimeout(admissionTimeout); deferredSql.mockRestore(); await guard.release(); }
+      const requeuedBoss = await getPgBoss();
+      const deferredJob = await requeuedBoss.getJobById<SourceImportJob>(SOURCE_IMPORT_QUEUE, contentionId);
+      expect(deferredJob).toMatchObject({ state: "created", retryCount: 3, retryLimit: 3, startedOn: null });
+      expect(deferredJob!.startAfter.getTime()).toBeGreaterThan(Date.now());
+      expect(await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceManualRunRequest.findUniqueOrThrow({ where: { id: contended.requestId } })))
+        .toMatchObject({ status: "REQUESTED" });
+      expect(gateway).toHaveBeenCalledOnce();
+      // Stale metadata cannot mutate the new queued attempt.
+      await expect(deferSourceImportJob(requeuedBoss, { ...deferredJob!, startedOn: new Date() })).rejects.toThrow("SOURCE_JOB_LEASE_LOST");
+      const recovered = new AbortController(); const recoverComplete = requeuedBoss.complete.bind(requeuedBoss);
+      const recoverAck = vi.spyOn(requeuedBoss, "complete").mockImplementation(async (name, id, data, options) => {
+        const result = await recoverComplete(name, id, data, options);
+        if (name === SOURCE_IMPORT_QUEUE && id === contentionId) { expect(data).toMatchObject({ status: "COMPLETED" }); recovered.abort(); }
+        return result;
+      });
+      const recoverTimeout = setTimeout(() => recovered.abort(), 40_000);
+      try { await runSourceWorker({ workerId: `guard-recovery-${suffix}`, signal: recovered.signal, pollIntervalMs: 10 }); }
+      finally { clearTimeout(recoverTimeout); recoverAck.mockRestore(); }
+      expect(await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceManualRunRequest.findUniqueOrThrow({ where: { id: contended.requestId } })))
+        .toMatchObject({ status: "COMPLETED" });
+      expect(gateway).toHaveBeenCalledTimes(2);
       const snapshot = await reliability.claim(`snapshot-publisher-${suffix}`, 300_000, ["snapshot.build.request"]);
       expect(snapshot).not.toBeNull();
       const publish = await getPgBoss(); await publishClaimedEvent(publish, snapshot!); await stopPgBoss();
@@ -172,7 +214,7 @@ describe("native manual Source execution", () => {
         .toMatchObject({ status: "FAILED" });
       expect(await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceManualRunRequest.findUniqueOrThrow({ where: { id: requested.requestId } })))
         .toMatchObject({ status: "COMPLETED" });
-      expect(gateway).toHaveBeenCalledOnce();
+      expect(gateway).toHaveBeenCalledTimes(2);
     } finally { await stopPgBoss(); settlement.mockRestore(); systemRole.mockRestore(); role.mockRestore(); sdk.mockRestore(); vi.unstubAllEnvs(); gateway.mockReset(); }
-  }, 120_000);
+  }, 170_000);
 });

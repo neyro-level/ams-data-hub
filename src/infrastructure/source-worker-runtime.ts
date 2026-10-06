@@ -1,12 +1,12 @@
 import "server-only";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import type { PgBoss } from "pg-boss";
+import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 import { createSourceExecutionServer } from "../modules/ingestion-core/server.ts";
 import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, PgBossSourceJobQueue,
   createPrismaSourceManualRequests, dispatchSourceManualRequest, settleTerminalSourceManualRequests, SOURCE_MANUAL_REQUEST_TOPIC,
-  type SourceJobRepository, type SourceManualRequestRepository } from "../modules/ingestion-core/worker.ts";
+  deferSourceImportJob, type SourceJobRepository, type SourceManualRequestRepository, type SourceImportJob } from "../modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss, createOutboxDrainDependencies, drainOutboxWithDependencies,
   handleDefaultOutboxEvent, listDeadLetterOutboxEvents, type OutboxDrainDependencies } from "../modules/platform-operations/worker.ts";
 
@@ -16,6 +16,7 @@ export interface SourceWorkerDependencies {
   repository: SourceJobRepository;
   manualRequests?: SourceManualRequestRepository;
   reconcileTerminalRequests?(): Promise<void>;
+  deferSourceJob?(job: JobWithMetadata<SourceImportJob>): Promise<void>;
   resolveStorage(scope: ProjectStorageScope): ProjectObjectStorage;
   outbox: OutboxDrainDependencies;
 }
@@ -44,7 +45,7 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
     const outbox = await drainOutboxWithDependencies({ workerId: options.workerId, signal: options.signal,
       ...(options.shutdownDrainTimeoutMs === undefined ? {} : { shutdownDrainTimeoutMs: options.shutdownDrainTimeoutMs }) }, dependencies.outbox);
     if (options.signal.aborted) break;
-    const source = await drainSourceJobQueue(dependencies.boss, sourceJobs, 1);
+    const source = await drainSourceJobQueue(dependencies.boss, sourceJobs, 1, dependencies.deferSourceJob);
     totals.fetched += source.fetched; totals.completed += source.completed; totals.failed += source.failed;
     if (!options.signal.aborted && source.fetched === 0 && outbox.claimed === 0) {
       try { await delay(pollIntervalMs, undefined, { signal: options.signal }); }
@@ -60,6 +61,7 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   const boss = await getPgBoss();
   let terminalCursor = "";
   try { return await runSourceWorkerWithDependencies(options, { boss, resolveStorage,
+    deferSourceJob: (job) => deferSourceImportJob(boss, job),
     repository: createPrismaSourceJobRepository(), manualRequests: createPrismaSourceManualRequests(),
     reconcileTerminalRequests: async () => {
       const events = await listDeadLetterOutboxEvents(SOURCE_MANUAL_REQUEST_TOPIC, terminalCursor);

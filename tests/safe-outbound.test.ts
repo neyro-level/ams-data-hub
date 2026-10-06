@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   executeSafeOutbound,
+  executeSafeOutboundStream,
   type SafeOutboundAddress,
   type SafeOutboundDependencies,
   type SafeOutboundTransportResponse,
@@ -124,6 +125,20 @@ describe("Safe Outbound", () => {
       request: vi.fn(async () => response(200, { "content-type": "text/html" })),
     });
     await expectCode(executeSafeOutbound("https://feed.example/data", TEXT_POLICY, deps), "CONTENT_TYPE_DENIED");
+  });
+  it("cancels server-owned intake while waiting for headers and aborts a late response", async () => {
+    const controller = new AbortController();
+    let receive!: (value: SafeOutboundTransportResponse) => void;
+    let requested!: () => void;
+    const started = new Promise<void>((resolve) => { requested = resolve; });
+    const transport = response(200, { "content-type": "application/json" });
+    const pending = executeSafeOutboundStream("https://feed.example/data", { ...TEXT_POLICY, signal: controller.signal }, dependencies({
+      request: vi.fn(() => { requested(); return new Promise<SafeOutboundTransportResponse>((resolve) => { receive = resolve; }); }),
+    }));
+    await started; controller.abort();
+    await expectCode(pending, "TIMEOUT");
+    receive(transport); await Promise.resolve(); await Promise.resolve();
+    expect(transport.abort).toHaveBeenCalledOnce();
   });
 
   it("allows HTTP only for an explicitly enabled media profile", async () => {

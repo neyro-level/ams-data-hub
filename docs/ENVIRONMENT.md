@@ -105,7 +105,23 @@ runtime across enqueue rollback, dispatch/native settlement faults, one GOOD
 and one intake despite replay, foreign-project denial, busy deferral, reserved
 snapshot retention and terminal-request recovery on default worker restart.
 They replace HTTP/SDK transport, not command, queue, repository or import service.
-Concurrency, controlled shutdown and source
+The concrete facade also performs nonblocking scoped admission before loading
+Source/Last Good or opening intake. One existing pooled guardian holds a shared
+session lock for the whole import and raw cleanup; exclusive admission prevents
+a second importer. At most four guardian acquisitions are retained per process,
+with a five-second connection/query deadline and safe late-client release.
+Every execution transaction holds a compatible shared transaction fence and
+checks the original PID plus two server-owned random session markers, including
+after mutation before commit. No private session metadata or new role grants are
+needed. A dead guardian aborts intake/spool and blocks stale GOOD; a fenced
+transaction prevents ownership transfer until commit/rollback. Cleanup may only
+mark its own non-GOOD revision FAILED. Existing version/policy/identity checks
+remain in force. Unlock uncertainty destroys the pooled client.
+SOURCE_EXECUTION_BUSY leaves the manual request unchanged. The version-pinned
+pg-boss 12 adapter atomically returns only the matching active Source job to
+created with a 30-second delay, retaining its row/payload/singleton and retry
+count. Stale attempt metadata cannot defer another attempt; contention never
+calls terminal request failure. Controlled SIGTERM shutdown and source
 health proof remain subsequent MP04 tasks. The current production 64 MiB tmpfs is
 not intake capacity proof for the up-to-256 MiB source spool.
 

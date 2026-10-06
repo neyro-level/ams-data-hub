@@ -11,6 +11,8 @@ export interface SafeOutboundPolicy {
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
+  /** Server-owned cancellation; never supplied by a feed or queue payload. */
+  signal?: AbortSignal;
 }
 
 export interface SafeOutboundAddress {
@@ -247,10 +249,14 @@ async function openSafeOutbound(
     clearTimeout(timeout);
     controller.abort();
     controller.signal.removeEventListener("abort", abortResponse);
+    policy.signal?.removeEventListener("abort", cancel);
   };
   // Enforce the deadline even if a consumer pauses or never starts reading.
   const abortResponse = () => response?.abort();
   controller.signal.addEventListener("abort", abortResponse, { once: true });
+  const cancel = () => controller.abort();
+  policy.signal?.addEventListener("abort", cancel, { once: true });
+  if (policy.signal?.aborted) cancel();
 
   try {
     let currentUrl = parseUrl(input);

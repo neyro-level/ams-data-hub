@@ -1,8 +1,9 @@
 export { createSourceJobs, SOURCE_JOB_NAME, type SourceJobDependencies } from "./application/source-jobs.ts";
 export { createPrismaSourceManualRequests, dispatchSourceManualRequest, sourceManualJobId, settleTerminalSourceManualRequests } from "./infrastructure/source-manual-worker.ts";
 export { SOURCE_MANUAL_REQUEST_TOPIC } from "./domain/source-jobs.ts";
+export { deferSourceImportJob } from "./infrastructure/source-job-deferral.ts";
 import type { ProjectJobPrincipal } from "../../platform/authorization/principal.ts";
-import type { PgBoss } from "pg-boss";
+import type { PgBoss, JobWithMetadata } from "pg-boss";
 import {
   runInPrincipalDatabaseTransaction,
   runInSystemJobDatabaseTransaction,
@@ -27,12 +28,14 @@ export interface SourceJobDrainResult {
   blocked: number;
   skipped: number;
   failed: number;
+  deferred: number;
 }
 
 export async function drainSourceJobQueue(
   boss: SourceJobWorkerBoss,
   handler: SourceImportJobHandler,
   maxJobs = 10,
+  defer?: (job: JobWithMetadata<SourceImportJob>) => Promise<void>,
 ): Promise<SourceJobDrainResult> {
   if (!Number.isInteger(maxJobs) || maxJobs < 1 || maxJobs > 100) {
     throw new Error("SOURCE_JOB_BATCH_INVALID");
@@ -47,6 +50,7 @@ export async function drainSourceJobQueue(
     blocked: 0,
     skipped: 0,
     failed: 0,
+    deferred: 0,
   };
 
   for (const job of jobs) {
@@ -59,13 +63,22 @@ export async function drainSourceJobQueue(
       result.skipped += 1;
       continue;
     }
+    let contention = false;
     try {
       const outcome: SourceJobRunResult = await handler.run(parsed.data);
+      if (outcome.status === "DEFERRED") {
+        contention = true;
+        if (!defer) throw new Error("SOURCE_JOB_DEFERRAL_UNBOUND");
+        await defer(job);
+        result.deferred += 1;
+        continue;
+      }
       await boss.complete(SOURCE_IMPORT_QUEUE, job.id, outcome);
       if (outcome.status === "COMPLETED") result.completed += 1;
       if (outcome.status === "BLOCKED") result.blocked += 1;
       if (outcome.status === "SKIPPED") result.skipped += 1;
     } catch (error) {
+      if (contention) throw new Error("SOURCE_JOB_DEFERRAL_FAILED");
       const code = error instanceof Error && /^[A-Z][A-Z0-9_]{2,100}$/u.test(error.message)
         ? error.message
         : "SOURCE_JOB_FAILED";

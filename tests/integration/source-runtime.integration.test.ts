@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 const gateway = vi.hoisted(() => vi.fn());
@@ -17,6 +19,8 @@ import { PrismaSourceExecutionRepository } from "../../src/modules/ingestion-cor
 import { enqueueSourceGoodSnapshot } from "../../src/modules/ingestion-core/infrastructure/source-snapshot-intent.ts";
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
 import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
+import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
+import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -45,10 +49,12 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
   });
   await sourceRegistryCommands.setSourceEnabled(principal, { ...scope, sourceId: source.sourceId, version: source.version, enabled: true });
   let uploaded = 0;
-  const storage = new S3ObjectStorage({ bucket: "synthetic-runtime", client: { send: async (command: { input: { Body: AsyncIterable<Uint8Array> } }) => {
+  const client = { send: async (command: { input: { Body: AsyncIterable<Uint8Array> } }, options?: { abortSignal?: AbortSignal }) => {
+    void options;
     for await (const chunk of command.input.Body) uploaded += chunk.byteLength;
     return {};
-  } } as unknown as S3Client });
+  } };
+  const storage = new S3ObjectStorage({ bucket: "synthetic-runtime", client: client as unknown as S3Client });
   const target = { ...scope, sourceId: source.sourceId };
   const runtime = createSourceExecutionServer(storage);
   const provide = (xml: string) => {
@@ -65,7 +71,7 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
     intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
       payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
   }));
-  return { principal, target, runtime, provide, read, uploaded: () => uploaded, cleanup: () => { delete process.env[referenceName]; gateway.mockReset(); } };
+  return { principal, target, runtime, provide, read, client, uploaded: () => uploaded, cleanup: () => { delete process.env[referenceName]; gateway.mockReset(); } };
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
@@ -237,7 +243,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
     } finally { fault?.mockRestore(); context.cleanup(); }
   });
 
-  it("serializes competing runs against the pinned Last Good instead of letting a stale run overwrite it", async () => {
+  it("blocks competing facades before intake and pins Last Good only after exclusive admission", async () => {
     const context = await setup();
     try {
       context.provide(feed(offer("one")));
@@ -245,15 +251,24 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       let calls = 0;
       let release!: () => void;
       const barrier = new Promise<void>((resolve) => { release = resolve; });
+      let started!: () => void;
+      const intakeStarted = new Promise<void>((resolve) => { started = resolve; });
       gateway.mockImplementation(async () => {
         const price = ++calls * 2000;
-        if (calls === 2) release();
+        started();
         await barrier;
         const bytes = new TextEncoder().encode(feed(offer("one", price)));
         return { status: 200, contentType: "application/xml", contentLength: bytes.byteLength,
           body: (async function* () { yield bytes; })(), close: vi.fn() };
       });
-      const results = await Promise.all([context.runtime.run(context.target), context.runtime.run(context.target)]);
+      const first = context.runtime.run(context.target);
+      await intakeStarted;
+      const second = await createSourceExecutionServer(new S3ObjectStorage({ bucket: "synthetic-unused", client: {} as S3Client })).run(context.target);
+      expect(second).toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_BUSY" });
+      expect(calls).toBe(1);
+      expect((await context.read()).revisions).toHaveLength(2);
+      release();
+      const results = [await first, second];
       expect(results.map((result) => result.state).sort()).toEqual(["FAILED", "GOOD"]);
       const winner = results.find((result) => result.state === "GOOD")!;
       const current = await context.read();
@@ -261,6 +276,99 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       expect(current.revisions.filter((revision) => revision.status === "GOOD")).toHaveLength(2);
       expect(current.identities).toHaveLength(1);
       expect(current.identities[0]!.sourceHash).toBe(winner.state === "GOOD" ? winner.rawArtifactHash : "");
+      context.provide(feed(offer("one", 6000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 3 });
+    } finally { context.cleanup(); }
+  });
+
+  it("rolls back an in-flight GOOD transaction on guardian death before ownership can transfer", async () => {
+    const context = await setup();
+    const apply = PrismaSourceExecutionRepository.prototype.apply;
+    let fault: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const baseline = await context.read();
+      fault = vi.spyOn(PrismaSourceExecutionRepository.prototype, "apply").mockImplementationOnce(async function (
+        this: PrismaSourceExecutionRepository, execution, revisionId, plan, manualRequestId,
+      ) {
+        const result = await apply.call(this, execution, revisionId, plan, manualRequestId);
+        const key = sourceExecutionGuardKey(context.target);
+        const guardian = await getPrismaPool().query<{ pid: number }>(`SELECT pid FROM pg_locks
+          WHERE locktype = 'advisory' AND mode = 'ShareLock' AND granted AND objsubid = 2
+            AND classid::bigint = $1 AND objid::bigint = $2 AND pid <> pg_backend_pid()`, [key[0] >>> 0, key[1] >>> 0]);
+        // Guardian and fenced apply both own shared locks. Kill only the idle guardian.
+        const sessions = await getPrismaPool().query<{ pid: number }>("SELECT pid FROM pg_stat_activity WHERE pid = ANY($1::int[]) AND state = 'idle'", [guardian.rows.map((row) => row.pid)]);
+        expect(sessions.rows).toHaveLength(1);
+        expect((await getPrismaPool().query("SELECT pg_terminate_backend($1) AS killed", [sessions.rows[0]!.pid])).rows[0]?.killed).toBe(true);
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_BUSY" });
+        return result;
+      });
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "DATABASE_APPLY", code: "SOURCE_EXECUTION_LEASE_LOST" });
+      fault.mockRestore();
+      const lost = await context.read();
+      expect(lost.source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
+      expect(lost.identities).toEqual(baseline.identities); expect(lost.intents).toEqual(baseline.intents);
+      context.provide(feed(offer("one", 3000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+    } finally { fault?.mockRestore(); context.cleanup(); }
+  });
+
+  it("cancels a stalled SDK upload on guardian death, cleans only its spool and permits recovery", async () => {
+    const context = await setup();
+    const spools = async () => (await readdir(tmpdir())).filter((name) => name.startsWith("ams-data-hub-raw-")).sort();
+    const before = await spools();
+    let fault: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const baseline = await context.read();
+      let started!: () => void;
+      const uploading = new Promise<void>((resolve) => { started = resolve; });
+      let cancelled = false;
+      fault = vi.spyOn(context.client, "send").mockImplementationOnce(async (command, options) => {
+        for await (const chunk of command.input.Body) expect(chunk.byteLength).toBeGreaterThan(0);
+        expect(options?.abortSignal).toBeDefined();
+        started();
+        return new Promise((_, reject) => {
+          options!.abortSignal!.addEventListener("abort", () => { cancelled = true; reject(new Error("SYNTHETIC_UPLOAD_ABORTED")); }, { once: true });
+        });
+      });
+      context.provide(feed(offer("one", 2000)));
+      const attempt = context.runtime.run(context.target);
+      await uploading;
+      expect((await spools()).length).toBe(before.length + 1);
+      const key = sourceExecutionGuardKey(context.target);
+      const owner = await getPrismaPool().query<{ pid: number }>(`SELECT pid FROM pg_locks WHERE locktype = 'advisory'
+        AND mode = 'ShareLock' AND granted AND classid::bigint = $1 AND objid::bigint = $2 AND objsubid = 2`, [key[0] >>> 0, key[1] >>> 0]);
+      expect(owner.rows).toHaveLength(1);
+      await getPrismaPool().query("SELECT pg_terminate_backend($1)", [owner.rows[0]!.pid]);
+      expect(await attempt).toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_LEASE_LOST" });
+      expect(cancelled).toBe(true); expect(await spools()).toEqual(before);
+      expect((await context.read()).source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
+      expect((await context.read()).identities).toEqual(baseline.identities);
+      fault.mockRestore(); context.provide(feed(offer("one", 3000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      expect(await spools()).toEqual(before);
+    } finally { fault?.mockRestore(); context.cleanup(); }
+  });
+
+  it("still rejects changed Source configuration at final apply despite lifetime serialization", async () => {
+    const context = await setup();
+    try {
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const baseline = await context.read();
+      context.provide(feed(offer("one", 2000)));
+      const response = await gateway();
+      gateway.mockImplementationOnce(async () => {
+        await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.source.update({ where: { id: context.target.sourceId }, data: { version: { increment: 1 } } }));
+        return response;
+      });
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_STALE" });
+      expect((await context.read()).source.lastGoodRevisionId).toBe(baseline.source.lastGoodRevisionId);
+      expect((await context.read()).identities).toEqual(baseline.identities);
     } finally { context.cleanup(); }
   });
 

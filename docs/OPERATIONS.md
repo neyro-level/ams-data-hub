@@ -63,6 +63,20 @@ and the durable outbox deferral counter preserve executor retry budget even
 after operational JobRun retention. This is a repository/runtime contract,
 not provider or production proof.
 
+Source-wide admission is enforced inside the concrete execution facade, including
+direct callers. Exclusive admission transitions without a gap to a session shared
+guard retained through raw cleanup. Short shared transaction fences verify the
+original guardian PID and two opaque random session markers before work and
+after mutations. A guardian disconnect aborts the attempt; a transaction already
+in progress blocks replacement admission until it ends, and stale work cannot
+commit GOOD after ownership transfer. No long transaction spans HTTP/S3/parser
+I/O. Guard acquisition is bounded to four per process and five seconds; uncertain
+unlock destroys its client. Existing source/version/policy/identity checks remain.
+BUSY is a native 30-second deferral, not a failed execution: the pg-boss 12 adapter
+uses an atomic active-attempt CAS and retains retry count and manual request.
+Deferral infrastructure failure stops the consumer rather than terminally failing
+that request. This does not yet prove SIGTERM handling of an active import.
+
 ### Development commands
 
 Canonical mode is Windows-native checkout plus native PostgreSQL 18.
