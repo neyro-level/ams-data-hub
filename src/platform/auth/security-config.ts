@@ -26,7 +26,3 @@ export function createAuthIpAddressConfig(input: {
     trustedProxies: input.trustedProxyCidrs,
   };
 }
-
-export function isTotpVerificationPath(path: string | undefined): boolean {
-  return path === "/two-factor/verify-totp";
-}
