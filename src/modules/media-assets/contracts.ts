@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MediaPublicV1 } from "@ams-data-hub/realty-contracts";
 
 export const MEDIA_CONTENT_TYPES = [
   "image/avif",
@@ -103,4 +104,18 @@ export interface MediaMirrorBatchResult {
   importStatus: "UNCHANGED";
   mediaStatus: "COMPLETE" | "WARNING";
   items: readonly MediaMirrorItemResult[];
+}
+
+/** Server query scope; callers cannot supply trusted image membership or keys. */
+export const inventoryMediaProjectionInputSchema = z.object({
+  organizationId: z.string().min(1).max(128),
+  projectId: z.string().min(1).max(128),
+  sourceId: z.string().min(1).max(128),
+  sourceRevisionId: z.string().min(1).max(128),
+  inventoryUid: z.string().min(1).max(26),
+}).strict();
+export type InventoryMediaProjectionInput = z.output<typeof inventoryMediaProjectionInputSchema>;
+export interface InventoryMediaProjectionResult {
+  media: readonly MediaPublicV1[];
+  warnings: readonly ("MEDIA_MIRROR_WARNING" | "MEDIA_OBJECT_UNAVAILABLE" | "MEDIA_ASSET_INVALID")[];
 }

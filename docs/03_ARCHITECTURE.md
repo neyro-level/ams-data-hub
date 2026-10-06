@@ -102,7 +102,11 @@ remediation program preserves these boundaries while connecting them:
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
-  storage coordinates. Mirrored-media projection remains the subsequent gate.
+  storage coordinates. The inventory media query resolves current scoped GOOD
+  image membership and same-scope mirrored assets, verifies storage HEAD outside
+  transactions and rejects changes during IO. Complete snapshot orchestration,
+  historical missing-grace fact selection and consent-gated agent projection
+  remain subsequent gates.
 - MP-07: bounded consumer decompression remains pending; the verifier currently
   calls unbounded gunzip.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/

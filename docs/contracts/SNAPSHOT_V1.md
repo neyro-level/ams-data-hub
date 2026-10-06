@@ -32,4 +32,18 @@ as a fallback. Neither original URLs, private bucket keys, presigned URLs nor
 filenames belong in this contract. A digest is not a capability: delivery must
 resolve it through authorized organization/project-owned MediaSource/MediaAsset
 state. The contract does not create a permanent public storage URL or bypass
-ADR-015. Concrete media projection and runtime delivery remain subsequent gates.
+ADR-015. The server-owned `media-assets.projectInventoryMedia` query resolves
+inventory image references from the scoped immutable GOOD record and its
+`draft.imageUrls`, not from caller-provided URLs. It requires the pinned current
+LastGood revision, matching MediaSource revision/entity/position membership,
+same-scope MediaAsset, valid rights and verified immutable storage HEAD. HEAD
+is outside database transactions; a second database read rejects a revision
+or relation change during IO. Public output contains only digest references
+and fixed value-free warning codes. WARNING may retain a verified earlier
+mirror for a current image member, never an original URL fallback.
+This query is limited to INVENTORY/LISTING_IMAGE. Agent photos require their
+own fresh consent-gated projection. Forward migration
+`20261006163000_media_projection_good_read` enables only scoped GOOD reads for
+the server-owned `media-projection` database purpose; import writes and FORCE
+RLS are unchanged. Historical fact revisions for missing-grace
+inventory and full snapshot build/delivery composition remain MP-05 work.
