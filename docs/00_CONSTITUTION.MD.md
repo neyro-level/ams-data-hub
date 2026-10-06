@@ -34,6 +34,17 @@ calibration, safety policy and runtime composition must be verified before
 enablement. Current implementations and bounded exceptions are recorded in
 `sources/MARKETPLACE_XML_FORMATS_V1.md`; MP-02–MP-04 connect the runtime.
 
+## Owner amendment — 2026-10-06 / MP-00.3
+
+Newbuilding Import Foundation is an allowed Hub capability:
+`input → staging → dry-run → reviewed plan hash → explicit manual apply → audit/revision`.
+Reuse `shared-catalog` and its authorized, transaction-bound preview/apply
+boundary. Source/project binding, stale-plan rejection, provenance, rights and
+append-only price evidence remain mandatory. There is no automatic scheduler,
+uncontrolled ingestion or source-media publication fallback in this capability.
+`DATA_MODEL.md` records the implemented foundation. Final snapshot integration
+and end-to-end proof remain MP-05/MP-09 work, not completed by this approval.
+
 ---
 
 # 0. EXECUTIVE DECISION

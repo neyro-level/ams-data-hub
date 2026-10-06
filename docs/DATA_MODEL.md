@@ -52,6 +52,12 @@ read-only and runtime roles receive no delete grant.
 
 ### New-building import foundation
 
+Owner-approved Hub capability as of 2026-10-06 (MP-00.3):
+`input → staging → dry-run → reviewed plan hash → explicit manual apply → audit/revision`.
+This approval preserves the implemented manual boundary, not an automatic
+ingestion permission. Snapshot integration and the final runtime proof are
+still owned by MP-05/MP-09 of the remediation plan.
+
 Manual-assisted aggregator collection enters the platform as a bounded,
 provider-neutral staging payload. The payload always carries a project-owned
 `Source`, its external development identity and `observedAt`; it is first
