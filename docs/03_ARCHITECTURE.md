@@ -49,7 +49,15 @@ operator/release decisions are recorded in the backlog and Task Manager.
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
 
-- MP-02: outbound feed intake is currently buffered; bounded streaming is pending.
+- MP-02: explicit buffered media and single-use feed stream modes exist. The
+  private raw spool hashes incrementally, uploads through a separately verified
+  streaming storage capability and reopens bounded parser input. Source/adapter
+  intake-policy binding uses the narrowest SourceSafety/adapter/hard ceiling
+  for HTTP, spool and parser. Attempt reservation is capped at four leases and
+  512 MiB total per worker process. MP-02.5 exercises a 188,960,772-byte
+  synthetic XML through real filesystem/S3-adapter/parser paths with bounded
+  buffers and cancellation regression; SDK/network remain mocked, not provider
+  or production Source execution proof.
 - MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
   but the permanent worker entrypoint currently runs outbox only; concrete
   SourceExecutionService and scheduled source execution are pending.

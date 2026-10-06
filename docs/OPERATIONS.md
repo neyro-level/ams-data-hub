@@ -34,6 +34,37 @@ does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any
 separately authorized exact-main release.
 
+## Streaming raw artifacts — remediation foundation
+
+MP-02 separates `safeOutboundBuffered` (small files/media, maximum 50 MiB)
+from `safeOutboundStream` (HTTPS feeds, caller limit up to 256 MiB). A feed
+response is single-use; consumers must consume it or call `close`. The
+whole-request timeout also closes an unread response. Large raw feeds do not
+use buffered `ObjectStorage.get`.
+
+Each import attempt uses a private random disk lease under the OS temporary
+directory, incrementally hashes raw bytes, uploads a fresh file stream with
+known length/checksum, and reopens the local spool for the parser. Persisted
+receipts contain only the immutable storage key, SHA-256 and byte count.
+Normal completion and error paths close readers and remove the attempt lease;
+cleanup failures emit a value-free operational signal without rewriting an
+already committed GOOD. MP-02.4 binds the narrowest SourceSafety/adapter limit
+to HTTP, spool and parser, with at most four active leases and 512 MiB reserved
+disk bytes per worker process. ENOSPC/write errors fail before GOOD apply.
+The single permanent worker must respect these caps; crash-orphan handling
+requires its MP-04 lifecycle binding, because `finally` is not crash recovery. Actual Timeweb
+streaming/checksum compatibility is unverified here: tests use synthetic storage
+and mocked SDK consumption, not provider credentials or real feeds.
+
+`tests/large-feed-streaming.test.ts` executes a 188,960,772-byte synthetic XML
+through Safe Outbound, a real attempt spool, the real S3 streaming adapter with
+mocked SDK transport and the real YRL parser (3,072 records). Its value-free
+metrics are written to ignored `.local/evidence/mp-02-large-feed-streaming.json`.
+Array-buffer growth must stay below 128 MiB and below total feed size; RSS is
+observed separately, not advertised as a fixed allocator budget. The complete
+MP-02 regression set covers overflow/timeout/redirect/truncation, deterministic
+raw hashes across chunk layouts and cancellation/cleanup races.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app

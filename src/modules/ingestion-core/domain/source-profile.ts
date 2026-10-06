@@ -109,6 +109,7 @@ export interface SourceProfileConfiguration {
     preserveRawTimestampAndOffset: true;
   };
   safetyPolicy: {
+    maxRawArtifactBytes?: number;
     calibrationStatus: "BOOTSTRAP" | "CALIBRATED";
     maxDropPercent: number;
     allowEmpty: boolean;

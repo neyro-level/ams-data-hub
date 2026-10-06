@@ -1,5 +1,8 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+import { addAbortSignal, Readable } from "node:stream";
+
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -12,6 +15,7 @@ import {
   assertImmutableObjectStoragePut,
   calculateObjectSha256,
   getObjectStorageKeySha256,
+  MAX_STREAMING_OBJECT_BYTES,
   type ObjectStorage,
   type ObjectStorageGetResult,
   type ObjectStorageKey,
@@ -19,6 +23,8 @@ import {
   type ObjectStoragePresignGetInput,
   type ObjectStoragePresignedUrl,
   type ObjectStoragePutInput,
+  type ObjectStorageStreamingPutInput,
+  type StreamingObjectStorage,
 } from "./object-storage.ts";
 
 const TIMEWEB_S3_BUCKET_PATTERN = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
@@ -113,7 +119,7 @@ function toStoredObject(input: {
  * S3-compatible adapter for one already-authorized private Timeweb bucket.
  * It never creates, lists, deletes, or makes a bucket/object public.
  */
-export class S3ObjectStorage implements ObjectStorage {
+export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage {
   private readonly bucket: string;
   private readonly client: S3Client;
 
@@ -166,6 +172,56 @@ export class S3ObjectStorage implements ObjectStorage {
     } catch (error) {
       if (isMissingObjectError(error)) return null;
       throw error;
+    }
+  }
+
+  public async putStream(input: ObjectStorageStreamingPutInput): Promise<ObjectStorageObject> {
+    if (!Number.isSafeInteger(input.contentLength) || input.contentLength < 0 || input.contentLength > MAX_STREAMING_OBJECT_BYTES
+      || !input.contentType.trim() || getObjectStorageKeySha256(input.key) !== input.sha256) {
+      throw new Error("OBJECT_STORAGE_STREAM_INPUT_INVALID");
+    }
+    const signal = input.signal
+      ? AbortSignal.any([input.signal, AbortSignal.timeout(60_000)])
+      : AbortSignal.timeout(60_000);
+    // Validate content before any remote write; a declared key/head is not proof.
+    const verifyBody = async function* () {
+      const reader = addAbortSignal(signal, Readable.from(input.openBody(), { objectMode: false, highWaterMark: 64 * 1024 }));
+      const hash = createHash("sha256");
+      let bytes = 0;
+      try {
+        for await (const chunk of reader) {
+          const value = chunk as Uint8Array;
+          bytes += value.byteLength;
+          if (bytes > input.contentLength) throw new Error("OBJECT_STORAGE_STREAM_LENGTH_MISMATCH");
+          hash.update(value);
+          yield value;
+        }
+        if (bytes !== input.contentLength || hash.digest("hex") !== input.sha256) {
+          throw new Error("OBJECT_STORAGE_STREAM_INTEGRITY_MISMATCH");
+        }
+      } finally {
+        reader.destroy();
+      }
+    };
+    for await (const chunk of verifyBody()) void chunk;
+    let uploadComplete = false;
+    const upload = addAbortSignal(signal, Readable.from((async function* () {
+      yield* verifyBody();
+      uploadComplete = true;
+    })(), { objectMode: false, highWaterMark: 64 * 1024 }));
+    try {
+      const result = await this.client.send(new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: input.key,
+        Body: upload,
+        ContentLength: input.contentLength,
+        ContentType: input.contentType,
+        ChecksumSHA256: Buffer.from(input.sha256, "hex").toString("base64"),
+      }), { abortSignal: signal });
+      if (!uploadComplete) throw new Error("OBJECT_STORAGE_STREAM_NOT_CONSUMED");
+      return { key: input.key, contentType: input.contentType, contentLength: input.contentLength, sha256: input.sha256, etag: result.ETag ?? null, lastModifiedAt: new Date() };
+    } finally {
+      upload.destroy();
     }
   }
 

@@ -33,6 +33,23 @@ export interface ObjectStorageGetResult extends ObjectStorageObject {
   body: Uint8Array;
 }
 
+export const MAX_STREAMING_OBJECT_BYTES = 256 * 1024 * 1024;
+
+export interface ObjectStorageStreamingPutInput {
+  key: ObjectStorageKey;
+  contentType: string;
+  contentLength: number;
+  sha256: string;
+  /** A fresh, bounded reader for each verification/upload pass. */
+  openBody(): AsyncIterable<Uint8Array>;
+  signal?: AbortSignal;
+}
+
+/** Separate capability: buffered media/snapshot consumers remain compatible. */
+export interface StreamingObjectStorage {
+  putStream(input: ObjectStorageStreamingPutInput): Promise<ObjectStorageObject>;
+}
+
 export interface ObjectStoragePresignGetInput {
   key: ObjectStorageKey;
   expiresInSeconds: number;

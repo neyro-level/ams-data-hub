@@ -1,12 +1,14 @@
 import type { SourceDatasetType, SourceTransportType } from "../contracts.ts";
 import { SourceRegistryError } from "./source-registry-error.ts";
 import type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
+import { MAX_SOURCE_INTAKE_LIMITS, type SourceIntakeLimits } from "./source-intake-policy.ts";
 import { vladisVt24Profile } from "./profiles/vladis-vt24-v1.ts";
 import { joyworkMarketplaceProfiles } from "./profiles/joywork-marketplace-profiles.ts";
 
 export type { SourceAdapterCapability, SourceProfileDescriptor } from "./source-profile.ts";
 
 export interface SourceAdapterDescriptor {
+  intakeLimits?: Readonly<SourceIntakeLimits>;
   key: string;
   version: string;
   capabilities: readonly SourceAdapterCapability[];
@@ -92,6 +94,7 @@ export function createAdapterProfileRegistry(input: {
 }
 
 const yrlRealty2010Adapter = Object.freeze<SourceAdapterDescriptor>({
+  intakeLimits: MAX_SOURCE_INTAKE_LIMITS,
   key: "yrl-realty-2010",
   version: "1.0.0",
   capabilities: Object.freeze(["XML_STREAMING", "XML_NAMESPACES", "RAW_ATTRIBUTES"]),
@@ -100,11 +103,13 @@ const yrlRealty2010Adapter = Object.freeze<SourceAdapterDescriptor>({
 });
 
 const avitoXmlV3Adapter = Object.freeze<SourceAdapterDescriptor>({
+  intakeLimits: MAX_SOURCE_INTAKE_LIMITS,
   key: "avito-xml-v3", version: "1.0.0", capabilities: Object.freeze(["XML_STREAMING", "RAW_ATTRIBUTES"]),
   datasetTypes: Object.freeze(["MIXED_REALTY", "RESALE", "NEW_BUILD", "HOUSE", "LAND", "COMMERCIAL", "AGENT"]), transportTypes: Object.freeze(["HTTPS_XML"]),
 });
 
 const cianXmlV2Adapter = Object.freeze<SourceAdapterDescriptor>({
+  intakeLimits: MAX_SOURCE_INTAKE_LIMITS,
   key: "cian-xml-v2", version: "1.0.0", capabilities: Object.freeze(["XML_STREAMING", "RAW_ATTRIBUTES"]),
   datasetTypes: Object.freeze(["MIXED_REALTY", "RESALE", "NEW_BUILD", "HOUSE", "LAND", "COMMERCIAL", "AGENT"]), transportTypes: Object.freeze(["HTTPS_XML"]),
 });

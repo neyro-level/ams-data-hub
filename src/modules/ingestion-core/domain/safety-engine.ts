@@ -11,6 +11,8 @@ export const importIssueSchema = z.object({
 export type ImportIssue = z.infer<typeof importIssueSchema>;
 
 export interface SourceSafetyPolicy {
+  /** Optional narrower server-owned raw intake cap; adapter/hard caps still apply. */
+  maxRawArtifactBytes?: number;
   allowEmpty: boolean;
   maxDropPercent: number;
   requireManualApprovalAboveDrop: boolean;
