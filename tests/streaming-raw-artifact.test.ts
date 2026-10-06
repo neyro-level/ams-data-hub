@@ -25,6 +25,7 @@ function storage(): StreamingObjectStorage {
 it("spools raw bytes incrementally, persists exact hash and reopens bounded parser input", async () => {
   const source = response([xml.subarray(0, 31), xml.subarray(31)], xml.byteLength);
   const raw = new StreamingRawArtifact(source, storage(), 1024);
+  expect(JSON.stringify(raw)).toBe('"[RAW_ARTIFACT_HANDLE]"');
   try {
     const receipt = await raw.persist();
     expect(receipt).toEqual({ storageKey: `source-artifacts/${createHash("sha256").update(xml).digest("hex")}`, rawArtifactHash: createHash("sha256").update(xml).digest("hex"), byteCount: xml.byteLength });
@@ -39,7 +40,8 @@ it("spools raw bytes incrementally, persists exact hash and reopens bounded pars
 
 it("two identical attempts have independent leases and one cleanup cannot invalidate the other", async () => {
   const first = new StreamingRawArtifact(response([xml]), storage(), 1024);
-  const second = new StreamingRawArtifact(response([xml]), storage(), 1024);
+  // The small fixture also splits multibyte UTF-8 at arbitrary byte boundaries.
+  const second = new StreamingRawArtifact(response(Array.from(xml, (byte) => new Uint8Array([byte]))), storage(), 1024);
   try {
     expect(await first.persist()).toEqual(await second.persist());
     await first.dispose();
@@ -110,4 +112,45 @@ it("reports cleanup failure without invalidating committed GOOD or leaking the o
   const target = { organizationId: "synthetic-org", projectId: "synthetic-project", sourceId: "synthetic-source" };
   await expect(runSourceImport(target, dependencies)).resolves.toMatchObject({ state: "GOOD" });
   expect(dependencies.onCleanupFailure).toHaveBeenCalledWith(target, "RAW_ARTIFACT_CLEANUP_FAILED");
+});
+
+it("synchronously forbids new readers/writes during a shared idempotent disposal", async () => {
+  const raw = new StreamingRawArtifact(response([xml]), storage(), 1024);
+  await raw.persist();
+  const directory = Reflect.get(raw, "directory") as string;
+  const disposal = raw.dispose();
+  expect(raw.dispose()).toBe(disposal);
+  expect(() => raw.open()).toThrow("RAW_ARTIFACT_CLOSING");
+  await expect(raw.persist()).rejects.toThrow("RAW_ARTIFACT_CLOSING");
+  await disposal;
+  await expect(access(directory)).rejects.toMatchObject({ code: "ENOENT" });
+  const unused = new StreamingRawArtifact(response([xml]), storage(), 1024);
+  const unusedDisposal = unused.dispose();
+  await expect(unused.persist()).rejects.toThrow("RAW_ARTIFACT_CLOSING");
+  await unusedDisposal;
+});
+
+it("cancellation while upload is pending never resurrects a STORED handle", async () => {
+  const remote = storage();
+  let began: (() => void) | undefined;
+  const uploadBegan = new Promise<void>((resolve) => { began = resolve; });
+  let finish: (() => void) | undefined;
+  const uploadFinish = new Promise<void>((resolve) => { finish = resolve; });
+  remote.putStream = async (input) => {
+    for await (const chunk of input.openBody()) void chunk;
+    began!();
+    await uploadFinish;
+    return { key: input.key, contentType: input.contentType, contentLength: input.contentLength, sha256: input.sha256, etag: null, lastModifiedAt: new Date() };
+  };
+  const raw = new StreamingRawArtifact(response([xml]), remote, 1024);
+  const persistence = raw.persist();
+  const failed = expect(persistence).rejects.toThrow("RAW_ARTIFACT_ABORTED");
+  await uploadBegan;
+  const directory = Reflect.get(raw, "directory") as string;
+  const disposal = raw.dispose();
+  finish!();
+  await failed;
+  await disposal;
+  expect(() => raw.open()).toThrow("RAW_ARTIFACT_NOT_STORED");
+  await expect(access(directory)).rejects.toMatchObject({ code: "ENOENT" });
 });

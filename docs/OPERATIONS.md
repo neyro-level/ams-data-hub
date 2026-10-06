@@ -56,6 +56,15 @@ requires its MP-04 lifecycle binding, because `finally` is not crash recovery. A
 streaming/checksum compatibility is unverified here: tests use synthetic storage
 and mocked SDK consumption, not provider credentials or real feeds.
 
+`tests/large-feed-streaming.test.ts` executes a 188,960,772-byte synthetic XML
+through Safe Outbound, a real attempt spool, the real S3 streaming adapter with
+mocked SDK transport and the real YRL parser (3,072 records). Its value-free
+metrics are written to ignored `.local/evidence/mp-02-large-feed-streaming.json`.
+Array-buffer growth must stay below 128 MiB and below total feed size; RSS is
+observed separately, not advertised as a fixed allocator budget. The complete
+MP-02 regression set covers overflow/timeout/redirect/truncation, deterministic
+raw hashes across chunk layouts and cancellation/cleanup races.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app

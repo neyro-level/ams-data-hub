@@ -20,6 +20,8 @@ export class StreamingRawArtifact {
   private receipt: RawArtifactReceipt | undefined;
   private state: "NEW" | "WRITING" | "STORED" | "FAILED" | "DISPOSED" = "NEW";
   private persistence: Promise<RawArtifactReceipt> | undefined;
+  private closing = false;
+  private disposal: Promise<void> | undefined;
   private readonly releaseCapacity: () => void;
 
   constructor(
@@ -39,12 +41,16 @@ export class StreamingRawArtifact {
   }
 
   persist(): Promise<RawArtifactReceipt> {
+    if (this.closing) return Promise.reject(new Error("RAW_ARTIFACT_CLOSING"));
     if (this.state === "STORED") return Promise.resolve(this.receipt!);
     if (this.state !== "NEW") return Promise.reject(new Error("RAW_ARTIFACT_STATE_INVALID"));
     this.state = "WRITING";
     this.persistence = this.persistOnce();
     return this.persistence;
   }
+
+  /** The opaque server handle must not serialize endpoints, paths or storage. */
+  toJSON(): "[RAW_ARTIFACT_HANDLE]" { return "[RAW_ARTIFACT_HANDLE]"; }
 
   private async persistOnce(): Promise<RawArtifactReceipt> {
     try {
@@ -56,6 +62,7 @@ export class StreamingRawArtifact {
       let bytes = 0;
       try {
         for await (const chunk of this.response.body) {
+          if (this.closing) throw new Error("RAW_ARTIFACT_ABORTED");
           bytes += chunk.byteLength;
           if (bytes > this.maxBytes) throw new Error("RAW_ARTIFACT_TOO_LARGE");
           hash.update(chunk);
@@ -75,10 +82,12 @@ export class StreamingRawArtifact {
       }
       const rawArtifactHash = hash.digest("hex");
       const storageKey = createSourceArtifactKey(rawArtifactHash);
+      if (this.closing) throw new Error("RAW_ARTIFACT_ABORTED");
       const stored = await this.storage.putStream({ key: storageKey, contentType: this.response.contentType, contentLength: bytes, sha256: rawArtifactHash, openBody: () => this.openReader(), signal: this.uploadController.signal });
       if (stored.key !== storageKey || stored.sha256 !== rawArtifactHash || stored.contentLength !== bytes) {
         throw new Error("RAW_ARTIFACT_STORAGE_RECEIPT_INVALID");
       }
+      if (this.closing) throw new Error("RAW_ARTIFACT_ABORTED");
       this.receipt = { storageKey, rawArtifactHash, byteCount: bytes };
       this.state = "STORED";
       return this.receipt;
@@ -96,6 +105,7 @@ export class StreamingRawArtifact {
   }
 
   private openReader(): AsyncIterable<Uint8Array> {
+    if (this.closing) throw new Error("RAW_ARTIFACT_CLOSING");
     if (!this.file || this.state === "DISPOSED") throw new Error("RAW_ARTIFACT_NOT_AVAILABLE");
     const reader = createReadStream(this.file, { highWaterMark: 64 * 1024 });
     this.readers.add(reader);
@@ -103,9 +113,18 @@ export class StreamingRawArtifact {
     return reader;
   }
 
-  async dispose(): Promise<void> {
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    // Synchronous boundary before any await: no new reader/write can race the
+    // cleanup snapshot, and cancellation cannot resurrect STORED afterwards.
+    this.closing = true;
     this.response.close();
     this.uploadController.abort();
+    this.disposal = this.disposeOnce();
+    return this.disposal;
+  }
+
+  private async disposeOnce(): Promise<void> {
     await this.persistence?.catch(() => undefined);
     try { await this.removeLease(); } finally { this.state = "DISPOSED"; }
   }

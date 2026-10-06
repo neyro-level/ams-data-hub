@@ -54,8 +54,10 @@ remediation program preserves these boundaries while connecting them:
   streaming storage capability and reopens bounded parser input. Source/adapter
   intake-policy binding uses the narrowest SourceSafety/adapter/hard ceiling
   for HTTP, spool and parser. Attempt reservation is capped at four leases and
-  512 MiB total per worker process; the full large-feed proof remains MP-02.5.
-  these ports alone do not prove production Source execution or provider support.
+  512 MiB total per worker process. MP-02.5 exercises a 188,960,772-byte
+  synthetic XML through real filesystem/S3-adapter/parser paths with bounded
+  buffers and cancellation regression; SDK/network remain mocked, not provider
+  or production Source execution proof.
 - MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
   but the permanent worker entrypoint currently runs outbox only; concrete
   SourceExecutionService and scheduled source execution are pending.
