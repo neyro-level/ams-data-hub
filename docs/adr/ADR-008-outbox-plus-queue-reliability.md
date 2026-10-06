@@ -5,14 +5,15 @@
 
 ## Decision
 
-The starter preserves the outbox-plus-queue model. A business command writes a
+Data Hub preserves the outbox-plus-queue model. A business command writes a
 minimal, versioned `OutboxEvent` in the same transaction as state, audit and
 idempotency. Only after commit may a long-lived worker claim that event and
 enqueue/execute an asynchronous delivery. The system is at-least-once; every
 consumer is idempotent and receives a server-owned scope and correlation ID.
 
-The outbox registry contains only neutral platform-smoke topics until a derived
-product owns a business contract. Queue payloads are untrusted input and are
+The typed outbox registry contains platform smoke and explicitly registered
+Data Hub source/delivery topics. Adding a business topic requires its scoped
+contract, idempotency policy and tests. Queue payloads are untrusted input and are
 validated again by the worker. They contain no secret and no unnecessary PII.
 
 ## State And Ownership
@@ -66,7 +67,8 @@ PENDING → PROCESSING → PROCESSED
 
 ## Boundaries
 
-No product-specific topic, paid-provider retry policy or schedule is introduced.
+Provider retry policies and schedules require an explicit owned contract;
+this reliability decision alone does not enable an external provider.
 External HTTP, email, storage or AI calls execute only in a consumer after the
 business transaction commits. A consumer failure records a safe code; raw
 payloads, secrets and provider responses stay out of public errors and audit
@@ -80,5 +82,6 @@ reused worker identity), transactional takeover rollback, idempotency conflict,
 bounded retry and one dead-letter notification, heartbeat/readiness, runtime
 DDL denial, retention, and graceful worker shutdown. The evidence is executable
 in `tests/integration/outbox-reliability.integration.test.ts` and
-`tests/outbox-worker.test.ts`; production and paid SourceCraft CI are outside
-this `PR_ONLY` epic.
+`tests/outbox-worker.test.ts`. Local evidence is not release attestation;
+current merges use the exact-head manual gate in ADR-010 and production
+requires separate explicit authorization.

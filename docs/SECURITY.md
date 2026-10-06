@@ -64,7 +64,7 @@ used by migration tooling, are supplied through stdin and never bypass setup.
 E02 makes Platform Admin authority conditional on verified TOTP and replaces
 permanent bootstrap passwords with one-time hashed setup and recovery material.
 Sensitive auth rate limits must be PostgreSQL-backed. Trusted origins are exact;
-CSRF/origin protection stays enabled. A production-derived product must define
+CSRF/origin protection stays enabled. The production deployment must define
 the exact reverse-proxy IP/CIDR boundary in `BETTER_AUTH_TRUSTED_PROXY_CIDRS`
 and restrict the origin so it is not directly reachable by clients. Without that
 value Better Auth refuses to start in production; Data Hub never trusts an
@@ -76,7 +76,12 @@ The complete implementation/evidence contract is
 
 ## Tenant Isolation Transition
 
-E03 adds database defence in depth: each protected transaction receives a server-owned local PostgreSQL context, and RLS denies missing or mismatched tenant context. Runtime web and worker identities are non-owner `NOBYPASSRLS` roles; production credentials are intentionally outside this starter. The disposable local test identity can bypass RLS only to reset and seed its own `*_test` database; assertions switch to the runtime role first. See [`ADR-006`](adr/ADR-006-postgresql-tenant-isolation.md).
+Each protected transaction receives a server-owned local PostgreSQL context;
+RLS denies missing or mismatched tenant/project context. Runtime web and worker
+identities are non-owner `NOBYPASSRLS` roles. Production credentials live in the
+project Secret Master scope. The disposable local test identity bypasses RLS
+only to reset/seed its guarded `*_test` database; assertions switch to runtime
+roles. See [`ADR-006`](adr/ADR-006-postgresql-tenant-isolation.md).
 
 ## Atomic Mutation Transition
 

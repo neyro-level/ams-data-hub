@@ -34,4 +34,4 @@ until a real recipient adapter is explicitly configured.
 
 A derived product replaces application name/slug/origin, legal content,
 visual identity where needed, health/service identifiers, database names and
-artifact names. It must not reuse starter credentials, hostname or database.
+artifact names. It must not reuse Data Hub credentials, hostname or database.

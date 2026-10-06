@@ -1,8 +1,8 @@
 # ADR-015: Per-Project Snapshot Isolation
 
-**Status:** implementation contract adopted; provider denial proof is
-`DEFERRED_TO_PREPRODUCTION` under the owner-approved master plan v4 and is
-owned by `dh-09.4`.
+**Status:** adopted; `dh-09.4` provider denial proof PASS on 2026-10-05.
+Evidence: `../research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`.
+Application runtime adapter remains disabled pending separate enablement.
 **Scope:** DH02.1 object storage and project snapshot access. This ADR creates
 no bucket, user, credential, policy or external object.
 
@@ -46,7 +46,7 @@ Sources checked on 2026-10-03:
 - <https://timeweb.cloud/docs/s3-storage/supported-features/bucket-policies>
 - <https://timeweb.cloud/docs/s3-storage/supported-features>
 
-## Deferred provider proof before enablement
+## Provider proof and separate runtime enablement
 
 No production or shared credential may enable the S3 adapter until an approved
 non-production environment records this exact denial test in `dh-09.4`:
@@ -69,8 +69,9 @@ only a secret-free result.
 The unit test in this change proves the same denial at the Hub's project-key
 boundary. It is not represented as provider credential proof. For `dh-02.1`,
 that local proof plus the unwired, fail-closed provider adapter is sufficient;
-the external A-to-B proof remains explicitly deferred to `dh-09.4` and must
-pass before the first real Timeweb S3 enablement.
+the external A-to-B proof subsequently passed on 2026-10-05 and is recorded
+in `../research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`. Runtime enablement
+remains a separate owner-approved operation.
 
 ## Alternatives
 
@@ -85,9 +86,10 @@ pass before the first real Timeweb S3 enablement.
 The implemented Timeweb S3-compatible adapter belongs behind `ObjectStorage`;
 it uses only put, get, head and exact-key presign requests, validates the
 immutable put contract before writing and must not perform external work inside
-a database transaction. It is not wired into application runtime. Until
-`dh-09.4` records the provider denial proof, development uses only synthetic or
-local storage and no real credential or real project artifact may be supplied.
+a database transaction. It is not wired into application runtime. The provider
+denial proof is complete, but does not authorize runtime enablement or use of
+real project artifacts; development remains synthetic/local until that separate
+authorization.
 A new bucket, user, secret scope, policy change or live fixture belongs only to
 that preproduction proof or to a separate explicit owner command.
 If the provider cannot demonstrate A-to-B denial, keep the adapter disabled and

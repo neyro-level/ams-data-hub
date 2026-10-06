@@ -1,7 +1,7 @@
 # ADR-007: Command Atomicity And Repository Boundary
 
-**Status:** accepted for E04 implementation
-**Scope:** business mutations in the neutral starter; no product-specific CRUD engine.
+**Status:** active; implemented command boundary
+**Scope:** all Data Hub business mutations, including shared catalog imports.
 
 ## Decision
 
@@ -104,5 +104,6 @@ runtime context became its base. Evidence produced by the task-scoped checks:
   reuses the original outbox result;
 - typecheck, lint, unit, documentation and the complete integration suite pass.
 
-This record is verification evidence only. It does not authorize merge or a
-production release; E04 remains `PR_ONLY`.
+The foundation evidence does not attest a later commit. Every current merge
+requires the exact-head RISKY gate in ADR-010; production is a separate
+explicit exact-main release.

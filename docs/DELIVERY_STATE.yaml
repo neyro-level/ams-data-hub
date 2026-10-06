@@ -7,9 +7,17 @@ plan:
   status: APPROVED
   source: docs/AMS Data Hub Master Plan v1.md
   source_sha256: 2d4a2e86ef8ba30965786d8e3e5675b29a8d949d485caed9060f69f70be53750
+  execution_status: COMPLETE
+  managed_nodes: 82
+  closed_nodes: 82
+  final_delivery_task: adh-dh-09-delivery
+  final_pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/15
+  final_gate_run: 165
+  final_gate_head_sha: 928e7ba577e37836afe16d88fb4439e346d0a607
+  final_merge_sha: dde4d7ff25f353b9a099962716b85e3206c1a306
 consolidation:
   task_id: adh-dh-00-delivery
-  status: MERGE_AFTER_GATE
+  status: MERGED_AFTER_EXACT_HEAD_RISKY_GATE
   pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/6
   source_branch: work/data-hub-v3-consolidation
   target_branch: main
@@ -22,7 +30,7 @@ consolidation:
   superseded_after_merge:
     - https://sourcecraft.dev/integrator-p/ams-data-hub/pr/4
     - https://sourcecraft.dev/integrator-p/ams-data-hub/pr/5
-local_preflight:
+consolidation_local_preflight:
   docs_check: PASS
   diff_check: PASS
   prisma_generate: PASS
@@ -205,7 +213,11 @@ e32_evidence:
     shared_office_phone_count: 0
     deactivation_enabled: true
   final_gate:
-    status: READY_FOR_EXACT_HEAD_RISKY_GATE
+    status: MERGED_AFTER_EXACT_HEAD_RISKY_GATE_PASS
+    gate_run: 165
+    gated_head_sha: 928e7ba577e37836afe16d88fb4439e346d0a607
+    pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/15
+    merge_sha: dde4d7ff25f353b9a099962716b85e3206c1a306
     evidence_pointers:
       - beads://adh-dh-09-2#EXECUTION_LEDGER_V1
       - https://sourcecraft.dev/integrator-p/bastion-lugansk-next/pr/136

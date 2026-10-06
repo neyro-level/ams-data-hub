@@ -1,7 +1,7 @@
 # ADR-005: Identity And Platform Admin Hardening Contract
 
-**Status:** accepted for E02 implementation
-**Scope:** `PLATFORM_ADMIN = enabled`; this is a starter contract, not a production release.
+**Status:** active; implemented identity contract
+**Scope:** `PLATFORM_ADMIN = enabled`; product-owned identity contract; changes do not authorize production release.
 
 ## Decision
 
@@ -38,7 +38,7 @@ introduced.
    recovery rotates or revokes the material and requires a new verified TOTP.
 7. Sensitive authentication endpoints use PostgreSQL-backed, bounded rate-limit
    records. Trusted origins are exact, CSRF/origin protection remains enabled,
-   and production refuses to start until the derived product supplies the exact
+   and production refuses to start until the deployment supplies the exact
    `BETTER_AUTH_TRUSTED_PROXY_CIDRS` boundary. Forwarded IP data are accepted
    only through that boundary; the deployment must make the origin private from
    direct client traffic. Responses and logs expose safe error codes, never
@@ -88,5 +88,6 @@ introduced.
 
 E02 is security-sensitive and remains `RISKY`. It requires unit, PostgreSQL
 integration, auth E2E and safe-log evidence before its PR is eligible for
-review. This starter does not create credentials or recovery material itself;
-a derived product creates them through its approved secret path.
+review. Operator provisioning uses `pnpm admin:provision` and the audited
+recovery path. Credentials and recovery material remain outside Git; merge
+and production authorization follow ADR-010 and the release checklist.

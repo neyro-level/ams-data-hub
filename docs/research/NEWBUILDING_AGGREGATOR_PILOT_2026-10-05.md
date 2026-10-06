@@ -24,24 +24,22 @@ developer names, development names, city/district references, building labels,
 floors, commissioning year/quarter, construction status, material and housing
 class.
 
-The pilot also confirmed material runtime gaps:
+The follow-up import foundation now adds normalized address/coordinates,
+source-owned external identities, observation timestamps, `PriceObservation`
+and `SharedMediaAsset` with media order, rights and attribution. Its
+transaction-bound preview/apply commands require Platform Admin access and a
+confirmed reviewed-plan digest; PostgreSQL tests cover migration, replay,
+rollback and project isolation. See `../DATA_MODEL.md` for the current contract.
 
-- `Development` has no address or coordinates;
-- external source identity, source URL and observation timestamp have no typed
-  owner;
-- `CatalogProvenanceSource` currently contains only `MANUAL_ADMIN`;
-- `PriceObservation` is required by the approved plan but absent from the
-  current Prisma schema;
-- `SharedMediaAsset` is required by the approved plan but absent from the
-  current Prisma schema;
-- gallery order, source hash, MIME type, dimensions, rights and attribution
-  therefore cannot be recorded as shared-catalog facts;
-- factual amenities, parking, security and finishing need an explicit typed
-  boundary; provider marketing text must not be copied into shared facts.
+Remaining boundaries: this foundation records public media URL metadata, not
+downloaded blob hashes, MIME/dimensions or storage objects. Typed amenities,
+parking, security and finishing remain outside the payload; provider marketing
+text must not be copied into shared facts. The local pilot's media are not
+imported by this change.
 
 ## Decision boundary
 
-This pilot is evidence, not an import. A repeatable path needs a separate RISKY
-schema/import task with a typed staging payload, dry-run/diff, explicit
-provenance, media rights and manual apply. No production database or object
-storage was changed.
+This pilot is evidence, not an import. The separate RISKY foundation implements
+typed staging, dry-run/diff, provenance, media rights and manual apply; it
+does not add collection, schedules or automatic apply. No production database
+or object storage was changed.
