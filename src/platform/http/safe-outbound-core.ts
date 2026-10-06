@@ -216,9 +216,9 @@ async function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
   });
 }
 
-function parseUrl(input: string | URL): URL {
+function parseUrl(input: string | URL, base?: URL): URL {
   try {
-    return new URL(input.toString());
+    return new URL(input.toString(), base);
   } catch {
     throw new SafeOutboundError("INVALID_URL", "Outbound URL is invalid");
   }
@@ -259,42 +259,48 @@ async function openSafeOutbound(
       await raceAbort(resolveAndValidate(currentUrl, dependencies), controller.signal);
       const connectionAddresses = await raceAbort(resolveAndValidate(currentUrl, dependencies), controller.signal);
 
-      response = await raceAbort(dependencies.request({
+      const transport = await raceAbort<SafeOutboundTransportResponse>(dependencies.request({
         url: currentUrl,
         address: connectionAddresses[0]!,
         accept: policy.allowedContentTypes.join(", "),
         signal: controller.signal,
+      }).then((received) => {
+        if (controller.signal.aborted) {
+          received.abort();
+          throw new SafeOutboundError("TIMEOUT", "Outbound request timed out");
+        }
+        return received;
       }), controller.signal);
+      response = transport;
 
-      if ([301, 302, 303, 307, 308].includes(response.status)) {
-        response.abort();
-        const location = response.headers.location;
+      if ([301, 302, 303, 307, 308].includes(transport.status)) {
+        transport.abort();
+        const location = transport.headers.location;
         if (!location) {
           throw new SafeOutboundError("REDIRECT_DENIED", "Outbound redirect has no Location header");
         }
         if (redirectCount >= maxRedirects) {
           throw new SafeOutboundError("TOO_MANY_REDIRECTS", "Outbound redirect limit exceeded");
         }
-        currentUrl = parseUrl(new URL(location, currentUrl));
+        currentUrl = parseUrl(location, currentUrl);
         response = undefined;
         continue;
       }
 
-      if (response.status < 200 || response.status >= 300) {
-        throw new SafeOutboundError("HTTP_STATUS_DENIED", `Outbound response status ${response.status} is not accepted`);
+      if (transport.status < 200 || transport.status >= 300) {
+        throw new SafeOutboundError("HTTP_STATUS_DENIED", `Outbound response status ${transport.status} is not accepted`);
       }
 
-      const contentType = response.headers["content-type"] ?? "";
+      const contentType = transport.headers["content-type"] ?? "";
       if (!matchesContentType(contentType, policy.allowedContentTypes)) {
         throw new SafeOutboundError("CONTENT_TYPE_DENIED", "Outbound response content type is not allowed");
       }
 
-      const contentLength = response.headers["content-length"];
+      const contentLength = transport.headers["content-length"];
       if (contentLength !== undefined && (!/^\d+$/.test(contentLength) || !Number.isSafeInteger(Number(contentLength)) || Number(contentLength) > maxBytes)) {
         throw new SafeOutboundError("RESPONSE_TOO_LARGE", "Outbound response exceeds the byte limit");
       }
       const expectedBytes = contentLength === undefined ? null : Number(contentLength);
-      const transport = response;
       let consumed = false;
       const body: AsyncIterable<Uint8Array> = {
         [Symbol.asyncIterator]: async function* () {
