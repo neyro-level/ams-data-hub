@@ -50,12 +50,38 @@ audit failure rolls the whole operation back. Merge preserves the old UID as
 catalog history. Database RLS remains a second boundary: tenant principals are
 read-only and runtime roles receive no delete grant.
 
-## Neutral Foundation
+### New-building import foundation
+
+Manual-assisted aggregator collection enters the platform as a bounded,
+provider-neutral staging payload. The payload always carries a project-owned
+`Source`, its external development identity and `observedAt`; it is first
+rendered as a deterministic diff. Persistence is available only through an
+explicit confirmation plus the reviewed preview's SHA-256 boundary—there is no scheduler, network
+fetch or automatic apply in this foundation.
+
+`Development` owns its normalized public address and coordinate pair.
+`DevelopmentExternalIdentity` prevents one provider record from creating
+duplicates inside a source scope. `PriceObservation` is append-only evidence
+keyed by source object, observation time and price basis. `SharedMediaAsset`
+records source URL, order, rights basis, attribution and observation time; a
+licensed asset without attribution is rejected. The three import evidence
+tables are tenant/project scoped, protected by RLS, and have no runtime
+hard-delete grant. Raw feeds, employee phones and provider credentials are not
+part of these models.
+
+The public `newbuildingImportCommands.preview/apply` server entrypoint binds
+organization and project, locks the source and rejects a stale preview.
+Catalog revision, business rows and audit commit atomically. Media URLs must
+be public HTTPS without credentials, query strings or fragments; the foundation
+does not fetch or mirror media. An existing observation key with changed facts
+is a conflict, not an update to price history.
+
+## Platform foundation
 
 - `User`, `Session`, `Account`, `Verification` — identity and Better Auth tables;
 - `Organization` — tenant boundary;
-- `Member` — user access to organization with `ORG_OWNER`, `ORG_MEMBER`, `VIEWER`;
-- `Project` — neutral starter entity inside organization;
+- `Member` — organization access with `ORG_ADMIN`, `ORG_EDITOR`, `ORG_VIEWER`;
+- `Project` — organization-owned project, service state and publication scope;
 - `Notification`, `NotificationRead` — user-facing events;
 - `AuditEvent` — durable audit trail;
 - `IdempotencyKey` — repeat-safe commands;
@@ -66,15 +92,15 @@ read-only and runtime roles receive no delete grant.
 
 ## Enums
 
-- system roles: `PLATFORM_ADMIN`, `STAFF`, `MEMBER`;
+- system roles: `PLATFORM_ADMIN`, `USER`;
 - project status: `ACTIVE`, `PLANNED`, `DISABLED`;
 - notification categories: `SYSTEM`, `PROJECT`, `ACCESS`, `QUEUE`.
 
 ## Migration Policy
 
-The neutral initial migration is followed by forward hardening migrations while
-this starter has no production database. A derived production product must stop
-squashing applied migrations.
+Applied migrations are immutable. Schema changes use additive, reviewed forward
+migrations; database rollback requires the isolated recovery contract in
+`OPERATIONS.md`. Production migration is a separately authorized release step.
 
 ## Tenant Isolation Transition
 

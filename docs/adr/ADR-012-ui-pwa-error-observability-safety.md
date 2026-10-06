@@ -16,4 +16,6 @@ The public surface is limited to login, the privacy policy and operational healt
 | no unsafe logs | redaction contract unit tests and log fixture inspection |
 | bounded public surface | route inventory, 404 checks and visible legal-review marker |
 
-E09 is `STANDARD` unless headers or runtime configuration change, when it is `RISKY`. It adds no product visual identity or commercial copy.
+The product delivery profile is CRITICAL: every merge requires the exact-head
+manual RISKY gate in ADR-010. Header, authentication and runtime changes require
+their applicable focused security evidence.

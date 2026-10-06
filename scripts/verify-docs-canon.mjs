@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 
 const root = process.cwd();
 const read = (file) => readFileSync(resolve(root, file), "utf8");
@@ -101,4 +101,22 @@ for (const id of ["ADR-001", "ADR-002", "ADR-013", "ADR-014"]) {
   requireText("docs/adr/README.md", id);
 }
 requireText("docs/adr/README.md", "Superseded");
+
+const markdownFiles = (directory) => readdirSync(resolve(root, directory), { withFileTypes: true })
+  .flatMap((entry) => entry.isDirectory() ? markdownFiles(join(directory, entry.name))
+    : /\.md$/i.test(entry.name) ? [join(directory, entry.name)] : []);
+for (const file of ["README.md", "AGENTS.md", ...markdownFiles("docs")]) {
+  const content = read(file).replace(/```[\s\S]*?```/g, "");
+  for (const match of content.matchAll(/\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+    const target = match[1].replace(/^<|>$/g, "").split("#")[0];
+    if (!target || /^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
+    const path = target.startsWith("/") ? resolve(root, `.${target}`)
+      : resolve(root, dirname(file), decodeURIComponent(target));
+    if (!existsSync(path)) throw new Error(`Broken local documentation link in ${file}: ${target}`);
+  }
+}
+for (const role of ["ORG_ADMIN", "ORG_EDITOR", "ORG_VIEWER", "PLATFORM_ADMIN"]) {
+  requireText("docs/DATA_MODEL.md", role);
+  requireText("prisma/schema.prisma", role);
+}
 console.log("docs_canon=PASS");

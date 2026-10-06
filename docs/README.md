@@ -14,6 +14,9 @@
 
 Утверждённый план остаётся на exact-пути, к которому привязаны inventory,
 Beads и execution ledger. Он не заменяет продуктовый backlog.
+Exact v4 — неизменяемый approval artifact с исходным SHA-256; execution graph
+завершён (82/82). Текущие статусы и дополнительные работы после v4 принадлежат
+`04_BACKLOG.md`, `DELIVERY_STATE.yaml` и Task Manager, а не тексту approval handoff.
 
 ## Самостоятельные расширения
 
@@ -37,6 +40,6 @@ Beads и execution ledger. Он не заменяет продуктовый bac
 [`docs/contracts/SNAPSHOT_V1.md`](contracts/SNAPSHOT_V1.md) фиксирует contract
 эталонного snapshot-потребителя, а
 [`PROJECT_EXIT_BUNDLE_V1.md`](contracts/PROJECT_EXIT_BUNDLE_V1.md) — typed
-handoff foundation. Полный exporter появляется только вместе с реальным Exit
-Bundle. Mutable epic/PR/SHA evidence хранится в Beads ledger;
+handoff contract. Exit Bundle exporter реализован в `operations-control`;
+реальная передача остаётся отдельной owner/legal operation. Mutable epic/PR/SHA evidence хранится в Beads ledger;
 `DELIVERY_STATE.yaml` содержит только machine-readable proof pointers.

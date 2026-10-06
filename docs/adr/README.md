@@ -6,7 +6,7 @@ reference foundation to the product-owned Data Hub application.
 | ID | Status | Current decision or replacement |
 | --- | --- | --- |
 | ADR-001 | Active | Application Platform Core 3.4 profile |
-| ADR-002 | Superseded | Product boundary is now `03_ARCHITECTURE.md` plus the approved v1 plan |
+| ADR-002 | Superseded | Product boundary is now `03_ARCHITECTURE.md` plus the approved v4 implementation artifact |
 | ADR-003 | Active | Safe native PostgreSQL test foundation |
 | ADR-004 | Superseded | Product identity is owned by `03_ARCHITECTURE.md`; import history is in `CHANGELOG.md` |
 | ADR-005 | Active | Identity and Platform Admin hardening |
@@ -22,5 +22,5 @@ reference foundation to the product-owned Data Hub application.
 | ADR-015 | Active | Per-project snapshot storage isolation |
 | ADR-016 | Active | Pinned vendored schemas for independent handoff builds |
 
-Superseded ADRs remain tracked as historical decisions until the template-trace
-cleanup task removes obsolete verifier coupling. Their IDs must never be reused.
+Superseded ADRs are short replacement pointers; obsolete text is recoverable
+from Git history. Their stable IDs must never be reused.

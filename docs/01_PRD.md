@@ -1,35 +1,41 @@
 # PRD — AMS Data Hub
 
 **Статус:** Active
-**Product:** reusable MicroSaaS application starter
+**Product:** product-owned AMS Data Hub, `DELIVERY_PROFILE = CRITICAL`.
 
 ## Проблема и назначение
 
-`AMS Data Hub` сокращает время запуска нового CRM, кабинета, аналитического
-workspace или MicroSaaS. Он даёт нейтральные границы identity, организаций,
-аудита, фоновой обработки, приватного UI и производного release-contract, но
-не навязывает отраслевой домен.
+AMS Data Hub управляет организациями и проектами, общим каталогом, источниками,
+импортом, редакционным состоянием и доставкой публичных данных независимым
+сайтам. Платформенные границы переиспользуются для CRM, аналитических кабинетов
+и внутренних продуктов AMS. Клиентские бренды и credentials не встраиваются в core.
 
 ## Пользователь и ценность
 
-- solo owner получает проверяемую основу вместо повторной сборки платформы;
-- оператор может провизионить пользователей и организации без public signup;
-- будущий продукт получает multi-tenant и async foundation только как
-  нейтральный reusable слой.
+- Platform Admin управляет доступом, каталогом, источниками и операциями.
+- Пользователь организации работает только с разрешёнными проектами.
+- Независимый сайт получает signed snapshot или Exit Bundle для `DATA_MODE=local`.
 
-## Границы продукта
+## Реализованная область
 
-Starter включает: auth/session foundation, organizations and memberships,
-Platform Admin, neutral `Project`, audit, notifications, outbox-plus-queue,
-worker boundary, health routes and private/public UI shells.
+Identity/session, явный tenant principal, TOTP для Platform Admin, organizations,
+memberships, projects, audit, idempotency, outbox и worker; общий каталог
+`Region → City → District` и `Developer → Development → Building`; проектные
+контакты, агенты и consent, editorial, URL lifecycle; registry источников,
+XML-профили и safety/import contracts; signed snapshots, ACK, rollback,
+media mirror, fleet operations, alerts и Exit Bundle.
 
-Starter не включает: отраслевую модель, provider integrations, billing,
-public signup, production identity, production secrets, database, domain or
-deploy target.
+Импорт новостроек использует typed staging, provenance, price observations,
+rights-bearing media, dry-run и явное подтверждение просмотренного diff.
+Это не разрешение на реальные импорт, расписание или production migration.
 
-## Производный продукт
+## Границы и выпуск
 
-Перед первым реальным пользователем derived repository обязан выбрать
-`DELIVERY_PROFILE = COMMERCIAL | CRITICAL`, заменить identity/legal data,
-создать собственные environment и release contracts, а также определить
-доменные entities, integrations и нужный worker contract.
+Public signup и billing не входят в текущий contract. Публичная поверхность:
+вход, privacy policy и health endpoints; сайт закрыт от индексации.
+Production identity: `https://data-hab.ams24.ru`.
+Реализация v4 доставлена в SourceCraft `main`; фактический статус находится в
+`04_BACKLOG.md`, Task Manager и `DELIVERY_STATE.yaml`.
+
+Production release, реальные ПДн/фиды, provider credentials и deployment требуют
+отдельной явной команды владельца и exact-main release proof.

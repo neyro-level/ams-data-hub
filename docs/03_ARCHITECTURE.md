@@ -17,7 +17,7 @@ PLATFORM_ADMIN = enabled
 
 This repository is the product-owned Data Hub reference application derived
 from AMS MicroSaaS Starter. Its production identity is
-`https://data-hab.ams24.ru`; runtime target is SSH alias `ams-data-hub`, and
+`https://data-hab.ams24.ru`; runtime target is SSH alias `ams-data-hub-deploy`, and
 immutable images are published to the organization SourceCraft registry.
 Production remains an explicit owner action and never follows a push or Pull
 Request automatically.
@@ -41,9 +41,8 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 
 ## Module Map
 
-The map records ownership before implementation, but a directory is created
-only by the first epic that delivers a real vertical slice. A future module in
-this table is a boundary decision, not permission to add an empty scaffold.
+The map records implemented module boundaries. Current work and remaining
+operator/release decisions are recorded in the backlog and Task Manager.
 
 | Boundary | State / first slice | Owns | Public boundary |
 | --- | --- | --- | --- |
@@ -53,10 +52,10 @@ this table is a boundary decision, not permission to add an empty scaffold.
 | `notifications` | active; DH-08.3 operational alerts | in-app delivery, feed/read state, scheduled alert detection and owner-delivery port | `actions.ts`, `server.ts`, `index.ts`; real owner recipient adapter stays disabled until configured |
 | `platform-admin` | active | platform-wide resource views, summaries and admin queries | `contracts.ts`, `server.ts`, `index.ts` |
 | `shared-catalog` | active; DH-03.1 geography foundation | regions, cities, developers, developments, buildings, provenance, revisions and project subscriptions | `contracts.ts`, `server.ts`, `index.ts` |
-| `project-state` | future; DH-04 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
+| `project-state` | active; DH-04/DH-07 | project contacts, agents and consent evidence, editorial fields, URL registry, redirects and lifecycle | project-scoped contracts plus server facade |
 | `media-assets` | active foundation; DH-02.5, extended in DH-03 | validated admin intake, rights metadata, hashes, object references and ownership rules | `contracts.ts`, `server.ts`, `index.ts`; storage remains a platform port |
 | `snapshot-delivery` | active foundation; DH-05.1–05.7 | deterministic datasets, manifests, signing, publication sequence, project delivery and ACK | composer/signature contracts, server-only SecretRef signer, immutable project storage, current-manifest pointer, persisted `DeliveryRun`, hashed project ACK credential and portable `packages/snapshot-verifier` |
-| `ingestion-core` | future; DH-06 | source registry, adapter/profile contracts, raw and normalized revisions, identity resolution, safety analysis and apply plan | adapter contracts plus project-job worker facade |
+| `ingestion-core` | active; DH-06/DH-07 and marketplace profiles | source registry, adapter/profile contracts, raw and normalized revisions, identity resolution, safety analysis and apply plan | adapter contracts plus project-job worker facade |
 | `operations-control` | active; DH-08.1–08.4 | PII-safe fleet projections, idempotent audited operation requests, guarded data-safety controls and protected Exit Bundle orchestration | `contracts.ts`, `server.ts`, `index.ts`; requests do not imply executor completion; alerts go through `notifications` |
 | `platform/*` | active platform layer | database, commands, auth, authorization, config, observability, safe outbound and storage ports | platform-owned APIs only |
 
@@ -103,9 +102,9 @@ RLS is an additional PostgreSQL protection layer, not a replacement for
 authorization; its policy and runtime-role design are implemented in E03.
 
 `outbox-plus-queue` is retained because durable business delivery, replay and
-integration journaling are target guarantees. The starter ships a neutral,
-disabled-by-deployment worker foundation; a derived product enables it only
-after adding an owned async consumer contract. Outbox payloads are minimal,
+integration journaling require durable state. Data Hub owns the worker and
+consumer contracts; production enablement follows the explicit release and
+operator configuration. Outbox payloads are minimal,
 versioned and secret/PII-safe; external delivery is after commit.
 
 ## Authentication and provisioning
@@ -123,7 +122,7 @@ bootstrap commands are transitional only.
 
 ## PII lifecycle
 
-| Concern | Starter policy | Derived product obligation |
+| Concern | Data Hub policy | Production obligation |
 | --- | --- | --- |
 | Inventory | account, membership, audit, notification and configured contact data are PII candidates | add domain fields before production |
 | Access | server authorization; Platform Admin is explicit | define role/resource policy |
@@ -141,11 +140,11 @@ contract, not legal advice.
 | Area | Installed exact version | Decision |
 | --- | --- | --- |
 | Node.js | 24.20.0 | Node 24 line; project exact version is pinned |
-| Next.js | 16.3.8 | App Router 16.x; current security-patched stable release |
-| React | 19.3.0 | current stable React 19 line; supported by Next.js 16.3.8 |
+| Next.js | 16.3.8 | repository-pinned App Router 16.x |
+| React | 19.3.0 | repository-pinned React 19 line |
 | Prisma / adapter | 7.10.0 / `@prisma/adapter-pg` 7.10.0 | supported PostgreSQL adapter pattern |
-| PostgreSQL target | 18 | target line; local/integration proof is introduced by E00A |
-| Better Auth | 1.7.7 | current patched 1.7 line; includes the Magic Link security fix |
+| PostgreSQL target | 18 | guarded native integration and isolated restore proof |
+| Better Auth | 1.7.7 | repository-pinned 1.7 line; upgrade requires separate verification |
 | pg-boss | 12.30.0 | PostgreSQL queue; schema migration/runtime privileges stay separate |
 | TypeScript | 6.0.3 | explicit project exception to Core 3.4's 5.9.x hold; no upgrade is implied |
 

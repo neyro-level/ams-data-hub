@@ -22,7 +22,8 @@ Each test names its contract, uses isolated fixture organizations/identities and
 
 The runner sequence is fixed: preflight → generated client → clean migrate → pg-boss migration → neutral seed → feature suites → guarded cleanup. It runs twice from an empty dedicated `_test` database. The second run must establish the same schema/seed assumptions and pass the same matrix.
 
-After a successful run, a machine-readable, secret-free summary records its schema version, PostgreSQL 18, migration id, first/repeated run, PASS status for E02–E05, executed suites and final PASS. It contains no DSN, host, username, token, payload or PII. Missing coverage is a failed result, not an omitted field. Downstream gates may consume it only with the source local evidence; the starter remains `LOCAL PASS / CI NOT RUN (EXPERIMENT)`.
+After a successful run, a machine-readable, secret-free summary records its schema version, PostgreSQL 18, migration id, first/repeated run, PASS status for E02–E05, executed suites and final PASS. It contains no DSN, host, username, token, payload or PII. Missing coverage is a failed result, not an omitted field. Downstream gates may consume it only with the source local evidence; local proof is not CI attestation. Current exact-head SourceCraft gate results
+are recorded separately in the delivery ledger.
 
 ## Stop Conditions
 
@@ -41,9 +42,11 @@ E06 stops before destructive work if E00A's target guard rejects the database, t
 ## Local Verification
 
 The guarded PostgreSQL 18 runner starts twice from an empty schema. The first
-pass executes the complete seven-suite matrix; the second executes the same
-suites in reverse order. Both passes cover E02–E05, the declared nine-model RLS
-inventory and worker lifecycle behavior. A failed child command throws through
+pass executes the current suite manifest in `scripts/postgresql-evidence.mjs`;
+the second executes the same suites in reverse order. Both passes cover
+E02–E05, the current executable RLS inventory and worker lifecycle behavior.
+The manifest includes project/domain suites and new-building import evidence;
+a targeted run never attests the full matrix. A failed child command throws through
 the lifecycle boundary so the guarded final database reset still runs.
 
 Every runner invocation removes stale evidence from an earlier full pass before

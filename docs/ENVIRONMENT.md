@@ -49,14 +49,16 @@ through the local environment. It writes a synthetic object through credential
 B, proves credential A receives access denial for that object, proves B can
 read it, then deletes the fixture. Its output is secret-free and is the
 required provider evidence for ADR-015; it is not a deployment operation.
-The owner-approved master plan v4 marks this proof
-`DEFERRED_TO_PREPRODUCTION` and assigns it to `dh-09.4`. Until it passes, the
-Timeweb adapter stays unwired, its runtime credentials stay absent, and only
-synthetic/local storage may be used; real project artifacts are forbidden.
+The proof assigned by master plan v4 to `dh-09.4` passed on 2026-10-05;
+see `research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`. Temporary resources and
+credentials were removed. The Timeweb adapter remains disabled in application
+runtime; production wiring and real project artifacts require separate approval.
 
 ## PostgreSQL Evidence Transition
 
-E06 uses only the E00A guarded `*_test` PostgreSQL 18 lifecycle. A successful integration pass emits a secret-free coverage summary for E02–E05; it is local starter evidence, never production attestation. See [`ADR-009`](adr/ADR-009-postgresql-security-evidence.md).
+Integration tests use the guarded `*_test` PostgreSQL 18 lifecycle. A successful
+full run emits a secret-free coverage summary; scoped runs do not claim full
+coverage. Local evidence is not production attestation. See [`ADR-009`](adr/ADR-009-postgresql-security-evidence.md).
 
 ## Integration-test database
 

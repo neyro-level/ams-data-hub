@@ -37,6 +37,9 @@ export const TENANT_OWNED_MODELS = [
   "ProjectAckCredential",
   "InventoryIdentity",
   "InventoryLifecycleEvent",
+  "DevelopmentExternalIdentity",
+  "PriceObservation",
+  "SharedMediaAsset",
 ] as const;
 
 export type TenantOwnedModel = (typeof TENANT_OWNED_MODELS)[number];

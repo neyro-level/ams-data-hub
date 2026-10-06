@@ -1,15 +1,19 @@
 # ADR-001: AMS Data Hub Platform Profile
 
+**Status:** Active.
+
 ## Decision
 
-Use `AMS Application Platform Core 3.4 — Solo Minimal` as the neutral starter profile.
+Use `AMS Application Platform Core 3.4 — Solo Minimal` with the product profile
+in `../03_ARCHITECTURE.md`: `PROJECT_CLASS = STANDARD`,
+`DELIVERY_PROFILE = CRITICAL`, multi-tenant, PII, outbox-plus-queue, own-saas
+and Platform Admin enabled.
 
-## Context
+## Context and consequences
 
-The repository is a reusable foundation, not a production app and not a product-specific reference vertical.
-
-## Consequences
-
-- keep auth, tenant model, Platform Admin, audit, outbox and worker;
-- avoid provider-specific integrations in the baseline;
-- require a separate hardening stream before real users or production data.
+Data Hub is a product-owned reference application with its own domain, identity
+and infrastructure. Server authorization, transaction-bound repositories,
+RLS, audit and independent worker remain mandatory. Shared catalog and
+project-owned ingestion are implemented; client-specific logic stays outside
+core. Push/PR are zero-CI; merge requires one manual exact-head RISKY Gate.
+Production needs a separate exact-main release and live proof.

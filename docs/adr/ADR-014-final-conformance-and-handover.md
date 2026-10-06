@@ -1,27 +1,23 @@
 # ADR-014: Final Conformance And Handover Contract
 
-**Status:** implemented for E11; final-main proof remains an owner merge-gate action
+**Status:** Active for the product-owned Data Hub application.
 
-Final conformance is evaluated at one exact final `main` SHA, not by combining partial branch results. Every target guarantee receives one of: executable proof with exact evidence, explicit bounded exception, or deferred capability with owner/trigger. Docs, schema, code, SourceCraft template and runtime template must agree.
+Conformance applies to one exact final SourceCraft main SHA. Each guarantee
+has executable evidence, a bounded exception or an explicit deferred capability
+with its owner/trigger. Closed implementation tasks do not imply production.
 
-The final handover supplies: derivation checklist; `EXPERIMENT → COMMERCIAL | CRITICAL` hardening boundary; manual exact-head gate; immutable artifact/rollback template; database identity/backup obligations; secret and domain ownership; and a statement that the starter itself is not production.
+`../05_RELEASE_CHECKLIST.md` owns the guarantee matrix and release exceptions;
+`../OPERATIONS.md` owns deployment, recovery and rollback.
+`pnpm verify:conformance` checks the product contract against tracked runtime,
+identity, branch policy and required scripts, and records commit/tree identity
+only from a clean tracked checkout. `pnpm verify:release` includes it.
 
-`docs/05_RELEASE_CHECKLIST.md` is the human-readable matrix and
-`docs/OPERATIONS.md` owns executable recovery detail. `pnpm verify:conformance`
-checks their required links against the runtime template and emits the exact Git
-commit/tree identity. `pnpm verify:release` includes that static conformance
-check after the daily proof; `pnpm derive:smoke` remains the independent
-copy-source proof.
+The approved v4 DH-00–DH-09 graph is complete. `../DELIVERY_STATE.yaml` and Task
+Manager record exact PR/Gate/merge evidence. Additional work has separate
+tasks and reviewed delivery. Production migration, real credentials, artifact
+publication and rollout remain a separately authorized exact-main release.
 
-E11 may close only after: all feature epics have delivered PR-only evidence; a clean final main has passed the applicable local daily/release-equivalent proof; clean-room derivation repeats successfully; and docs/source-of-truth links reconcile with runtime. Missing local PostgreSQL identity, SourceCraft authorization or other external prerequisites remain recorded blockers, never claimed proof.
-
-| Conformance item | Evidence owner |
-| --- | --- |
-| profile, stack and identity | E00/E01 |
-| auth, principal and RLS | E02/E03 |
-| atomic commands and async | E04/E05 |
-| integrated PostgreSQL proof | E00A/E06 |
-| CI/runtime/UI safety | E07/E08/E09 |
-| derivation and handover | E10/E11 |
-
-E11 does not release, merge automatically or import a new plan without owner approval. It is PR-only and RISKY because it validates final security/runtime proof.
+Independent consumer handoff uses pinned vendored transfer contracts,
+`ProjectExitBundleV1` and verified local mode. Consent evidence remains a
+separate protected legal/operator handoff; it is absent from public bundles.
+No derivation/generator command is required by the current product lifecycle.

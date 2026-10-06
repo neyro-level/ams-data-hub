@@ -248,6 +248,8 @@ export class PrismaSharedCatalogRepository implements SharedCatalogRepository {
       return {
         uid: row.uid, version: row.version, developerUid: row.developerUid,
         cityUid: row.cityUid, districtUid: row.districtUid, name: row.name,
+        addressLine: row.addressLine, latitude: row.latitude?.toNumber() ?? null,
+        longitude: row.longitude?.toNumber() ?? null,
         lifecycle: row.lifecycle, mergedIntoUid: row.mergedIntoUid,
         aliases: row.aliases.map((alias) => alias.value),
       };

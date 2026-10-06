@@ -54,6 +54,7 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "tests/integration/shared-catalog-commands.integration.test.ts",
         "tests/integration/catalog-subscriptions.integration.test.ts",
         "tests/integration/catalog-provenance-revisions.integration.test.ts",
+        "tests/integration/newbuilding-import-foundation.integration.test.ts",
       ],
       scenarios: [
         "required shared regions and cities are seeded with normalized names and aliases",
