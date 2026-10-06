@@ -22,7 +22,7 @@ const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
 const feed = (...offers: string[]) => `<realty-feed xmlns="${namespace}">${offers.join("")}</realty-feed>`;
 
-async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPolicy) {
+async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPolicy, adapterKey = "yrl-realty-2010") {
   const principal: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-runtime-admin", correlationId: randomUUID() };
   const suffix = randomUUID().slice(0, 8);
   const scope = await runInPrincipalDatabaseTransaction(principal, async (tx) => {
@@ -39,7 +39,7 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
     (tx) => tx.sourceSafetyPolicy.create({ data: { ...scope, policy: policyOverride ?? BOOTSTRAP_SOURCE_SAFETY_POLICY } }))).id;
   const source = await sourceRegistryCommands.createSource(principal, { ...scope,
     sourceKey: "synthetic", name: "Synthetic", endpointCredentialRef: referenceName,
-    adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey, profileVersion: "1.0.0",
+    adapterKey, adapterVersion: "1.0.0", profileKey, profileVersion: "1.0.0",
     datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
     safetyPolicyId, expectedNamespace: "", expectedProducer: "",
   });
@@ -69,6 +69,42 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it.each([
+    ["yrl-realty-2010", "vladis-vt24-v1", feed(offer("one")), "YRL_2010"],
+    ["yrl-realty-2010", "joywork-domclick-v1", feed(offer("one")), "DOMCLICK_YRL"],
+    ["avito-xml-v3", "joywork-avito-v3", '<Ads formatVersion="3" target="Avito.ru"><Ad><Id>one</Id><Category>Квартиры</Category><OperationType>Продам</OperationType><Price>1000</Price></Ad></Ads>', "AVITO_V3"],
+    ["cian-xml-v2", "joywork-cian-v2", '<Feed><Feed_Version>2</Feed_Version><Object><ExternalId>one</ExternalId><Category>flatSale</Category><Price>1000</Price></Object></Feed>', "CIAN_V2"],
+  ])("executes persisted %s / %s configuration through GOOD and preserves it on broken input", async (adapter, profile, xml, format) => {
+    const context = await setup(profile, undefined, adapter);
+    try {
+      context.provide(xml);
+      const first = await context.runtime.run(context.target);
+      expect(first, JSON.stringify(first)).toMatchObject({ state: "GOOD", sequence: 1, snapshotTriggered: true });
+      const baseline = await context.read();
+      expect(baseline.records).toHaveLength(1);
+      expect(baseline.records[0]!.payload).toMatchObject({ draft: {
+        externalId: "one", propertyType: "APARTMENT", transactionType: "SALE", sourceFormat: format, price: 1000,
+      } });
+      expect(context.uploaded()).toBe(Buffer.byteLength(xml));
+      context.provide(xml.replace("1000", "2000"));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const changed = await context.read();
+      expect(baseline.identities[0]!.uid).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/u);
+      expect(changed.identities[0]!.uid).toBe(baseline.identities[0]!.uid);
+      expect(changed.records.every((record) => record.inventoryUid === baseline.identities[0]!.uid)).toBe(true);
+      expect(changed.revisions.at(-1)!.normalizedContentHash).not.toBe(baseline.revisions[0]!.normalizedContentHash);
+      expect(changed.intents).toHaveLength(2);
+      context.provide(xml.slice(0, -8));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "PARSE" });
+      const broken = await context.read();
+      expect(broken.source.lastGoodRevisionId).toBe(changed.source.lastGoodRevisionId);
+      expect(broken.identities).toEqual(changed.identities);
+      expect(broken.events).toEqual(changed.events);
+      expect(broken.intents).toEqual(changed.intents);
+      expect(broken.revisions.at(-1)!.status).toBe("FAILED");
+    } finally { context.cleanup(); }
+  });
+
   it("keeps snapshot intent pending while the real default outbox drain completes maintenance", async () => {
     const context = await setup();
     const workerId = `mp03-reservation-${randomUUID().slice(0, 8)}`;

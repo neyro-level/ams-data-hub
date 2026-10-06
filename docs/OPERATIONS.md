@@ -26,8 +26,13 @@ partial inventory or overwrite a newer GOOD. GOOD now records a transactional,
 idempotent `snapshot.build.request` outbox intent. `snapshotTriggered=true` is
 durable request evidence only; external build/sign/store/publish are subsequent
 executors, not part of the import transaction. Outbox enqueue failure rolls back
-the complete apply. Permanent source worker and four-family
-runtime rehearsal remain their subsequent approved task gates. No production
+the complete apply. Four-family composition regressions now exercise persisted
+YRL/Vladis, Domclick, Avito v3 and CIAN v2 configuration through the same facade:
+GOOD, changed semantic hash, stable UID and broken-input Last Good preservation.
+These fixtures use explicit persisted synthetic safety policies and mocked
+HTTP/SDK transport; they do not recalibrate live profiles or prove provider
+compatibility. Permanent source worker remains the subsequent approved task
+gate. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
