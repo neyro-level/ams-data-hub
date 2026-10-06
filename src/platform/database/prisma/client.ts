@@ -36,3 +36,12 @@ export function getPrismaPool() {
   getPrismaClient();
   return globalForPrisma.prismaPool!;
 }
+
+/** CLI process owner only: call after consumers and session guards settle. */
+export async function closePrismaContext(): Promise<void> {
+  const prisma = globalForPrisma.prisma;
+  const pool = globalForPrisma.prismaPool;
+  delete globalForPrisma.prisma; delete globalForPrisma.prismaAdapter; delete globalForPrisma.prismaPool;
+  try { await prisma?.$disconnect(); }
+  finally { await pool?.end(); }
+}

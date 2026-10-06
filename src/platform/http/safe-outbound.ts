@@ -15,10 +15,10 @@ import {
   type SafeOutboundResult,
   type SafeOutboundStreamResult,
   type SafeOutboundTransportResponse,
-} from "./safe-outbound-core";
+} from "./safe-outbound-core.ts";
 
-export { SafeOutboundError } from "./safe-outbound-core";
-export type { SafeOutboundPolicy, SafeOutboundResult, SafeOutboundStreamResult } from "./safe-outbound-core";
+export { SafeOutboundError } from "./safe-outbound-core.ts";
+export type { SafeOutboundPolicy, SafeOutboundResult, SafeOutboundStreamResult } from "./safe-outbound-core.ts";
 
 function firstHeader(headers: IncomingHttpHeaders, name: string): string | undefined {
   const value = headers[name];

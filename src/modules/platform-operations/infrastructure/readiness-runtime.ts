@@ -3,6 +3,8 @@ import { runInSystemJobDatabaseTransaction } from "../../../platform/database/tr
 import {
   OUTBOX_WORKER_RUNTIME,
   RUNTIME_HEARTBEAT_WRITE_INTERVAL_MS,
+  SOURCE_WORKER_RUNTIME,
+  assertSourceWorkerId,
 } from "./runtime-heartbeat.ts";
 
 export interface WorkerHeartbeatHealth {
@@ -26,9 +28,37 @@ export const WORKER_HEARTBEAT_STALE_MS = 2 * RUNTIME_HEARTBEAT_WRITE_INTERVAL_MS
 
 export function toWorkerStatus(lastHeartbeatAt: Date | null, now: Date) {
   if (!lastHeartbeatAt) return "unknown" as const;
-  return now.getTime() - lastHeartbeatAt.getTime() <= WORKER_HEARTBEAT_STALE_MS
+  const age = now.getTime() - lastHeartbeatAt.getTime();
+  return Number.isFinite(age) && age >= 0 && age <= WORKER_HEARTBEAT_STALE_MS
     ? "healthy"
     : "stale";
+}
+
+export interface SourceWorkerReadiness {
+  pgBoss: "connected" | "unconfirmed";
+  sourceConsumer: "active" | "unconfirmed";
+  heartbeat: WorkerHeartbeatHealth;
+}
+
+/** Exact owner, not the latest unrelated runtime. These are TTL-qualified
+ * observations, not a new connection opened by the reader. */
+export async function getSourceWorkerReadiness(workerId: string): Promise<SourceWorkerReadiness> {
+  assertSourceWorkerId(workerId);
+  const { heartbeatAt, now } = await runInSystemJobDatabaseTransaction(
+    { jobName: "source-worker-healthcheck", correlationId: "source-healthcheck" }, async (tx) => {
+      const row = await tx.runtimeHeartbeat.findUnique({ where: { runtime_workerId: { runtime: SOURCE_WORKER_RUNTIME, workerId } },
+        select: { heartbeatAt: true } });
+      const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS now`;
+      return { heartbeatAt: row?.heartbeatAt ?? null, now: clock!.now };
+    });
+  const status = toWorkerStatus(heartbeatAt, now);
+  const qualified = status === "healthy";
+  return { pgBoss: qualified ? "connected" : "unconfirmed", sourceConsumer: qualified ? "active" : "unconfirmed",
+    heartbeat: { status, lastHeartbeatAt: heartbeatAt?.toISOString() ?? null } };
+}
+
+export async function assertSourceWorkerHealthy(workerId: string): Promise<void> {
+  if ((await getSourceWorkerReadiness(workerId)).heartbeat.status !== "healthy") throw new Error("SOURCE_WORKER_NOT_READY");
 }
 
 export async function getOutboxWorkerHeartbeatHealth(

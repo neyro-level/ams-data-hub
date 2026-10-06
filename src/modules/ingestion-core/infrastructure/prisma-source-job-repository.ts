@@ -15,8 +15,9 @@ const sourceJobSelect = {
   schedulePolicy: true,
   lastAttemptAt: true,
   updatedAt: true,
-  project: { select: { serviceState: true } },
 } as const;
+
+const MAX_SCHEDULING_SOURCES = 10_000;
 
 function toRecord(row: {
   id: string;
@@ -45,7 +46,9 @@ export class PrismaSourceJobRepository implements SourceJobRepository {
     const rows = await this.transaction.source.findMany({
       select: sourceJobSelect,
       orderBy: { id: "asc" },
+      take: MAX_SCHEDULING_SOURCES + 1,
     });
+    if (rows.length > MAX_SCHEDULING_SOURCES) throw new Error("SOURCE_SCHEDULE_REGISTRY_LIMIT");
     return rows.map(toRecord);
   }
 
@@ -59,7 +62,7 @@ export class PrismaSourceJobRepository implements SourceJobRepository {
         organizationId: principal.organizationId,
         projectId: principal.projectId,
       },
-      select: sourceJobSelect,
+      select: { ...sourceJobSelect, project: { select: { serviceState: true } } },
     });
     return row ? { ...toRecord(row), serviceState: row.project.serviceState } : null;
   }

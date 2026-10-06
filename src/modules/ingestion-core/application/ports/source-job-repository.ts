@@ -23,3 +23,8 @@ export interface SourceJobRepository {
     sourceId: string,
   ): Promise<SourceJobExecutionContext | null>;
 }
+
+export interface SourceManualRequestRepository {
+  load(principal: ProjectJobPrincipal, sourceId: string, requestId: string): Promise<{ status: "REQUESTED" | "CLAIMED" | "COMPLETED" | "FAILED" } | null>;
+  fail(principal: ProjectJobPrincipal, sourceId: string, requestId: string): Promise<void>;
+}

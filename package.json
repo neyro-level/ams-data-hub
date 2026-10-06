@@ -79,6 +79,7 @@
     "worker:module-smoke": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js module-smoke",
     "worker:maintenance-smoke": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js maintenance-smoke",
     "worker:outbox": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js outbox-worker",
+    "worker:source": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js source-worker",
     "worker:outbox:drain": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js outbox-drain",
     "worker:outbox:retention": "pnpm worker:build && node --conditions=react-server .runtime/worker/worker/main.js outbox-retention"
   },

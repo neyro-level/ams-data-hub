@@ -32,6 +32,11 @@ PENDING → PROCESSING → PROCESSED
 - Retry is finite, classified and bounded by the topic policy. Exhaustion writes
   one terminal `DEAD_LETTER` state and one deduplicated safe platform
   notification.
+- A supported but not yet executable reserved intent, or busy Source dispatch,
+  is lease-bound deferred to PENDING with a JobRun DEFERRED marker. It is neither
+  PROCESSED nor DEAD_LETTER. A durable deferral count excludes these attempts
+  from executor failure budget without resetting unique delivery ordinals;
+  operational JobRun retention cannot consume that budget later.
 - Same idempotency key plus same payload returns the prior deterministic outcome;
   the same key plus changed payload is `IDEMPOTENCY_CONFLICT` and creates no new
   delivery.
@@ -54,6 +59,19 @@ PENDING → PROCESSING → PROCESSED
    evidence.
 
 ## Implementation And Evidence Map
+
+The opt-in combined Source command publishes a separate exact-owner
+`source-worker` heartbeat only after reconciliation and an existing pg-boss
+connection/Source queue probe. Independent serial renewal continues during
+long jobs. Probe errors/timeouts revoke qualification; no overlapping probe or
+late publication is allowed. Readers use DB time and a 120-second TTL, reject
+future/stale observations and never substitute another owner. Controlled stop
+awaits in-flight publication before removing the exact row. The CLI owns the
+permanent process guard and fatal cleanup deadline, including consumer failure
+without a signal. Abrupt death can leave the prior observation until TTL;
+qualified readiness is not a live connection assertion. Existing outbox mode
+and deployment choice remain unchanged. Executable procedures and synthetic
+process-proof limits are recorded in `OPERATIONS.md`.
 
 | E05 guarantee | Target implementation | Required evidence |
 | --- | --- | --- |

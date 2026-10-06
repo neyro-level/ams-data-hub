@@ -43,6 +43,27 @@ function service(now: Date) {
 }
 
 describe("E05 outbox reliability", () => {
+  it("preserves executor retry budget across repeated durable deferrals and rejects stale deferral leases", async () => {
+    const topic = "synthetic.defer-budget"; let now = new Date("2026-01-01T00:00:00.000Z");
+    const created = await runInSystemJobDatabaseTransaction({ jobName: "defer-fixture", correlationId: randomUUID() },
+      (tx) => new ReliabilityService(new PrismaReliabilityRepository(tx), () => now).enqueue({ ...command(`defer-${randomUUID()}`), topic }));
+    const first = await service(now).claim("deferring-worker", 300_000, [topic]);
+    await service(now).defer(first!, "OUTBOX_EXECUTOR_RESERVED");
+    await expect(service(now).defer(first!, "OUTBOX_EXECUTOR_RESERVED")).rejects.toMatchObject({ code: "OUTBOX_LEASE_LOST" });
+    for (let index = 0; index < 4; index++) {
+      now = new Date(now.getTime() + 301_000);
+      const next = await service(now).claim("deferring-worker", 300_000, [topic]);
+      expect(next?.outboxEventId).toBe(created.outboxEventId);
+      await service(now).defer(next!, "OUTBOX_EXECUTOR_RESERVED");
+    }
+    now = new Date(now.getTime() + 301_000);
+    const execution = await service(now).claim("executor-worker", 300_000, [topic]);
+    expect(execution?.attempt).toBe(6);
+    expect(await service(now).fail(execution!, "SYNTHETIC_EXECUTOR_FAILURE", true, 2)).toMatchObject({ status: "pending" });
+    now = new Date(now.getTime() + 31_000);
+    const last = await service(now).claim("executor-worker", 300_000, [topic]);
+    expect(await service(now).fail(last!, "SYNTHETIC_EXECUTOR_FAILURE", true, 2)).toMatchObject({ status: "dead_letter" });
+  });
   it("allows only one competing worker to claim an event", async () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
     await enqueue(now, `claim-${randomUUID()}`);
@@ -151,7 +172,7 @@ describe("E05 outbox reliability", () => {
   });
 
   it("reports worker heartbeat and queue degradation without exposing payloads", async () => {
-    const now = new Date("2026-01-05T00:00:00.000Z");
+    const now = new Date(Date.now() + 60_000);
     await recordRuntimeHeartbeat({
       runtime: OUTBOX_WORKER_RUNTIME,
       workerId: "readiness-worker",

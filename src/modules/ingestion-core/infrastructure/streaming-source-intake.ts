@@ -15,6 +15,7 @@ export function createStreamingSourceIntake(input: {
   adapter: SourceAdapterDescriptor;
   safetyPolicy: Partial<Pick<SourceSafetyPolicy, "maxRawArtifactBytes" | "maxRecordCount">>;
   fetchFeed?: (endpoint: string | URL, policy: SafeOutboundPolicy) => Promise<SafeOutboundStreamResult>;
+  signal?: AbortSignal;
 } & ({ endpoint: SecretValue; endpointReference?: never } | { endpointReference: SecretRef; endpoint?: never })) {
   const limits = resolveSourceIntakeLimits(input.adapter.intakeLimits, input.safetyPolicy);
   return {
@@ -24,6 +25,7 @@ export function createStreamingSourceIntake(input: {
         const policy: SafeOutboundPolicy = {
           purpose: "feed", allowedContentTypes: ["application/xml", "text/xml", "application/octet-stream"],
           timeoutMs: limits.timeoutMs, maxBytes: limits.maxRawArtifactBytes,
+          ...(input.signal ? { signal: input.signal } : {}),
         };
         // Reference-owned production path deliberately cannot inject fetchFeed.
         const response = input.endpointReference

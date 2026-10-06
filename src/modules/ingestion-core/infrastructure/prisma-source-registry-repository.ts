@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import {
@@ -15,6 +16,9 @@ import type {
   StoredSource,
 } from "../application/ports/source-registry-repository.ts";
 import { SourceRegistryError } from "../domain/source-registry-error.ts";
+import { SOURCE_MANUAL_REQUEST_TOPIC, sourceManualRequestIntentSchema } from "../domain/source-jobs.ts";
+import { ReliabilityService } from "../../platform-operations/index.ts";
+import { PrismaReliabilityRepository } from "../../platform-operations/server.ts";
 
 const sourceInclude = {
   credentialRef: { select: { endpointCredentialRefName: true } },
@@ -187,6 +191,8 @@ export class PrismaSourceRegistryRepository implements SourceRegistryRepository 
   }
 
   async requestManualRun(input: RequestManualSourceRunInput, requestedBy: string): Promise<{ requestId: string; duplicate: boolean }> {
+    const lockKey = `source-manual:${input.organizationId}:${input.projectId}:${input.sourceId}:${input.idempotencyKey}`;
+    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text`);
     const existing = await this.transaction.sourceManualRunRequest.findUnique({
       where: { sourceId_idempotencyKey: { sourceId: input.sourceId, idempotencyKey: input.idempotencyKey } },
       select: { id: true },
@@ -202,6 +208,15 @@ export class PrismaSourceRegistryRepository implements SourceRegistryRepository 
       },
       update: {},
       select: { id: true },
+    });
+    const payload = sourceManualRequestIntentSchema.parse({ schemaVersion: 1, organizationId: input.organizationId,
+      projectId: input.projectId, sourceId: input.sourceId, manualRequestId: request.id });
+    await new ReliabilityService(new PrismaReliabilityRepository(this.transaction)).enqueue({
+      organizationId: input.organizationId, organizationScope: input.organizationId,
+      idempotencyScope: SOURCE_MANUAL_REQUEST_TOPIC, idempotencyKey: request.id,
+      topic: SOURCE_MANUAL_REQUEST_TOPIC, payload, actorType: "USER", actorId: requestedBy,
+      action: SOURCE_MANUAL_REQUEST_TOPIC, entityType: "SourceManualRunRequest", entityId: request.id,
+      source: "ingestion-core", correlationId: randomUUID(),
     });
     return { requestId: request.id, duplicate: Boolean(existing) };
   }

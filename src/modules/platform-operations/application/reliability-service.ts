@@ -7,6 +7,7 @@ import type {
   FailReliabilityEventResult,
   OutboxHealth,
   ReliabilityRepository,
+  OutboxDeferralCode,
 } from "./ports/reliability-repository.ts";
 import {
   OUTBOX_DELIVERY_SCHEMA,
@@ -154,6 +155,13 @@ export class ReliabilityService {
       leaseAcquiredAt: event.leaseAcquiredAt,
       finishedAt: this.now().toISOString(),
     });
+  }
+
+  defer(event: ClaimedReliabilityEvent, code: OutboxDeferralCode): Promise<void> {
+    return this.repository.deferEvent({ outboxEventId: event.outboxEventId, jobRunId: event.jobRunId,
+      workerId: event.workerId, leaseAcquiredAt: event.leaseAcquiredAt, finishedAt: this.now().toISOString(),
+      code: z.enum(["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY"]).parse(code),
+      delaySeconds: code === "SOURCE_JOB_QUEUE_BUSY" ? 30 : 300 });
   }
 
   fail(

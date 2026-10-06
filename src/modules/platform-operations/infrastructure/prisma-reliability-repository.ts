@@ -20,6 +20,7 @@ import type {
   OutboxHealth,
   ReliabilityRepository,
   TakeOverReliabilityEventInput,
+  DeferReliabilityEventInput,
 } from "../application/ports/reliability-repository.ts";
 
 function reliabilityError(code: string, message: string) {
@@ -356,14 +357,15 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
           lockedBy: input.workerId,
           lockedAt: new Date(input.leaseAcquiredAt),
         },
-        select: { attempts: true, organizationId: true, topic: true },
+        select: { attempts: true, deferredAttempts: true, organizationId: true, topic: true },
       });
       if (!event) {
         throw reliabilityError("OUTBOX_LEASE_LOST", "Outbox lease ownership was lost");
       }
 
-      const terminal = !input.retryable || event.attempts >= input.maxAttempts;
-      const backoffSeconds = Math.min(3600, 30 * 2 ** Math.max(0, event.attempts - 1));
+      const executionAttempt = Math.max(1, event.attempts - event.deferredAttempts);
+      const terminal = !input.retryable || executionAttempt >= input.maxAttempts;
+      const backoffSeconds = Math.min(3600, 30 * 2 ** Math.max(0, executionAttempt - 1));
       const availableAt = terminal
         ? null
         : new Date(new Date(input.finishedAt).getTime() + backoffSeconds * 1000);
@@ -412,6 +414,21 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
       };
       },
     );
+  }
+
+  async deferEvent(input: DeferReliabilityEventInput): Promise<void> {
+    if (!["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY"].includes(input.code)
+      || !Number.isInteger(input.delaySeconds) || input.delaySeconds < 1 || input.delaySeconds > 300) throw new Error("OUTBOX_DEFERRAL_INVALID");
+    await runInSystemJobDatabaseTransaction({ jobName: "outbox-defer", correlationId: `outbox-defer-${input.workerId}-${input.finishedAt}` }, async (tx) => {
+      const event = await tx.outboxEvent.updateMany({ where: { id: input.outboxEventId, status: OutboxStatus.PROCESSING,
+        lockedBy: input.workerId, lockedAt: new Date(input.leaseAcquiredAt) }, data: { status: OutboxStatus.PENDING,
+        availableAt: new Date(new Date(input.finishedAt).getTime() + input.delaySeconds * 1000),
+        lockedAt: null, lockedBy: null, lastErrorCode: input.code, deferredAttempts: { increment: 1 } } });
+      const job = await tx.jobRun.updateMany({ where: { id: input.jobRunId, outboxEventId: input.outboxEventId,
+        workerId: input.workerId, status: JobRunStatus.RUNNING }, data: { status: JobRunStatus.DEFERRED,
+        finishedAt: new Date(input.finishedAt), safeErrorCode: input.code } });
+      if (event.count !== 1 || job.count !== 1) throw reliabilityError("OUTBOX_LEASE_LOST", "Outbox lease ownership was lost");
+    });
   }
 
   async getOutboxHealth(): Promise<OutboxHealth> {

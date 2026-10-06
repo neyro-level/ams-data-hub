@@ -75,5 +75,9 @@ describe("production runtime contract", () => {
     expect(compose.match(/required: true/gu)).toHaveLength(10);
     expect(compose).toContain('"healthcheck"');
     expect(compose).not.toContain("process.kill(1, 0)");
+    expect(compose).toContain("stop_grace_period: 60s");
+    expect(compose).toContain('OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS: "30000"');
+    expect(compose).toMatch(/worker:[\s\S]*?tmpfs:[\s\S]*?size=640m/u);
+    expect(compose).toMatch(/x-runtime-hardening:[\s\S]*?size=64m/u);
   });
 });

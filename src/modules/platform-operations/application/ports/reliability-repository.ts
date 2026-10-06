@@ -59,6 +59,13 @@ export interface FailReliabilityEventInput extends CompleteReliabilityEventInput
   maxAttempts: number;
 }
 
+export type OutboxDeferralCode = "OUTBOX_EXECUTOR_RESERVED" | "SOURCE_JOB_QUEUE_BUSY";
+export type OutboxHandlerResult = void | { deferred: true; code: OutboxDeferralCode };
+export interface DeferReliabilityEventInput extends CompleteReliabilityEventInput {
+  code: OutboxDeferralCode;
+  delaySeconds: number;
+}
+
 export interface FailReliabilityEventResult {
   status: "pending" | "dead_letter";
   availableAt: string | null;
@@ -86,5 +93,6 @@ export interface ReliabilityRepository {
   takeOverEvent(input: TakeOverReliabilityEventInput): Promise<ClaimedReliabilityEvent | null>;
   completeEvent(input: CompleteReliabilityEventInput): Promise<void>;
   failEvent(input: FailReliabilityEventInput): Promise<FailReliabilityEventResult>;
+  deferEvent(input: DeferReliabilityEventInput): Promise<void>;
   getOutboxHealth(): Promise<OutboxHealth>;
 }

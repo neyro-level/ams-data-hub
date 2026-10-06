@@ -5,7 +5,7 @@ this file owns executable local, deploy and recovery procedures.
 
 ## Local development
 
-### Source runtime composition — MP-03 implemented, worker activation pending
+### Source runtime composition — command implemented, production activation pending
 
 The server facade binds concrete PostgreSQL revision/staging persistence, real
 raw spool and streaming S3 adapter capability with the Safe Outbound gateway.
@@ -31,8 +31,9 @@ YRL/Vladis, Domclick, Avito v3 and CIAN v2 configuration through the same facade
 GOOD, changed semantic hash, stable UID and broken-input Last Good preservation.
 These fixtures use explicit persisted synthetic safety policies and mocked
 HTTP/SDK transport; they do not recalibrate live profiles or prove provider
-compatibility. Permanent source worker remains the subsequent approved task
-gate. No production
+compatibility. The combined `source-worker` command now owns native pg-boss
+source consumption and startup/between-job schedule reconciliation. Production
+activation and the remaining exact-head delivery gate are pending. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
@@ -44,8 +45,72 @@ adds Project SELECT for runtime status checks while keeping existing project RLS
 and withholding Project mutation grants from the worker.
 Before enabling snapshot execution, use one complete handler registry for the
 shared `outbox.dispatch` queue or split executor queues. Topic-filtered database
-claim alone does not filter already-dispatched pg-boss jobs; specialized workers
-with incompatible handlers must not share that fetch queue.
+claim alone does not filter already-dispatched pg-boss jobs. The default worker
+checks the persisted topic after lease takeover and defers reserved Source/build
+topics it cannot execute; all other unknown topics remain explicit errors.
+The combined command registers maintenance and manual Source dispatch together.
+
+Admin `Run Source` commits its request and IDs-only outbox intent atomically.
+Dispatch runs after commit and uses a deterministic request job ID plus Source
+singleton. A busy Source defers instead of losing the request. Request COMPLETED
+is committed with GOOD/Last Good/snapshot intent, not after import; replay of a
+settled request performs no intake. Dispatch infrastructure errors are retryable.
+Native terminal retries set request FAILED. If an intent reaches DEAD_LETTER,
+startup/maintenance reconciliation settles its scoped request in bounded
+100-event pages and can repeat safely after a crash. COMPLETED is preserved.
+Busy/reserved events never enter this terminal reconciliation. JobRun DEFERRED
+and the durable outbox deferral counter preserve executor retry budget even
+after operational JobRun retention. This is a repository/runtime contract,
+not provider or production proof.
+
+Source-wide admission is enforced inside the concrete execution facade, including
+direct callers. Exclusive admission transitions without a gap to a session shared
+guard retained through raw cleanup. Short shared transaction fences verify the
+original guardian PID and two opaque random session markers before work and
+after mutations. A guardian disconnect aborts the attempt; a transaction already
+in progress blocks replacement admission until it ends, and stale work cannot
+commit GOOD after ownership transfer. No long transaction spans HTTP/S3/parser
+I/O. Guard acquisition is bounded to four per process and five seconds; uncertain
+unlock destroys its client. Existing source/version/policy/identity checks remain.
+BUSY is a native 30-second deferral, not a failed execution: the pg-boss 12 adapter
+uses an atomic active-attempt CAS and retains retry count and manual request.
+Deferral infrastructure failure stops the consumer rather than terminally failing
+that request. SIGINT/SIGTERM stop new fetch and cancel an active Source using
+the bound server-owned signal. Cancellation completes raw disposal and guard
+release before atomic WORKER_SHUTDOWN deferral; REQUESTED/CLAIMED remains
+recoverable and retries are not spent. Already committed GOOD is acknowledged.
+The CLI then closes the queue, permanent guard and Prisma pool. Its shutdown
+deadline includes acquisition, settlement and cleanup; timeout is fatal and
+leaves unsettled work for native lease recovery, never a fake graceful result.
+The worker-only Compose template uses 640 MiB tmpfs and 60-second stop grace;
+other roles and the default outbox-worker command remain unchanged. The deploy
+script uses this canonical Compose template; its separate migrator tmpfs stays
+64 MiB. No live environment or deployment is changed by this repository work.
+
+The native child-process regression uses the actual CLI, PostgreSQL and durable
+queues with synthetic HTTP/S3 transport. It covers cancellation before response
+headers and during upload, restart of the same deferred request, GOOD committed
+before native ACK, and a non-cancellable SDK fatal timeout. Windows invokes the
+registered SIGTERM handler through test IPC; it does not prove an OS Unix signal.
+The Linux exact-head delivery gate must run the same regression with OS SIGTERM.
+Fatal termination does not guarantee spool cleanup or immediate lease recovery.
+
+For an explicitly selected Source command, use the same stable configured
+`OUTBOX_WORKER_ID` (or the same explicit argument) for `source-worker` and
+`source-healthcheck`. The latter is a read-only qualified heartbeat probe:
+pg-boss connected and Source consumer active mean successfully observed within
+the 120-second TTL. Startup/reconciliation, queue failures, stale/future clocks
+and another owner's heartbeat cannot fabricate readiness. A serial 30-second
+pump keeps the observation current through long imports, revokes failed probes
+and awaits in-flight writes before exact-row cleanup. A five-second probe timeout
+never starts another probe until its original settles. Consumer settlement
+starts the CLI watchdog even without SIGTERM. Original permanent guardian loss
+is process-fatal; after abrupt death a row can remain qualified until TTL.
+No Source production healthcheck or deployment mode is silently selected.
+The reusable `runSourceWorker()` API does not acquire the permanent process
+guard itself: actual CLI `main` owns that guard and watchdog. Embedded callers
+must provide their own process ownership/lifecycle; direct invocation is not a
+single-permanent-runtime or process-fatal-deadline guarantee.
 
 ### Development commands
 
@@ -70,9 +135,12 @@ removes legacy TOTP runtime/schema/recovery branches. The target current policy
 has no factor enrollment requirement; preserve password/session security,
 rate limiting and explicit server permissions.
 
-The current permanent worker is an outbox worker, not proof of source ingestion
-or a source scheduler. SourceExecutionService is implemented by MP-03;
-permanent source worker/scheduler composition remains MP-04, real snapshot
+The production default permanent worker is still an outbox worker, not proof of
+production source ingestion. SourceExecutionService is implemented by MP-03;
+explicit local combined worker/scheduler/manual composition is implemented
+within MP-04. Concurrency and controlled shutdown have local runtime evidence;
+Source health now has its explicit command and exact-owner qualification;
+exact-head delivery remains open. Real snapshot
 assembly is MP-05, and operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate

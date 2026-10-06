@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-03 delivered, MP-06 preparation / 2026-10-06
+### Remediation runtime state — MP-03/MP-06 delivered, MP-04 foundation / 2026-10-06
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -59,7 +59,17 @@ remediation program preserves these boundaries while connecting them:
   buffers and cancellation regression; SDK/network remain mocked, not provider
   or production Source execution proof.
 - MP-03/MP-04: concrete import orchestration and source queue/scheduler ports exist,
-  but the permanent worker entrypoint currently runs outbox only.
+  with an explicit combined `source-worker` command, native schedule reconciliation
+  and a durable manual-request dispatcher. Production Compose still selects
+  `outbox-worker`; command composition is not production activation. Source has
+  an opt-in read-only `source-healthcheck` against an exact-owner qualified
+  heartbeat: startup reconciliation, active consumer lifecycle and an existing
+  pg-boss connection/Source queue probe precede publication. A serial independent
+  pump uses DB time; future/stale timestamps are nonhealthy. Observations expire
+  after 120 seconds, and abrupt death may leave a row until TTL. Controlled stop
+  waits for in-flight publication before exact-row removal. Guardian loss is
+  fatal; consumer settlement starts the bounded cleanup watchdog. No schema or
+  role grants expand, and existing outbox deployment/readiness stays unchanged.
   SourceExecutionService now provides scoped application orchestration and
   resolves registered descriptors, SecretRef, policy and Last Good before intake.
   Reference-owned intake resolves the endpoint lazily on the server through the
