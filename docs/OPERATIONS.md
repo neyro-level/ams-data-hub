@@ -5,6 +5,25 @@ this file owns executable local, deploy and recovery procedures.
 
 ## Local development
 
+### Source runtime composition — MP-03 in progress
+
+The server facade binds concrete PostgreSQL revision/staging persistence, real
+raw spool and streaming S3 adapter capability with the Safe Outbound gateway.
+Source callers supply scoped IDs only; endpoint credentials resolve server-side
+at intake. Per-record batches are bounded by 100 records/4 MiB and payloads by
+2 MiB. Hashing reads sorted persisted metadata in bounded pages. GOOD and stable
+identity/Last Good state commit atomically after fresh enabled, project state,
+source configuration, policy, identity and jobs-freeze checks.
+
+Local integration proof uses the actual application facade, PostgreSQL,
+filesystem, parser and S3 adapter with mocked HTTP/SDK transport. It is not a
+provider compatibility or production activation proof. Permanent source worker,
+full missing-record lifecycle, transactional snapshot outbox and four-family
+runtime rehearsal remain their subsequent approved task gates. No production
+migration or credential creation is performed by the local test lifecycle.
+
+### Development commands
+
 Canonical mode is Windows-native checkout plus native PostgreSQL 18.
 
 - local database: `ams_data_hub_dev`;

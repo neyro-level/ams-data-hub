@@ -1,6 +1,7 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import type { InventoryIdentityKey, InventoryIdentityRepository } from "../application/ports/inventory-identity-repository.ts";
 import type { InventoryIdentityState, InventoryLifecycleEventType } from "../domain/inventory-lifecycle.ts";
+import { lockSourceIdentities } from "./source-identity-lock.ts";
 
 function toState(row: InventoryIdentityState): InventoryIdentityState {
   return { ...row };
@@ -10,6 +11,7 @@ export class PrismaInventoryIdentityRepository implements InventoryIdentityRepos
   constructor(private readonly transaction: DatabaseTransaction) {}
 
   async find(key: InventoryIdentityKey): Promise<InventoryIdentityState | null> {
+    await lockSourceIdentities(this.transaction, key);
     const row = await this.transaction.inventoryIdentity.findUnique({
       where: { organizationId_projectId_sourceId_externalOfferId: key },
     });
@@ -23,6 +25,7 @@ export class PrismaInventoryIdentityRepository implements InventoryIdentityRepos
     occurredAt: Date;
   }): Promise<InventoryIdentityState> {
     const state = input.state;
+    await lockSourceIdentities(this.transaction, state);
     if (input.expectedVersion === null) {
       return toState(await this.transaction.inventoryIdentity.create({ data: state }));
     }

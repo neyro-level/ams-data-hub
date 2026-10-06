@@ -70,8 +70,19 @@ remediation program preserves these boundaries while connecting them:
   adapter/profile versions. Synthetic registry regressions cover YRL/Vladis,
   Domclick, Avito v3 and CIAN v2 with real bounded parsers; this does not yet prove
   the durable runtime composition or activate those families in production.
-  Concrete persistence/intake composition and scheduled execution are pending
-  MP-03.4–MP-04; service unit tests are not production composition proof.
+  Concrete server composition now binds scoped Prisma loading, reference-owned
+  intake, raw spool/S3 capability, executable parsers, per-record normalization,
+  bounded durable staging, Safety Engine and GOOD apply. Records are appended in
+  batches capped at 100 records/4 MiB; semantic hashing reads sorted stored hash
+  metadata rather than materializing a feed. GOOD, identities and Last Good
+  commit together after fresh configuration/service/freeze checks.
+  Project status/service changes take the shared safety lock before the UPDATE
+  statement, avoiding FK/key-lock inversion. Legacy identity commands and Source
+  apply share a source-scoped identity lock. YRL area units normalize to square
+  metres; configured rental periods must resolve explicitly, otherwise validation
+  rejects the record rather than manufacturing a canonical value. Snapshot
+  outbox, complete missing-inventory lifecycle and scheduled execution remain
+  MP-03.5–MP-04; service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.

@@ -1,7 +1,8 @@
 import { adapterProfileRegistry, type SourceDescriptorSelection } from "./adapter-profile-registry.ts";
 import { normalizeMarketplaceRecord, parseAvitoV3Feed, parseCianV2Feed, type MarketplaceFeedFormat, type FeedNormalizationResult } from "./marketplace-feed-adapters.ts";
 import type { MarketplaceXmlRecord } from "./marketplace-xml-parser.ts";
-import { resolveProfileAlias } from "./source-profile.ts";
+import { normalizeArea } from "./canonical-inventory.ts";
+import { normalizeProfileToken, resolveProfileAlias } from "./source-profile.ts";
 import type { SourceIntakeLimits } from "./source-intake-policy.ts";
 import { parseYrl2010, type YrlRawOffer } from "./yrl-2010-parser.ts";
 
@@ -40,19 +41,41 @@ export function resolveExecutableSourceAdapter(selection: SourceDescriptorSelect
     adapter, profile, parse,
     normalize(record: ExecutableFeedRecord): FeedNormalizationResult {
       const normalized = normalizeMarketplaceRecord(record, format);
-      if (!normalized.draft || !profile.configuration) return normalized;
+      if (!normalized.draft) return normalized;
       const draft = { ...normalized.draft };
       const configuration = profile.configuration;
-      const category = draft.categoryRaw && resolveProfileAlias(configuration.categoryAliases, draft.categoryRaw);
-      const transaction = draft.transactionRaw && resolveProfileAlias(configuration.transactionAliases, draft.transactionRaw);
+      const category = configuration && draft.categoryRaw && resolveProfileAlias(configuration.categoryAliases, draft.categoryRaw);
+      const transaction = configuration && draft.transactionRaw && resolveProfileAlias(configuration.transactionAliases, draft.transactionRaw);
       if (category) draft.propertyType = category;
       if (transaction) draft.transactionType = transaction;
+      const issues = normalized.issues.filter((issue) =>
+        !(category && issue.code === "UNKNOWN_PROPERTY_TYPE") && !(transaction && issue.code === "UNKNOWN_TRANSACTION_TYPE"));
+      // YRL declares area units explicitly. Never treat an unknown declaration
+      // as square metres; retain the untouched raw record/provenance separately.
+      if (format === "YRL_2010" || format === "DOMCLICK_YRL") {
+        const area = record.element.children.find((child) => child.localName === "area");
+        const unit = area?.children.find((child) => child.localName === "unit")?.text.trim();
+        if (draft.areaM2 !== undefined && unit) {
+          try {
+            const alias = configuration?.unitAliases.find((item) => item.canonicalUnit === "M2"
+              && normalizeProfileToken(item.source) === normalizeProfileToken(unit));
+            draft.areaM2 = alias ? draft.areaM2 * alias.multiplier : normalizeArea(draft.areaM2, unit).value;
+            if (!Number.isFinite(draft.areaM2) || draft.areaM2 < 0) throw new Error("INVALID_AREA_VALUE");
+          } catch {
+            delete draft.areaM2;
+            issues.push({ code: "INVALID_NUMBER", field: "areaUnit" });
+          }
+        }
+      }
       // Price-period alias policy belongs to the selected profile, not parser core.
       const periodRaw = record.element.children.find((child) => child.localName === "price")?.attributes.find((item) => item.localName === "period")?.value;
-      const period = periodRaw && resolveProfileAlias(configuration.pricePeriodAliases, periodRaw);
-      if (draft.transactionType === "RENT_LONG" && period === "DAY") draft.transactionType = "RENT_SHORT";
-      return { draft, issues: normalized.issues.filter((issue) =>
-        !(category && issue.code === "UNKNOWN_PROPERTY_TYPE") && !(transaction && issue.code === "UNKNOWN_TRANSACTION_TYPE")) };
+      const period = configuration && periodRaw && resolveProfileAlias(configuration.pricePeriodAliases, periodRaw);
+      if (configuration && (draft.transactionType === "RENT_LONG" || draft.transactionType === "RENT_SHORT")) {
+        draft.transactionType = period === "DAY" ? "RENT_SHORT"
+          : period === "MONTH" || period === "YEAR" ? "RENT_LONG" : "UNKNOWN";
+        if (draft.transactionType === "UNKNOWN") issues.push({ code: "UNKNOWN_TRANSACTION_TYPE", field: "pricePeriod" });
+      }
+      return { draft, issues };
     },
   });
 }

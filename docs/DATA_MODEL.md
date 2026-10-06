@@ -84,6 +84,33 @@ is a conflict, not an update to price history.
 
 ## Platform foundation
 
+### Source runtime revisions — remediation MP-03
+
+`SourceSafetyPolicy` stores a strictly validated, project-scoped policy input.
+`SourceRevision` pins configuration version/base Last Good, exact adapter and
+profile versions, policy, raw artifact receipt and semantic hash. Its
+`SourceRevisionRecord` children hold bounded per-record internal canonical field
+state, draft and raw provenance; these are not public DTOs. PENDING records are
+durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
+persisted without moving Last Good. GOOD records and revision metadata are
+immutable, protected by database triggers as well as application checks.
+
+`Source.lastGoodRevisionId` is a composite FK to the same org/project/source's
+revision, and the DB requires a GOOD target. A forward migration refuses legacy
+dangling pointers rather than inventing history or clearing Last Good.
+`InventoryIdentity` remains the stable UID/lifecycle owner across revisions;
+new/seen identity mutations and GOOD/Last Good changes occur only in the final
+transaction. Initial intake/S3/parsing and staging batches never mutate current
+inventory. Snapshot intent and full missing-record lifecycle are the subsequent
+MP-03.5/MP-03.6 tasks, not yet delivered by this foundation.
+
+Runtime access uses a scoped `source-import` project-job principal; tenant/client
+principals cannot read raw/private revision rows. No delete grant exists for
+runtime revision/record tables. Freeze and service/policy changes synchronize
+with final apply; all remote IO stays outside DB transactions. The canonical
+Source runtime entrypoint is `createSourceExecutionServer(storage).run(scopedIds)`;
+storage is server-owned infrastructure, not a Source/job payload dependency.
+
 - `User`, `Session`, `Account`, `Verification` — identity and Better Auth tables;
 - `Organization` — tenant boundary;
 - `Member` — organization access with `ORG_ADMIN`, `ORG_EDITOR`, `ORG_VIEWER`;

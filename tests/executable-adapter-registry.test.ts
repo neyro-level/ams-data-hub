@@ -9,6 +9,30 @@ const cian = '<Feed><Feed_Version>2</Feed_Version><Object><ExternalId>one</Exter
 const selection = (adapterKey: string, profileKey: string) => ({ adapterKey, adapterVersion: "1.0.0", profileKey, profileVersion: "1.0.0", datasetType: "MIXED_REALTY" as const, transportType: "HTTPS_XML" as const });
 
 describe("configuration-only executable source registry", () => {
+  it.each([["сотка", 600], ["га", 60000], ["кв. м", 6], ["m²", 6], ["unknown-unit", undefined]])(
+    "normalizes declared area unit %s without rewriting raw provenance", async (unit, expected) => {
+      const runtime = resolveExecutableSourceAdapter(selection("yrl-realty-2010", "vladis-vt24-v1"));
+      const xml = yrl.replace("</offer>", `<area><value>6</value><unit>${unit}</unit></area></offer>`);
+      for await (const record of runtime.parse([xml], { limits: MAX_SOURCE_INTAKE_LIMITS })) {
+        const raw = JSON.stringify(record);
+        const normalized = runtime.normalize(record);
+        expect(normalized.draft?.areaM2).toBe(expected);
+        expect(normalized.issues.some((issue) => issue.field === "areaUnit")).toBe(expected === undefined);
+        expect(JSON.stringify(record)).toBe(raw);
+      }
+    });
+
+  it.each([["день", "RENT_SHORT"], ["месяц", "RENT_LONG"], ["год", "RENT_LONG"], ["unknown", "UNKNOWN"], ["", "UNKNOWN"]])(
+    "requires a recognized rental period %s", async (period, expected) => {
+      const runtime = resolveExecutableSourceAdapter(selection("yrl-realty-2010", "vladis-vt24-v1"));
+      const xml = yrl.replace("продажа", "аренда").replace("</offer>", `<price${period ? ` period="${period}"` : ""}><value>1000</value></price></offer>`);
+      for await (const record of runtime.parse([xml], { limits: MAX_SOURCE_INTAKE_LIMITS })) {
+        const normalized = runtime.normalize(record);
+        expect(normalized.draft?.transactionType).toBe(expected);
+        expect(normalized.issues.some((issue) => issue.field === "pricePeriod")).toBe(expected === "UNKNOWN");
+      }
+    });
+
   it.each([
     ["yrl-realty-2010", "vladis-vt24-v1", yrl, "YRL_2010"],
     ["yrl-realty-2010", "joywork-yandex-realty-v1", yrl, "YRL_2010"],

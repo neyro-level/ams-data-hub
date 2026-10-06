@@ -38,9 +38,17 @@ describe("fleet dashboard persistence projection", () => {
           enabled: true,
           lastAttemptAt: recent,
           lastSuccessAt: recent,
-          lastGoodRevisionId: "good-revision-1",
         },
       });
+      const revision = await transaction.sourceRevision.create({ data: {
+        organizationId: organization.id, projectId: project.id, sourceId: source.id, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey, profileVersion: source.profileVersion,
+        safetyPolicy: {}, rawStorageKey: `sources/${"a".repeat(64)}`, rawArtifactHash: "a".repeat(64), rawByteCount: 0,
+        normalizedContentHash: "b".repeat(64),
+      } });
+      await transaction.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED" } });
+      await transaction.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD", sequence: 1, completedAt: recent } });
+      await transaction.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
       await transaction.sourceCredentialRef.create({ data: { organizationId: organization.id, projectId: project.id, sourceId: source.id, endpointCredentialRefName: secretMarker } });
       await transaction.projectCurrentSnapshotManifest.create({ data: { organizationId: organization.id, projectId: project.id, publishSequence: 3, manifestKey, manifestSha256: "a".repeat(64), publishedAt: new Date("2026-10-05T08:05:00.000Z") } });
       await transaction.deliveryRun.create({ data: { organizationId: organization.id, projectId: project.id, publishSequence: 3, manifestKey, manifestSha256: "a".repeat(64), status: "APPLIED", publishedAt: new Date("2026-10-05T08:05:00.000Z"), appliedAt: new Date("2026-10-05T08:06:00.000Z") } });
