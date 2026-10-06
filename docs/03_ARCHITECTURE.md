@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-00 / 2026-10-06
+### Remediation runtime state — MP-03 in progress / 2026-10-06
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -59,8 +59,11 @@ remediation program preserves these boundaries while connecting them:
   buffers and cancellation regression; SDK/network remain mocked, not provider
   or production Source execution proof.
 - MP-03/MP-04: import orchestration, source queue and scheduler ports exist,
-  but the permanent worker entrypoint currently runs outbox only; concrete
-  SourceExecutionService and scheduled source execution are pending.
+  but the permanent worker entrypoint currently runs outbox only.
+  SourceExecutionService now provides scoped application orchestration and
+  resolves registered descriptors, SecretRef, policy and Last Good before intake.
+  Concrete persistence/intake composition and scheduled execution are pending
+  MP-03.4–MP-04; service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.
