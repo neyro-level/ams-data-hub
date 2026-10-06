@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  betterAuth: vi.fn((_options: unknown) => ({ api: {} })),
+  betterAuth: vi.fn<(options: unknown) => { api: Record<string, never> }>(() => ({ api: {} })),
   getPrismaClient: vi.fn(() => ({})),
   username: vi.fn(() => ({ id: "username" })),
 }));
