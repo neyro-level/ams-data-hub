@@ -12,6 +12,7 @@ export class PrismaSnapshotInputRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
 
   async lockProject(organizationId: string, projectId: string): Promise<void> {
+    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
     await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(
       hashtextextended(${JSON.stringify(["snapshot-input", organizationId, projectId])}, 0))::text`);
   }

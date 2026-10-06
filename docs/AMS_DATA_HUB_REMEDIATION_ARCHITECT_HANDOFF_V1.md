@@ -152,6 +152,15 @@ real feeds remain outside this checkpoint. MP-05.1 stays IN_PROGRESS until
 the complete resolver and its native proof pass; persistence scaffolding alone
 does not satisfy the task.
 
+Capture retry constructs a new fact builder inside every transaction attempt.
+Fresh admission uses a second bounded authorized Read Committed transaction
+while the outer global-safety/project locks are held; it never acquires the
+same locks recursively. This preserves the caller's single Repeatable Read fact
+cut without privileging a SQL function or granting worker UPDATE on Project or
+DataSafetyState. Pool acquisition/transaction failure is fail-closed, not an
+excuse to proceed with the old admission cut. New scoped SELECT policies do
+not authorize writes to Source, catalog, agent or project facts.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

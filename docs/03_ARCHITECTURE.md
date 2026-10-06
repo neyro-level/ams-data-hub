@@ -116,6 +116,18 @@ remediation program preserves these boundaries while connecting them:
   the scoped counter floors existing current/delivery/input sequences. Complete
   transaction-bound DB fact resolution and its native proof are still pending;
   this foundation is not a working public assembly/publication pipeline.
+  Transaction-bound shared-catalog and Source fact readers capture the scoped
+  subscription candidate closure and exact GOOD identity/hash membership,
+  including historical grace facts. Profile configuration is pinned once per
+  identity, not copied for every listing or loaded live during rebuild. Fact
+  reads are SELECT-only under `snapshot-input`; Source mutation policies stay
+  unchanged. The capture runner holds global-safety then project locks, checks
+  fresh admission in a bounded authorized Read Committed transaction, and keeps
+  every fact in the one outer Repeatable Read cut. This needs two available
+  pool connections; acquisition is bounded and failure rolls back capture.
+  No SECURITY DEFINER function or worker state-mutation grant is introduced.
+  Remaining project-state/media facts and concrete command composition are
+  still pending; native fact-reader/admission proof is not full build proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
