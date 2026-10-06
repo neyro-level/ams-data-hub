@@ -79,7 +79,7 @@ describe("platform recovery token lifecycle", () => {
 });
 
 describe("fresh principal enforcement", () => {
-  it("denies a password-only platform admin and a multi-membership user without an explicit organization", async () => {
+  it("accepts an enabled platform admin without factor state while retaining setup, disable and membership gates", async () => {
     const prisma = getPrismaClient();
     const firstOrganization = await prisma.organization.create({ data: { slug: "principal-first", name: "Principal first" } });
     const secondOrganization = await prisma.organization.create({ data: { slug: "principal-second", name: "Principal second" } });
@@ -93,8 +93,7 @@ describe("fresh principal enforcement", () => {
       },
     });
 
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: false })).resolves.toBeNull();
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toMatchObject({
+    await expect(getPrincipalStateByUserId(userId)).resolves.toMatchObject({
       principal: { kind: "platform-admin", userId },
     });
 
@@ -105,14 +104,14 @@ describe("fresh principal enforcement", () => {
         expiresAt: new Date(Date.now() + 60_000),
       },
     });
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
     await prisma.accountSetupToken.updateMany({
       where: { userId },
       data: { revokedAt: new Date() },
     });
 
     await prisma.user.update({ where: { id: userId }, data: { disabledAt: new Date() } });
-    await expect(getPrincipalStateByUserId(userId, { platformAdminMfaVerified: true })).resolves.toBeNull();
+    await expect(getPrincipalStateByUserId(userId)).resolves.toBeNull();
     await prisma.user.update({ where: { id: userId }, data: { disabledAt: null } });
 
     await prisma.user.update({ where: { id: userId }, data: { systemRole: "USER" } });

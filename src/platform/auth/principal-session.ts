@@ -10,7 +10,6 @@ import {
   type PrincipalState,
 } from "../authorization/principal-factories.ts";
 import { getAuth } from "./auth.ts";
-import { readAuthEnvironment } from "../config/server-environment.ts";
 import { createCorrelationId } from "../http/correlation.ts";
 
 export type CabinetPrincipalErrorCode =
@@ -47,7 +46,6 @@ async function getFreshPrincipalState(): Promise<{
         userId: true,
         expiresAt: true,
         activeOrganizationId: true,
-        twoFactorVerifiedAt: true,
         user: { select: { disabledAt: true } },
       },
     }),
@@ -60,13 +58,9 @@ async function getFreshPrincipalState(): Promise<{
     return null;
   }
 
-  const authEnvironment = readAuthEnvironment();
   const resolution = await getPrincipalResolutionByUserId(session.user.id, {
     correlationId,
     selectedOrganizationId: persistedSession.activeOrganizationId,
-    platformAdminMfaVerified: authEnvironment?.adminTotpRequired
-      ? persistedSession.twoFactorVerifiedAt !== null
-      : true,
   });
   if (
     resolution.autoSelectedOrganizationId
