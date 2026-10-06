@@ -58,11 +58,23 @@ describe("scoped inventory media projection", () => {
   it("rejects relations absent from persisted image membership", async () => {
     const state = fixture(); state.relations[0]!.canonicalSourceUrl = "https://producer.example.invalid/removed.png";
     const h = harness(state);
-    expect(await h.project(principal, input)).toEqual({ media: [], warnings: [] }); expect(h.head).not.toHaveBeenCalled();
+    expect(await h.project(principal, input)).toEqual({ media: [], warnings: ["MEDIA_MIRROR_UNAVAILABLE"] }); expect(h.head).not.toHaveBeenCalled();
   });
   it("retains a valid previous mirror after warning without URL fallback", async () => {
     const state = fixture(); state.relations[0]!.status = "WARNING";
     expect(await harness(state).project(principal, input)).toEqual({ media: [{ ref: digest, kind: "IMAGE", position: 0 }], warnings: ["MEDIA_MIRROR_WARNING"] });
+  });
+  it("treats a failed first mirror as a non-fatal warning, not corrupt inventory", async () => {
+    const state = fixture(); state.relations[0]!.status = "WARNING"; state.relations[0]!.asset = null; state.relations[0]!.mirroredAt = null;
+    const h = harness(state);
+    expect(await h.project(principal, input)).toEqual({ media: [], warnings: ["MEDIA_MIRROR_WARNING"] }); expect(h.head).not.toHaveBeenCalled();
+  });
+  it("preserves repeated producer URL positions from persisted facts using one verified object", async () => {
+    const state = fixture(); state.images = [...state.images, { ...state.images[0]!, position: 2 }];
+    state.relations[0]!.position = 2;
+    const h = harness(state);
+    expect((await h.project(principal, input)).media).toEqual([{ ref: digest, kind: "IMAGE", position: 0 }, { ref: digest, kind: "IMAGE", position: 2 }]);
+    expect(h.head).toHaveBeenCalledOnce();
   });
   it("omits missing storage object with only a value-free warning", async () => {
     const h = harness(); h.head.mockRejectedValue(new Error("https://private.example.invalid/?token=never-return"));

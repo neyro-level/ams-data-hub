@@ -42,6 +42,17 @@ describe("inventory public projection", () => {
     expect(JSON.parse(serializePublicDto(projected.inventory)).media).toEqual([]);
     expect(projected.warnings).toEqual(["MEDIA_OBJECT_UNAVAILABLE"]);
   });
+  it("keeps a listing valid with only one mirrored picture after another picture fails", async () => {
+    const entity = syntheticCanonicalInventory({ media: [
+      { sourceUrl: "https://producer.example.invalid/ok.png", position: 0 },
+      { sourceUrl: "https://producer.example.invalid/broken.png", position: 1 },
+    ] });
+    const h = harness({ media: [{ ref, position: 0, kind: "IMAGE" }], warnings: ["MEDIA_MIRROR_WARNING"] });
+    const projected = await h.project(principal, { entity, sourceRevisionId: "good" });
+    expect(JSON.parse(serializePublicDto(projected.inventory))).toMatchObject({ status: "ACTIVE", media: [{ ref, position: 0, kind: "IMAGE" }] });
+    expect(projected.warnings).toEqual(["MEDIA_MIRROR_WARNING"]);
+    expect(serializePublicDto(projected.inventory)).not.toContain("broken.png");
+  });
   it("does not swallow a stale fact pin and publish mixed revisions", async () => {
     const h = harness({ media: [], warnings: [] }); h.projectMedia.mockRejectedValue(new Error("MEDIA_PROJECTION_REVISION_NOT_FOUND"));
     await expect(h.project(principal, { entity: syntheticCanonicalInventory(), sourceRevisionId: "good" })).rejects.toThrow("MEDIA_PROJECTION_REVISION_NOT_FOUND");

@@ -35,7 +35,7 @@ state. The contract does not create a permanent public storage URL or bypass
 ADR-015. The server-owned `media-assets.projectInventoryMedia` query resolves
 inventory image references from the scoped immutable GOOD record and its
 `draft.imageUrls`, not from caller-provided URLs. It requires the pinned current
-LastGood revision, matching MediaSource revision/entity/position membership,
+LastGood revision, matching MediaSource revision/entity/image membership,
 and an `expectedRecordHash` pin matching the canonical inventory normalized hash,
 same-scope MediaAsset, valid rights and verified immutable storage HEAD. HEAD
 is outside database transactions; a second database read rejects a revision
@@ -59,3 +59,11 @@ are deduplicated, but one asset at different positions is retained. Conflicting
 assets or metadata at one position are omitted with `MEDIA_RELATION_AMBIGUOUS`.
 Positions are never renumbered after an omission. No path copies source URLs
 from the internal entity into the public DTO.
+Image positions come from the immutable GOOD-record, not mutable MediaSource
+position metadata: a canonical URL may repeat at several positions, served by
+one verified mirrored object. A first-attempt failed image has a persisted
+MediaSource WARNING without an asset; it is omitted, leaving the listing valid.
+Missing mirrors and unavailable storage objects also produce fixed value-free
+warnings, never producer URL fallbacks. Arbitrary adapter messages/codes are not
+stored as warnings; only the finite outbound codes and image-decode code are
+retained, with `MEDIA_MIRROR_FAILED` as the safe default.

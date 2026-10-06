@@ -39,11 +39,15 @@ function requireScopedProjectJob(principal: PrincipalContext, input: { organizat
   return principal;
 }
 
+const outboundWarningCodes = new Set([
+  "INVALID_URL", "PROTOCOL_DENIED", "TARGET_DENIED", "DNS_FAILED", "REDIRECT_DENIED", "TOO_MANY_REDIRECTS",
+  "TIMEOUT", "RESPONSE_TOO_LARGE", "RESPONSE_TRUNCATED", "CONTENT_TYPE_DENIED", "HTTP_STATUS_DENIED",
+]);
 function warningCode(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
-    return `OUTBOUND_${error.code}`.slice(0, 80);
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && outboundWarningCodes.has(error.code)) {
+    return `OUTBOUND_${error.code}`;
   }
-  if (error instanceof Error && /^MEDIA_[A-Z_]+$/u.test(error.message)) return error.message;
+  if (error instanceof Error && error.message === "MEDIA_IMAGE_DECODE_REJECTED") return error.message;
   return "MEDIA_MIRROR_FAILED";
 }
 

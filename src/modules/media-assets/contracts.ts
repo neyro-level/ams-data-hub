@@ -118,5 +118,5 @@ export const inventoryMediaProjectionInputSchema = z.object({
 export type InventoryMediaProjectionInput = z.output<typeof inventoryMediaProjectionInputSchema>;
 export interface InventoryMediaProjectionResult {
   media: readonly MediaPublicV1[];
-  warnings: readonly ("MEDIA_MIRROR_WARNING" | "MEDIA_OBJECT_UNAVAILABLE" | "MEDIA_ASSET_INVALID")[];
+  warnings: readonly ("MEDIA_MIRROR_WARNING" | "MEDIA_MIRROR_UNAVAILABLE" | "MEDIA_OBJECT_UNAVAILABLE" | "MEDIA_ASSET_INVALID")[];
 }

@@ -62,7 +62,7 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
           finalUrl: new URL(process.env[reference]!), body: (async function* () { yield bytes; })(), close: vi.fn() });
       };
       const a = "https://producer.example.invalid/a.png"; const b = "https://producer.example.invalid/b.png";
-      provide([a, b]); expect(await runtime.run(target)).toMatchObject({ state: "GOOD" });
+      provide([a, b, a]); expect(await runtime.run(target)).toMatchObject({ state: "GOOD" });
       const read = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
         source: await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }),
         identity: await tx.inventoryIdentity.findFirstOrThrow({ where: target }),
@@ -72,12 +72,20 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
       const mirror = (revision: string, urls: string[]) => media.mirrorMediaBatch(job, { ...target, sourceRevisionId: revision,
         observedAt: new Date().toISOString(), items: urls.map((sourceUrl, position) => ({ sourceUrl, position, entityType: "INVENTORY",
           entityUid: first.identity.uid, kind: "LISTING_IMAGE" as const, rightsBasis: "LICENSED" as const, license: "synthetic" })) });
-      await mirror(first.source.lastGoodRevisionId!, [a, b]);
+      await mirror(first.source.lastGoodRevisionId!, [a, b, a]);
       const input = { ...target, sourceRevisionId: first.source.lastGoodRevisionId!, inventoryUid: first.identity.uid, expectedRecordHash: first.identity.normalizedHash };
-      expect((await media.projectInventoryMedia(job, input)).media).toHaveLength(2);
-      provide([a]); expect(await runtime.run(target)).toMatchObject({ state: "GOOD" }); const second = await read();
+      storage.head.mockClear();
+      expect((await media.projectInventoryMedia(job, input)).media.map((item) => item.position)).toEqual([0, 1, 2]);
+      expect(storage.head).toHaveBeenCalledOnce();
+      const c = "https://producer.example.invalid/never-mirrored.png";
+      provide([a, c]); expect(await runtime.run(target)).toMatchObject({ state: "GOOD" }); const second = await read();
       gateway.media.mockRejectedValue(new Error("PRODUCER_OFF"));
-      expect(await mirror(second.source.lastGoodRevisionId!, [a])).toMatchObject({ mediaStatus: "WARNING" });
+      expect(await mirror(second.source.lastGoodRevisionId!, [a, c])).toMatchObject({ importStatus: "UNCHANGED", mediaStatus: "WARNING" });
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        expect(await tx.mediaSource.findFirst({ where: { ...target, canonicalSourceUrl: c },
+          select: { status: true, warningCode: true, assetId: true } })).toEqual({ status: "WARNING", warningCode: "MEDIA_MIRROR_FAILED", assetId: null });
+        expect((await tx.inventoryIdentity.findUniqueOrThrow({ where: { uid: first.identity.uid } })).status).toBe("ACTIVE");
+      });
       const currentInput = { ...input, sourceRevisionId: second.source.lastGoodRevisionId!, expectedRecordHash: second.identity.normalizedHash };
       // Malicious/stale relation claims the new revision without persisted membership.
       await runInPrincipalDatabaseTransaction(admin, (tx) => tx.mediaSource.updateMany({
@@ -94,14 +102,14 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
       const workerMedia = createMediaAssetsServer(storage);
       const projected = await workerMedia.projectInventoryMedia(job, currentInput);
       expect(projected.media).toHaveLength(1); expect(projected.media[0]).toMatchObject({ kind: "IMAGE", position: 0 });
-      expect(projected.warnings).toEqual(["MEDIA_MIRROR_WARNING"]);
+      expect(projected.warnings).toEqual(["MEDIA_MIRROR_WARNING", "MEDIA_MIRROR_WARNING"]);
       expect(JSON.stringify(projected)).not.toMatch(/https:|sourceUrl|storageKey|originalFileName/u);
       expect(gateway.media).toHaveBeenCalledTimes(outboundCount); expect(workerTransactions).toBe(2);
       const canonical = syntheticCanonicalInventory({ ...target, uid: second.identity.uid, normalizedHash: second.identity.normalizedHash,
         sourceHash: second.identity.sourceHash, media: [{ sourceUrl: a, position: 0 }] });
       const publicProjection = await createInventoryPublicProjectionServer(storage)(job, { entity: canonical, sourceRevisionId: currentInput.sourceRevisionId });
       expect(JSON.parse(serializePublicDto(publicProjection.inventory)).media).toEqual(projected.media);
-      expect(publicProjection.warnings).toEqual(["MEDIA_MIRROR_WARNING"]);
+      expect(publicProjection.warnings).toEqual(["MEDIA_MIRROR_WARNING", "MEDIA_MIRROR_WARNING"]);
       storage.head.mockClear();
       await expect(workerMedia.projectInventoryMedia(job, { ...currentInput, expectedRecordHash: first.identity.normalizedHash }))
         .rejects.toThrow("MEDIA_PROJECTION_REVISION_NOT_FOUND");

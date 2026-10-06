@@ -2,7 +2,7 @@ import { mediaPublicV1Schema } from "@ams-data-hub/realty-contracts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import { createProjectJobPrincipal } from "../../../platform/authorization/principal-factories.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
-import { createMediaKey, type ObjectStorage } from "../../../platform/storage/object-storage.ts";
+import { createMediaKey, type ObjectStorage, type ObjectStorageObject } from "../../../platform/storage/object-storage.ts";
 import { inventoryMediaProjectionInputSchema, MAX_MEDIA_BYTES, MEDIA_CONTENT_TYPES,
   type InventoryMediaProjectionInput, type InventoryMediaProjectionResult } from "../contracts.ts";
 import { canonicalizeMediaSourceUrl } from "../domain/media-source.ts";
@@ -31,15 +31,27 @@ export function createInventoryMediaProjectionService(dependencies: MediaProject
     const result: InventoryMediaProjectionResult = { media: [], warnings: [] };
     const media = [...result.media];
     const warnings = [...result.warnings];
-    let membership: Set<string>;
+    let images: { canonicalSourceUrl: string; position: number }[];
     try {
-      membership = new Set(state.images.map((image) => `${image.position}:${canonicalizeMediaSourceUrl(image.sourceUrl)}`));
+      images = state.images.map((image) => ({ position: image.position, canonicalSourceUrl: canonicalizeMediaSourceUrl(image.sourceUrl) }));
     } catch { throw new Error("MEDIA_PROJECTION_FACT_INVALID"); }
+    const relations = new Map<string, typeof state.relations[number][]>();
+    for (const relation of state.relations) {
+      relations.set(relation.canonicalSourceUrl, [...(relations.get(relation.canonicalSourceUrl) ?? []), relation]);
+    }
+    const objects = new Map<string, ObjectStorageObject | null>();
     // Sequential bounded HEAD calls, outside every database transaction.
-    for (const relation of [...state.relations].sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-      if (!membership.has(`${relation.position}:${relation.canonicalSourceUrl}`)) continue;
+    // The immutable record owns order. MediaSource is unique per canonical URL,
+    // so one mirror can appear at several producer positions without data loss.
+    for (const image of images) {
+      const candidates = relations.get(image.canonicalSourceUrl) ?? [];
+      if (candidates.length !== 1) {
+        warnings.push(candidates.length ? "MEDIA_ASSET_INVALID" : "MEDIA_MIRROR_UNAVAILABLE"); continue;
+      }
+      const relation = candidates[0]!;
       if (relation.status === "WARNING") warnings.push("MEDIA_MIRROR_WARNING");
       const asset = relation.asset;
+      if (relation.status === "WARNING" && !asset) continue;
       if (!asset || !relation.mirroredAt || asset.organizationId !== input.organizationId || asset.projectId !== input.projectId
         || !/^[a-f0-9]{64}$/u.test(asset.sha256) || asset.storageKey !== createMediaKey(asset.sha256)
         || !MEDIA_CONTENT_TYPES.some((type) => type === asset.contentType) || asset.byteSize <= 0 || asset.byteSize > MAX_MEDIA_BYTES
@@ -47,13 +59,15 @@ export function createInventoryMediaProjectionService(dependencies: MediaProject
         warnings.push("MEDIA_ASSET_INVALID"); continue;
       }
       try {
-        const object = await dependencies.storage.head(asset.storageKey);
+        if (!objects.has(asset.storageKey)) objects.set(asset.storageKey, await dependencies.storage.head(asset.storageKey));
+        const object = objects.get(asset.storageKey);
         if (!object || object.key !== asset.storageKey || object.sha256 !== asset.sha256
           || object.contentLength !== asset.byteSize || object.contentType !== asset.contentType) {
           warnings.push("MEDIA_OBJECT_UNAVAILABLE"); continue;
         }
-        media.push(mediaPublicV1Schema.parse({ ref: asset.sha256, kind: "IMAGE", position: relation.position }));
+        media.push(mediaPublicV1Schema.parse({ ref: asset.sha256, kind: "IMAGE", position: image.position }));
       } catch {
+        objects.set(asset.storageKey, null);
         warnings.push("MEDIA_OBJECT_UNAVAILABLE");
       }
     }
