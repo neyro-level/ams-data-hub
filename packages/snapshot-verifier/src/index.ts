@@ -2,6 +2,9 @@ import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
+import { resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
+
+export { DEFAULT_SNAPSHOT_VERIFIER_LIMITS, MAX_SNAPSHOT_VERIFIER_LIMITS, resolveSnapshotVerifierLimits, type SnapshotVerifierLimits } from "./limits.ts";
 
 export const SNAPSHOT_DATASET_KINDS = [
   "geo", "developers", "developments", "buildings", "prices", "media", "inventory",
@@ -35,9 +38,10 @@ export type SnapshotVerifierRejection =
   | "MANIFEST_INVALID" | "UNKNOWN_KEY_ID" | "REVOKED_KEY_ID" | "INVALID_SIGNATURE"
   | "PROJECT_MISMATCH" | "SCHEMA_MAJOR_UNSUPPORTED" | "STALE_PUBLISH_SEQUENCE"
   | "DATASET_SET_INVALID" | "FILE_MISSING" | "FILE_BYTES_MISMATCH" | "FILE_HASH_MISMATCH"
-  | "FILE_GZIP_INVALID" | "DATASET_SCHEMA_INVALID" | "REFERENCE_INTEGRITY_INVALID";
+  | "FILE_GZIP_INVALID" | "DATASET_SCHEMA_INVALID" | "REFERENCE_INTEGRITY_INVALID"
+  | "SNAPSHOT_LIMIT_EXCEEDED";
 
-export interface SnapshotVerifierPolicy {
+export interface SnapshotVerifierPolicy extends Partial<SnapshotVerifierLimits> {
   datasetSchemas: Readonly<Record<SnapshotDatasetKind, z.ZodType<readonly unknown[]>>>;
   validateReferences(datasets: Readonly<Record<SnapshotDatasetKind, readonly unknown[]>>): boolean;
 }
@@ -60,6 +64,7 @@ function signingPayload(manifest: SnapshotManifestV1): Uint8Array {
 function digest(body: Uint8Array): string { return createHash("sha256").update(body).digest("hex"); }
 
 export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
+  const limits = resolveSnapshotVerifierLimits(policy);
   return function verifySnapshot(input: VerifySnapshotInput): VerifySnapshotResult {
     const reject = (reason: SnapshotVerifierRejection): VerifySnapshotResult => ({ accepted: false, reason, nextState: input.lastGood });
     const parsed = snapshotManifestV1Schema.safeParse(input.manifest);
@@ -78,6 +83,12 @@ export function createSnapshotVerifier(policy: SnapshotVerifierPolicy) {
     if (input.lastGood && manifest.publishSequence <= input.lastGood.publishSequence) return reject("STALE_PUBLISH_SEQUENCE");
     const kinds = manifest.files.map((file) => file.kind);
     if (kinds.length !== SNAPSHOT_DATASET_KINDS.length || new Set(kinds).size !== kinds.length || SNAPSHOT_DATASET_KINDS.some((kind) => !kinds.includes(kind))) return reject("DATASET_SET_INVALID");
+    let compressedBytes = 0;
+    for (const file of manifest.files) {
+      if (file.bytes > limits.maxCompressedFileBytes || file.count > limits.maxDatasetRecords) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+      compressedBytes += file.bytes;
+      if (compressedBytes > limits.maxTotalSnapshotBytes) return reject("SNAPSHOT_LIMIT_EXCEEDED");
+    }
     const datasets = {} as Record<SnapshotDatasetKind, readonly unknown[]>;
     for (const file of manifest.files) {
       const body = input.files[file.key];

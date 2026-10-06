@@ -14,6 +14,16 @@ as the previous last-good state. Webhook data is never trusted as snapshot data;
 the consumer pulls the signed current manifest and immutable files from its
 project-scoped storage access.
 
+Verifier policy exposes `maxCompressedFileBytes` (default 4 MiB, ceiling 16 MiB),
+`maxDecompressedFileBytes` (16/64 MiB), `maxDatasetRecords` (50,000/250,000)
+and `maxTotalSnapshotBytes` (64/256 MiB). Explicit trusted overrides must be
+positive safe integers at or below the ceilings; invalid configuration fails
+factory construction with `SNAPSHOT_VERIFIER_LIMIT_INVALID`. Limits are captured
+as immutable values, independent of later caller policy changes. Total snapshot
+work charges compressed and decoded bytes per dataset, not process RSS or
+external downloading. Declared compressed sizes/counts are checked now; actual
+bounded decoding and full preflight are the subsequent MP-07 checkpoints.
+
 `descriptionHtmlSafe` is the only HTML-bearing public inventory field. Ingestion
 sanitizes raw descriptions with `p`, `br`, `ul`, `ol`, `li`, `strong`, `em` and no
 attributes. The shared Realty contract brands validated output, with a portable
