@@ -7,6 +7,7 @@ const forbiddenKeyPatterns = [
   /(?:^|_)rawhtml$/u,
   /(?:^|_)feedhtml$/u,
   /^rawdescriptionhtml$/u,
+  /^(?:canonical)?sourceurl$/u,
   /endpoint(?:url)?$/u,
   /credential(?:s|ref|refs)?$/u,
   /(?:secret|password|token|apikey)$/u,

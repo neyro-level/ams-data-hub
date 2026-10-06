@@ -22,3 +22,14 @@ accept that exact field without rewriting or sanitizing it again. Raw descriptio
 fields, HTML in other fields, scripts, links, attributes, comments and malformed
 markup fail closed. Consumer inventory schemas use the same shared contract;
 do not bypass it with an unrestricted string or render raw feed descriptions.
+
+`MediaPublicV1` contains only a lowercase SHA-256 `ref`, `kind: IMAGE`,
+deterministic `position` and optional validated `width`, `height`, `alt`.
+`PublicInventoryDto.media` uses this strict contract, not the internal
+`media[].sourceUrl` provenance schema. The public mapper defaults to no media
+until separately projected mirrors are supplied; it never uses producer URLs
+as a fallback. Neither original URLs, private bucket keys, presigned URLs nor
+filenames belong in this contract. A digest is not a capability: delivery must
+resolve it through authorized organization/project-owned MediaSource/MediaAsset
+state. The contract does not create a permanent public storage URL or bypass
+ADR-015. Concrete media projection and runtime delivery remain subsequent gates.

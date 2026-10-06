@@ -2,6 +2,8 @@ import { serializePublicDto, type CanonicalJsonValue } from "@ams-data-hub/data-
 import {
   inventoryEntitySchema,
   type InventoryEntity,
+  mediaPublicV1Schema,
+  publicInventoryDtoSchema,
 } from "@ams-data-hub/realty-contracts";
 import { describe, expect, it } from "vitest";
 import { composeSnapshot, SNAPSHOT_DATASET_KINDS } from "../src/modules/snapshot-delivery/index.ts";
@@ -65,6 +67,18 @@ function inventoryEntity(): InventoryEntity {
 }
 
 describe("canonical inventory", () => {
+  it("never projects producer URLs and accepts only separately supplied strict public media", () => {
+    const entity = inventoryEntity();
+    entity.media = [{ sourceUrl: "https://producer.example.test/private-image.png?credential=synthetic", position: 0 }];
+    expect(JSON.parse(serializePublicDto(toPublicInventoryDto(entity))).media).toEqual([]);
+    const mirror = mediaPublicV1Schema.parse({ ref: "a".repeat(64), kind: "IMAGE", position: 0, alt: "Public image" });
+    const projected = JSON.parse(serializePublicDto(toPublicInventoryDto(entity, [mirror])));
+    expect(projected.media).toEqual([mirror]);
+    expect(JSON.stringify(projected)).not.toContain("producer.example.test");
+    expect(publicInventoryDtoSchema.safeParse({ ...projected, media: entity.media }).success).toBe(false);
+    expect(entity.media[0]!.sourceUrl).toContain("producer.example.test");
+  });
+
   it("carries sanitized typed HTML through public DTO and deterministic snapshot composition", () => {
     const entity = inventoryEntity();
     Object.assign(entity, normalizeDescription('<p onclick="bad()">text <strong>safe</strong><script>bad()</script></p>'));
