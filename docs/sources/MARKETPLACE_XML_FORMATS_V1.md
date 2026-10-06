@@ -2,6 +2,14 @@
 
 Status: IMPLEMENTED, BOOTSTRAP CALIBRATION
 
+Owner approval: 2026-10-06, remediation MP-00.2. YRL/Vladis, Domclick XML,
+Avito v3 and CIAN v2 are allowed production adapter/profile families.
+Family approval does not imply enabled production execution or completed
+calibration. Producer semantics belong to `SourceProfile`, format parsing to
+`SourceAdapter`; project-specific branching inside parser core is forbidden.
+The real SourceExecutionService, source worker and scheduler composition remain
+MP-03/MP-04 work, not evidence supplied by this document.
+
 ## Решение
 
 AMS Data Hub принимает четыре внешних профиля через отдельные форматные

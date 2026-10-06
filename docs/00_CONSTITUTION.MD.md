@@ -22,6 +22,18 @@ MP-01 of `AMS-DATA-HUB-REMEDIATION-2026-10`. Password/session security,
 server-side authorization, disabled-user denial, rate limits and RLS remain
 mandatory. 2FA is not a permanent requirement of this architecture.
 
+## Owner amendment — 2026-10-06 / MP-00.2
+
+Allowed production adapter/profile families: **YRL / Vladis, Domclick XML,
+Avito v3 and CIAN v2**. Producer-specific behavior belongs to `SourceProfile`;
+format-specific behavior belongs to `SourceAdapter`. Project-specific `if/else`
+inside parser core is forbidden. Domclick's currently supported YRL-compatible
+format reuses the YRL adapter with a distinct producer profile.
+This approves the families, not production activation: exact registry versions,
+calibration, safety policy and runtime composition must be verified before
+enablement. Current implementations and bounded exceptions are recorded in
+`sources/MARKETPLACE_XML_FORMATS_V1.md`; MP-02–MP-04 connect the runtime.
+
 ---
 
 # 0. EXECUTIVE DECISION
