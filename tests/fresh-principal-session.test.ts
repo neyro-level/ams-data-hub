@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 const persistence = vi.hoisted(() => ({
   session: { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -25,6 +26,9 @@ beforeEach(() => {
 });
 
 describe("fresh current-release principal without factor state", () => {
+  it("never prerenders session-dependent organization selection without auth configuration", () => {
+    expect(readFileSync("src/app/organization/page.tsx", "utf8")).toContain('export const dynamic = "force-dynamic"');
+  });
   it("accepts an enabled admin only after fresh persisted session resolution", async () => {
     await expect(requireCurrentCabinetPrincipal()).resolves.toMatchObject({ kind: "platform-admin", userId: "admin" });
     expect(auth.getSession).toHaveBeenCalledWith(expect.objectContaining({ query: { disableCookieCache: true } }));

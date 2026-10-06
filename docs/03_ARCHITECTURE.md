@@ -146,10 +146,12 @@ The only bootstrap command is `pnpm admin:provision`. It accepts the password
 through stdin, creates or resets a `PLATFORM_ADMIN`, revokes existing sessions
 without introducing a current-release factor requirement. Account/password
 recovery remains protected and audited. Legacy role and bootstrap commands are
-transitional only. At this MP-00 checkpoint the existing TOTP plugin, session
-gate and factor-specific recovery still exist in code; MP-01 removes them with
-a forward migration and auth regressions. This pending implementation does not
-override the approved current policy.
+transitional only. MP-01 removes the TOTP plugins, login challenge, principal
+factor gate and obsolete environment requirement. A new forward migration drops
+only unused factor persistence; accounts, sessions, setup/password recovery,
+rate limits and runtime RLS grants remain. Actual unit, PostgreSQL and browser
+regressions plus exact-head delivery evidence are recorded in Task Manager;
+this auth transition does not imply completed Source/snapshot readiness.
 
 ## PII lifecycle
 

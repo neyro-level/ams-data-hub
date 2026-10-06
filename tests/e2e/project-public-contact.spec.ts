@@ -17,22 +17,6 @@ function createDatabaseClient() {
   });
 }
 
-async function markPlatformAdminSessionMfaVerified() {
-  const client = createDatabaseClient();
-  await client.connect();
-  try {
-    const result = await client.query(
-      `update "Session"
-       set "twoFactorVerifiedAt" = now(), "updatedAt" = now()
-       where "userId" = (select "id" from "User" where "username" = $1)`,
-      [username],
-    );
-    if (result.rowCount === 0) throw new Error("Synthetic platform admin session is missing");
-  } finally {
-    await client.end();
-  }
-}
-
 test.beforeAll(async () => {
   const client = createDatabaseClient();
   await client.connect();
@@ -70,7 +54,7 @@ test("platform admin saves the project fallback contact without horizontal overf
     data: { username, password, rememberMe: true },
   });
   expect(signInResponse.ok()).toBe(true);
-  await markPlatformAdminSessionMfaVerified();
+  expect(await signInResponse.json()).not.toHaveProperty("twoFactorRedirect");
   await page.goto("/admin/projects/");
 
   const contactForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Сохранить контакт" }) }).first();

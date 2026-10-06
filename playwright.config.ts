@@ -28,6 +28,7 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       BETTER_AUTH_TRUSTED_PROXY_CIDRS: "127.0.0.1",
       APP_ENV: "test",
+      CLIENT_ACCESS_ENABLED: "true",
     },
   },
   projects: [

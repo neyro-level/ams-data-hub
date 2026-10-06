@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getCurrentOrganizationSelection } from "../../modules/identity-access/server.ts";
