@@ -54,26 +54,23 @@ describe("account setup token lifecycle", () => {
 });
 
 describe("platform recovery token lifecycle", () => {
-  it("consumes recovery once and revokes sessions and the old second factor", async () => {
+  it("consumes password recovery once and revokes old sessions", async () => {
     const prisma = getPrismaClient();
     const recoveryToken = "integration-recovery-token-must-be-long-enough";
     const tokenHash = createHash("sha256").update(recoveryToken).digest("hex");
     await prisma.user.create({
       data: {
-        id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN", twoFactorEnabled: true,
+        id: userId, name: "Recovery user", username: "recovery_user", email: "recovery-user@example.test", systemRole: "PLATFORM_ADMIN",
         accounts: { create: { id: "recovery-account", accountId: userId, providerId: "credential", password: "legacy" } },
-        sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000), twoFactorVerifiedAt: new Date() } },
-        twoFactors: { create: { id: "recovery-factor", secret: "secret", backupCodes: "[]" } },
+        sessions: { create: { id: "recovery-session", token: "recovery-session-token", expiresAt: new Date(Date.now() + 60_000) } },
         recoveryTokens: { create: { tokenHash, expiresAt: new Date(Date.now() + 60_000) } },
       },
     });
 
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toEqual({ userId });
     await expect(completePlatformRecovery({ token: recoveryToken, password: "A recovered secure password" })).resolves.toBeNull();
-    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { twoFactorEnabled: true, sessions: true, twoFactors: true, recoveryTokens: true } });
-    expect(result.twoFactorEnabled).toBe(false);
+    const result = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { sessions: true, recoveryTokens: true } });
     expect(result.sessions).toHaveLength(0);
-    expect(result.twoFactors).toHaveLength(0);
     expect(result.recoveryTokens[0]?.consumedAt).not.toBeNull();
   });
 });

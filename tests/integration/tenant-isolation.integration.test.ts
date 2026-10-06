@@ -216,7 +216,7 @@ describe("PostgreSQL tenant isolation", () => {
 
   it("gives each runtime role only the tables required by its contract", async () => {
     const webTables = [
-      "User", "Session", "Account", "Verification", "TwoFactor", "RateLimit",
+      "User", "Session", "Account", "Verification", "RateLimit",
       "AccountSetupToken", "PlatformRecoveryToken",
     ];
     const [{ web_auth_tables: webAuthTables, web_runtime_heartbeat: webRuntimeHeartbeat, worker_user_table: workerUserTable, worker_runtime_heartbeat: workerRuntimeHeartbeat }] = (
