@@ -33,6 +33,7 @@ describe("inventory identity lifecycle persistence", () => {
           profileVersion: "1.0.0",
           datasetType: "MIXED_REALTY",
           schedulePolicy: { mode: "MANUAL_ONLY" },
+          credentialRef: { create: { endpointCredentialRefName: "SYNTHETIC_INVENTORY_ENDPOINT" } },
         },
       });
       return { organizationId: organization.id, projectId: project.id, sourceId: source.id };

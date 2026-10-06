@@ -84,6 +84,52 @@ is a conflict, not an update to price history.
 
 ## Platform foundation
 
+### Source runtime revisions — remediation MP-03
+
+`SourceSafetyPolicy` stores a strictly validated, project-scoped policy input.
+`SourceRevision` pins configuration version/base Last Good, exact adapter and
+profile versions, policy, raw artifact receipt and semantic hash. Its
+`SourceRevisionRecord` children hold bounded per-record internal canonical field
+state, draft and raw provenance; these are not public DTOs. PENDING records are
+durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
+persisted without moving Last Good. GOOD records and revision metadata are
+immutable, protected by database triggers as well as application checks.
+
+`Source.lastGoodRevisionId` is a composite FK to the same org/project/source's
+revision, and the DB requires a GOOD target. A forward migration refuses legacy
+dangling pointers rather than inventing history or clearing Last Good.
+`InventoryIdentity` remains the stable UID/lifecycle owner across revisions;
+new/seen identity mutations and GOOD/Last Good changes occur only in the final
+transaction. Initial intake/S3/parsing and staging batches never mutate current
+inventory. Missing lifecycle uses bounded 200-identity pages and version-checked
+batch updates in the final GOOD transaction. Baseline and empty runs do not
+reconcile absence; failed/rejected/suspicious runs do not advance missing grace.
+Both missing-run and elapsed-time thresholds must pass before INACTIVATED;
+reactivation preserves the original UID. Lifecycle events and Last Good roll
+back together on final transaction failure. Persisted Safety Analysis is
+recomputed from the pinned policy/counts before planning/apply; STAGED alone is
+not approval. Each applied GOOD records a durable `snapshot.build.request`
+outbox intent plus audited idempotency marker in the same transaction. The
+private payload carries only org/project/source/revision IDs and the Source
+revision sequence; it is not a snapshot publish sequence or a publish receipt.
+`snapshotTriggered=true` means the intent committed, not that a snapshot was
+built/published. Duplicate enqueue for the same GOOD returns the existing event.
+An enqueue failure rolls back GOOD, identities, lifecycle events and Last Good;
+no remote publication runs in this transaction.
+
+An ACTIVE identity in missing grace may be absent from the newest GOOD feed.
+MP-05 snapshot resolution must retain its latest matching GOOD record facts
+from revision history (stable UID/normalized hash), not equate the newest feed's
+record set with the complete current inventory. INACTIVE identities are excluded
+from active listing projection without deleting their source history.
+
+Runtime access uses a scoped `source-import` project-job principal; tenant/client
+principals cannot read raw/private revision rows. No delete grant exists for
+runtime revision/record tables. Freeze and service/policy changes synchronize
+with final apply; all remote IO stays outside DB transactions. The canonical
+Source runtime entrypoint is `createSourceExecutionServer(storage).run(scopedIds)`;
+storage is server-owned infrastructure, not a Source/job payload dependency.
+
 - `User`, `Session`, `Account`, `Verification` — identity and Better Auth tables;
 - `Organization` — tenant boundary;
 - `Member` — organization access with `ORG_ADMIN`, `ORG_EDITOR`, `ORG_VIEWER`;

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { ClaimedReliabilityEvent } from "../src/modules/platform-operations/application/ports/reliability-repository.ts";
-import { runOutboxWorkerWithDependencies } from "../src/modules/platform-operations/worker.ts";
+import { drainOutboxWithDependencies, runOutboxWorkerWithDependencies } from "../src/modules/platform-operations/worker.ts";
 
 function event(workerId: string): ClaimedReliabilityEvent {
   return {
@@ -20,6 +20,15 @@ function event(workerId: string): ClaimedReliabilityEvent {
 }
 
 describe("outbox worker lifecycle", () => {
+  it("claims only default-handler topics and leaves future-executor intents unclaimed", async () => {
+    const claim = vi.fn(async () => null);
+    await drainOutboxWithDependencies({ workerId: "worker-default" }, {
+      boss: { fetch: vi.fn(async () => []), send: vi.fn(), complete: vi.fn() } as never,
+      reliability: { claim } as never, heartbeat: vi.fn(async () => undefined),
+    });
+    expect(claim).toHaveBeenCalledWith("worker-default", undefined, ["platform.maintenance.requested"]);
+  });
+
   it("finishes the active job before honoring shutdown", async () => {
     const controller = new AbortController();
     const queued = event("publisher");

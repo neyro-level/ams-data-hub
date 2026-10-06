@@ -5,6 +5,50 @@ this file owns executable local, deploy and recovery procedures.
 
 ## Local development
 
+### Source runtime composition — MP-03 in progress
+
+The server facade binds concrete PostgreSQL revision/staging persistence, real
+raw spool and streaming S3 adapter capability with the Safe Outbound gateway.
+Source callers supply scoped IDs only; endpoint credentials resolve server-side
+at intake. Per-record batches are bounded by 100 records/4 MiB and payloads by
+2 MiB. Hashing reads sorted persisted metadata in bounded pages. GOOD and stable
+identity/Last Good state commit atomically after fresh enabled, project state,
+source configuration, policy, identity and jobs-freeze checks.
+
+Local integration proof uses the actual application facade, PostgreSQL,
+filesystem, parser and S3 adapter with mocked HTTP/SDK transport. It is not a
+provider compatibility or production activation proof. Missing grace/inactivation
+and reactivation now execute only with safe GOOD apply; malformed, invalid,
+duplicate, empty and suspicious feeds leave current identities/events/Last Good
+unchanged. Baseline leaves pre-revision identities untouched. Synthetic rollback
+and competing-run regressions prove transaction failure/stale runs cannot commit
+partial inventory or overwrite a newer GOOD. GOOD now records a transactional,
+idempotent `snapshot.build.request` outbox intent. `snapshotTriggered=true` is
+durable request evidence only; external build/sign/store/publish are subsequent
+executors, not part of the import transaction. Outbox enqueue failure rolls back
+the complete apply. Four-family composition regressions now exercise persisted
+YRL/Vladis, Domclick, Avito v3 and CIAN v2 configuration through the same facade:
+GOOD, changed semantic hash, stable UID and broken-input Last Good preservation.
+These fixtures use explicit persisted synthetic safety policies and mocked
+HTTP/SDK transport; they do not recalibrate live profiles or prove provider
+compatibility. Permanent source worker remains the subsequent approved task
+gate. No production
+migration or credential creation is performed by the local test lifecycle.
+
+Default outbox claim is restricted to its actual maintenance handler topic.
+Snapshot intents remain PENDING until the real build executor is registered;
+the real pg-boss default-drain regression also proves maintenance still completes.
+The concrete Source facade is exercised with `SET LOCAL ROLE ams_data_hub_worker`
+(NOBYPASSRLS), not just the setup login/application principal. A forward migration
+adds Project SELECT for runtime status checks while keeping existing project RLS
+and withholding Project mutation grants from the worker.
+Before enabling snapshot execution, use one complete handler registry for the
+shared `outbox.dispatch` queue or split executor queues. Topic-filtered database
+claim alone does not filter already-dispatched pg-boss jobs; specialized workers
+with incompatible handlers must not share that fetch queue.
+
+### Development commands
+
 Canonical mode is Windows-native checkout plus native PostgreSQL 18.
 
 - local database: `ams_data_hub_dev`;

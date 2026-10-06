@@ -31,14 +31,16 @@
 
 MP-00 доставлен PR #18 после exact-head RISKY Gate #185, merge
 `23d1204fccb07afe25b8b8aa0c87ece0001e6b25`; GitHub mirror синхронизирован.
-MP-01 удаляет текущий TOTP contour с новой forward migration и auth regressions;
-его отдельная delivery-задача требует review/exact-head Gate до merge.
+MP-01 доставлен PR #19 после exact-head Gate #198: текущий TOTP contour
+удалён forward migration, auth regressions проверены. MP-02 доставлен PR #20
+после exact-head Gate #207, merge `af0aa6092ae1ecc2a676840ae3ff2be615db3fc9`:
+bounded streaming intake, private raw spool и large-feed synthetic proof.
+Текущий участок — MP-03 application orchestration и concrete Source runtime.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-00–MP-10 нового remediation plan. Первая волна —
-согласование канона с owner decisions и удаление текущего требования TOTP.
-Далее — streaming intake, production composition, source worker/scheduler,
+Активная доработка: MP-03–MP-10 нового remediation plan; MP-00–MP-02 закрыты.
+Далее — production composition, source worker/scheduler,
 snapshot assembly, public contracts, verifier hardening, operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний
 входит в утверждённую доработку; их включение на production — нет.
