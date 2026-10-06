@@ -62,6 +62,10 @@ remediation program preserves these boundaries while connecting them:
   but the permanent worker entrypoint currently runs outbox only.
   SourceExecutionService now provides scoped application orchestration and
   resolves registered descriptors, SecretRef, policy and Last Good before intake.
+  Reference-owned intake resolves the endpoint lazily on the server through the
+  existing SecretRef environment resolver and Safe Outbound gateway. Its response
+  excludes final URL; initial/stream errors expose only fixed safe codes without
+  causes. Jobs and DTOs carry scoped IDs, not resolved credentials.
   Concrete persistence/intake composition and scheduled execution are pending
   MP-03.4–MP-04; service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
