@@ -1,10 +1,11 @@
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import {
-  createSnapshotVerifier, MAX_SNAPSHOT_SOURCE_REVISIONS, SNAPSHOT_DATASET_KINDS, snapshotManifestV1Schema, type SnapshotDatasetKind,
+  createSnapshotVerifier, DEFAULT_SNAPSHOT_VERIFIER_LIMITS, MAX_SNAPSHOT_SOURCE_REVISIONS, SNAPSHOT_DATASET_KINDS, snapshotManifestV1Schema, type SnapshotDatasetKind,
   type SnapshotManifestV1, type SnapshotVerifierPolicy, type VerifySnapshotInput,
 } from "@ams-data-hub/snapshot-verifier";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { runInNewContext } from "node:vm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -178,5 +179,88 @@ describe("bounded snapshot decompression", () => {
       return value;
     }) } });
     expect(verify(input)).toMatchObject({ accepted: true });
+  });
+
+  it("enforces the default factory path against a signed artifact larger than the default decoded ceiling", () => {
+    const body = gzipSync(JSON.stringify(["x".repeat(DEFAULT_SNAPSHOT_VERIFIER_LIMITS.maxDecompressedFileBytes)]));
+    const result = bounded()(signedInput({ geo: { body, count: 1 } }));
+    expect(result).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    expect(result.nextState).toBe(lastGood);
+    expect(gunzipSync).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(gunzipSync).mock.calls[0]?.[1]).toEqual({ maxOutputLength: DEFAULT_SNAPSHOT_VERIFIER_LIMITS.maxDecompressedFileBytes });
+  });
+
+  it("counts decoded UTF-8 bytes and JSON whitespace, not characters or semantic record count", () => {
+    const unicode = signedInput({ geo: { body: gzipSync('["é"]'), count: 1 } });
+    const bytes = Buffer.byteLength('["é"]');
+    expect(bounded({ maxDecompressedFileBytes: bytes - 1 })(unicode)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    expect(bounded({ maxDecompressedFileBytes: bytes })(unicode)).toMatchObject({ accepted: true, datasets: { geo: ["é"] } });
+    const whitespace = signedInput({ geo: { body: gzipSync(`${" ".repeat(2048)}[]`), count: 0 } });
+    expect(bounded({ maxDecompressedFileBytes: 1024 })(whitespace)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+  });
+
+  it("bounds compressed bytes before inflation and permits their exact positive boundary", () => {
+    const input = signedInput();
+    const maxBytes = Math.max(...(input.manifest as SnapshotManifestV1).files.map((file) => file.bytes));
+    expect(bounded({ maxCompressedFileBytes: maxBytes })(input)).toMatchObject({ accepted: true });
+    vi.mocked(gunzipSync).mockClear();
+    expect(bounded({ maxCompressedFileBytes: maxBytes - 1 })(input)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    const uncompressed = signedInput({ geo: { body: gzipSync(JSON.stringify(["x".repeat(1024)]), { level: 0 }), count: 1 } });
+    expect(bounded({ maxCompressedFileBytes: 64 })(uncompressed)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    expect(gunzipSync).not.toHaveBeenCalled();
+  });
+
+  it("charges aliases per dataset without rejecting compatible reused keys", () => {
+    const input = signedInput();
+    const manifest = input.manifest as SnapshotManifestV1;
+    const body = input.files.geo!;
+    const alias = resignInput({ ...input, files: { shared: body } }, { files: manifest.files.map((file) => ({ ...file, key: "shared" })) });
+    const total = SNAPSHOT_DATASET_KINDS.length * (body.byteLength + 2);
+    expect(bounded({ maxTotalSnapshotBytes: total })(alias)).toMatchObject({ accepted: true });
+    expect(gunzipSync).toHaveBeenCalledTimes(SNAPSHOT_DATASET_KINDS.length);
+    expect(bounded({ maxTotalSnapshotBytes: total - 1 })(alias)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+  });
+
+  it("permits exact source-revision and record-count boundaries", () => {
+    const input = signedInput({ geo: { body: gzipSync("[0,1,2,3]"), count: 4 } });
+    const revisions = Array<string>(MAX_SNAPSHOT_SOURCE_REVISIONS).fill("synthetic-revision");
+    const candidate = resignInput(input, { sourceRevisions: revisions });
+    expect(bounded({ maxDatasetRecords: 4 })(candidate)).toMatchObject({ accepted: true });
+    vi.mocked(gunzipSync).mockClear();
+    expect(bounded({ maxDatasetRecords: 3 })(candidate)).toMatchObject({ accepted: false, reason: "SNAPSHOT_LIMIT_EXCEEDED" });
+    expect(gunzipSync).not.toHaveBeenCalled();
+  });
+
+  it("preserves native Buffer/cross-realm Uint8Array and shared-buffer compatibility without a hash-to-use gap", () => {
+    const input = signedInput();
+    const crossRealm = runInNewContext("Uint8Array.from(bytes)", { bytes: [...input.files.geo!] }) as Uint8Array;
+    expect(bounded()({ ...input, files: { ...input.files, geo: crossRealm } })).toMatchObject({ accepted: true });
+    const shared = new Uint8Array(new SharedArrayBuffer(input.files.lifecycle!.byteLength));
+    shared.set(input.files.lifecycle!);
+    const candidate = { ...input, files: { ...input.files, lifecycle: shared } };
+    const verify = bounded({ datasetSchemas: { ...schemas, geo: z.array(z.unknown()).transform((value) => { shared.fill(0); return value; }) } });
+    expect(verify(candidate)).toMatchObject({ accepted: true });
+    expect(shared.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("accepts a distinct next Ed25519 key during rotation, but rejects removed/revoked keys before inflation", () => {
+    const input = signedInput();
+    const next = generateKeyPairSync("ed25519");
+    const unsigned = { ...input.manifest as SnapshotManifestV1, keyId: "next-key" };
+    const payload = Object.fromEntries(Object.entries(unsigned).filter(([key]) => key !== "signature"));
+    const candidate = { ...input, manifest: { ...unsigned, signature: sign(null, canonicalJsonBytes(payload as CanonicalJsonValue), next.privateKey).toString("base64url") }, trustSet: { ...input.trustSet, nextKeyId: "next-key", publicKeys: { ...input.trustSet.publicKeys, "next-key": next.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    expect(bounded()(candidate)).toMatchObject({ accepted: true });
+    vi.mocked(gunzipSync).mockClear();
+    expect(bounded()({ ...candidate, trustSet: { ...candidate.trustSet, revokedKeyIds: ["next-key"] } })).toMatchObject({ accepted: false, reason: "REVOKED_KEY_ID" });
+    expect(bounded()({ ...candidate, trustSet: { ...candidate.trustSet, nextKeyId: null } })).toMatchObject({ accepted: false, reason: "UNKNOWN_KEY_ID" });
+    expect(bounded()({ ...input, trustSet: { ...candidate.trustSet, currentKeyId: "next-key", nextKeyId: null } })).toMatchObject({ accepted: false, reason: "UNKNOWN_KEY_ID" });
+    expect(gunzipSync).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an invalid public key or absent last-good and never manufactures acceptance state", () => {
+    const input = signedInput();
+    const result = bounded()({ ...input, lastGood: null, trustSet: { ...input.trustSet, publicKeys: { "synthetic-key": "invalid" } } });
+    expect(result).toEqual({ accepted: false, reason: "INVALID_SIGNATURE", nextState: null });
+    expect(gunzipSync).not.toHaveBeenCalled();
   });
 });

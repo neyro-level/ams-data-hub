@@ -130,8 +130,10 @@ remediation program preserves these boundaries while connecting them:
   raw-before-Zod cardinality and fixed callback-error rejections retain last-good.
   Raw manifest shape bounds precede schema/crypto allocations; complete trust,
   scope, sequence, set, lengths and all-copy hashes precede any decompression.
-  Private bounded copies prevent hash-to-use mutation. Complete adversarial
-  coverage/review remains MP-07.4; artifact budgets are not callback/RSS limits.
+  Private bounded copies prevent hash-to-use mutation. Adversarial regressions
+  exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
+  boundaries, key rotation/revocation and last-good; delivery review/gate must
+  still pass before this epic is delivered. Budgets are not callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

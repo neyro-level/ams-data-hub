@@ -87,8 +87,15 @@ staging, dry-run, reviewed hash, explicit manual apply and transaction-bound
 audit/revision. No approval enables live feeds or production schedules here.
 Safe HTML remains limited to ingestion-sanitized `descriptionHtmlSafe`; raw HTML
 is forbidden. Original media URLs are provenance, not an approved public media
-fallback. MP-06 corrects the current public DTO/scanner, MP-07 bounds verifier
-decompression, and MP-09/MP-10 must prove the final composed runtime.
+fallback. MP-06 implements the public DTO/scanner boundary. MP-07 implements
+finite compressed/decoded/count/combined-work policy, cheap raw manifest bounds,
+complete preflight before any inflation and private hash-bound copies. Native
+gunzip output is capped before JSON/Zod; raw and validated record counts match
+the signed manifest. Rejections preserve exact last-good and do not apply/ACK.
+Adversarial tests use synthetic signed artifacts, not live feeds or private data.
+These are artifact-work limits, not a sandbox for trusted callbacks or limits on
+prior download/concurrent consumer calls; external consumers must bound those
+operations themselves. MP-09/MP-10 must prove the final composed runtime.
 
 ## Tenant Isolation Transition
 
