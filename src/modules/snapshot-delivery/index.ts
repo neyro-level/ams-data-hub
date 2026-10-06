@@ -1,4 +1,5 @@
 export * from "./contracts.ts";
+export * from "./application/snapshot-build-input.ts";
 export * from "./application/snapshot-composer.ts";
 export * from "./application/snapshot-signing.ts";
 export * from "./application/snapshot-delivery.ts";

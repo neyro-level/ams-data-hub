@@ -9,8 +9,8 @@ active_plan:
   source_sha256: d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a
   inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
   execution_status: IN_PROGRESS
-  current_epic: adh-mp-07
-  next_delivery_task: adh-mp-07-delivery
+  current_epic: adh-mp-05
+  next_delivery_task: adh-mp-05-delivery
   completed_deliveries:
     - epic: adh-mp-00
       pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/18
@@ -42,6 +42,11 @@ active_plan:
       gate_run: "236"
       gate_head_sha: e30271a3fb6c8e7bc86fc252492ed5827d0955b4
       merge_sha: 8dd7f7e6913e941dc3eee5ebff58f412d0dd8bcd
+    - epic: adh-mp-07
+      pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/24
+      gate_run: "243"
+      gate_head_sha: f4e88d677a2ec8002e45af21d5217e0e7a4f658f
+      merge_sha: e5e3c960a1591c286156dab927f96cdbba70a2bf
   readiness: NOT_PRODUCTION_READY
   reconciliation: CLEAN
   managed_nodes: 97

@@ -45,12 +45,16 @@ MP-04 доставлен PR #23 после exact-head RISKY Gate #236, merge
 `8dd7f7e6913e941dc3eee5ebff58f412d0dd8bcd`: concrete Source worker/scheduler,
 manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
 подтвердил native cron и реальные OS SIGTERM. GitHub mirror совпадает.
-Текущий участок — MP-07 bounded snapshot verifier, затем MP-05 assembly.
+MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
+`e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
+84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
+Текущий участок — MP-05 assembly. MP-05.1 остаётся IN_PROGRESS:
+immutable input persistence и allocator — foundation, не полный DB resolver.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-05/MP-07–MP-10 нового remediation plan;
-MP-00–MP-04 и MP-06 закрыты.
+Активная доработка: MP-05/MP-08–MP-10 нового remediation plan;
+MP-00–MP-04, MP-06 и MP-07 закрыты.
 Далее — production composition, source worker/scheduler,
 snapshot assembly, public contracts, verifier hardening, operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний

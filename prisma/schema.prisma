@@ -461,11 +461,58 @@ model Project {
   inventoryIdentities      InventoryIdentity[]
   inventoryLifecycleEvents InventoryLifecycleEvent[]
   listingDevelopmentLinks  ListingDevelopmentLink[]
+  snapshotBuildInputs      SnapshotBuildInput[]
+  snapshotSequence         ProjectSnapshotSequence?
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
   @@index([organizationId])
   @@index([status, updatedAt])
+}
+
+model ProjectSnapshotSequence {
+  organizationId       String
+  projectId            String
+  lastReservedSequence Int
+  project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId])
+}
+
+model SnapshotBuildInput {
+  id                   String @id @default(cuid())
+  organizationId       String
+  projectId            String
+  idempotencyKeyHash   String @db.Char(64)
+  requestHash          String @db.Char(64)
+  inputSchemaVersion   Int
+  projectorVersion     String @db.VarChar(64)
+  schemaMinor          Int
+  publishSequence      Int
+  projectStateRevision Int
+  catalogRevision      String @db.Char(64)
+  inputHash            String @db.Char(64)
+  capturedAt           DateTime @db.Timestamptz(3)
+  captureTransactionId BigInt @default(dbgenerated("txid_current()"))
+  project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  parts                SnapshotBuildInputPart[]
+
+  @@unique([organizationId, projectId, id])
+  @@unique([organizationId, projectId, idempotencyKeyHash])
+  @@unique([organizationId, projectId, publishSequence])
+}
+
+model SnapshotBuildInputPart {
+  organizationId String
+  projectId      String
+  buildInputId   String
+  kind           String @db.VarChar(64)
+  partIndex      Int
+  payloadHash    String @db.Char(64)
+  payload        Json
+  buildInput     SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([buildInputId, kind, partIndex])
 }
 
 model ProjectCurrentSnapshotManifest {

@@ -132,6 +132,26 @@ coverage; acceptance stays the source's requirement, not a new checklist graph.
 
 ## REQUIRES CHECK
 
+### Active implementation contract: MP-05.1
+
+WORK on the approved graph: capture a complete, bounded, project-scoped DB
+input in one Repeatable Read transaction, reserve its positive publication
+sequence in that transaction, and persist immutable allowlisted fact parts.
+An identical idempotency request returns the original input; changed parameters
+conflict. Catalog revision identifies captured values, not a timestamp or a
+mutable latest-change pointer. Historical GOOD inventory facts still backing
+ACTIVE grace identities are pinned with their actual revision. No network,
+object-storage or signing work occurs inside capture. Existing module-owned
+queries and command/authorized-transaction seams are extended, not bypassed.
+
+Verification must exercise the concrete resolver and repository with a scoped
+NOBYPASS worker on the isolated synthetic database: tenant isolation, one-cut
+reads, immutable retry, historical fact matching, positive sequence, bounded
+capture and rollback. Public projection, signing/publication, production and
+real feeds remain outside this checkpoint. MP-05.1 stays IN_PROGRESS until
+the complete resolver and its native proof pass; persistence scaffolding alone
+does not satisfy the task.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

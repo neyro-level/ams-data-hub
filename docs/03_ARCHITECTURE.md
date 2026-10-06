@@ -109,6 +109,13 @@ remediation program preserves these boundaries while connecting them:
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
   application pipeline. Real 13-dataset projectors, input resolution and
   build/sign/publication orchestration are pending.
+  MP-05.1 is IN_PROGRESS: forward-only input receipt/parts and project sequence
+  persistence now exist. Receipts require all 18 private fact sections,
+  transaction-bound inserts, immutable post-commit state, request/input hashes
+  and bounded replay. A positive sequence is reserved atomically with capture;
+  the scoped counter floors existing current/delivery/input sequences. Complete
+  transaction-bound DB fact resolution and its native proof are still pending;
+  this foundation is not a working public assembly/publication pipeline.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
