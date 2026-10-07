@@ -446,6 +446,7 @@ model Project {
   sources                  Source[]
   sourceCredentialRefs     SourceCredentialRef[]
   sourceManualRunRequests  SourceManualRunRequest[]
+  operationalActionRequests OperationalActionRequest[]
   sourceRevisions          SourceRevision[]
   sourceRevisionRecords    SourceRevisionRecord[]
   sourceSafetyPolicies     SourceSafetyPolicy[]
@@ -477,6 +478,22 @@ model ProjectSnapshotSequence {
   project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([organizationId, projectId])
+}
+
+enum OperationalActionType {
+  SNAPSHOT_BUILD
+  SNAPSHOT_PUBLISH
+  SNAPSHOT_ROLLBACK
+  ACK_ROTATE
+  SUSPICIOUS_APPROVE
+  SUSPICIOUS_REJECT
+}
+
+enum OperationalActionStatus {
+  REQUESTED
+  RUNNING
+  SUCCEEDED
+  FAILED
 }
 
 model SnapshotBuildInput {
@@ -916,6 +933,7 @@ model Source {
   project               Project                       @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   credentialRef         SourceCredentialRef?
   manualRunRequests     SourceManualRunRequest[]
+  operationalActionRequests OperationalActionRequest[]
   inventoryIdentities   InventoryIdentity[]
   agentSourceEvidence   AgentSourceEvidence[]
   mediaSources          MediaSource[]
@@ -983,6 +1001,7 @@ model SourceRevision {
   lastGoodFor            Source[] @relation("SourceLastGood")
   records                SourceRevisionRecord[]
   agentBindings          ListingAgentBinding[]
+  operationalActionRequests OperationalActionRequest[]
 
   @@unique([organizationId, projectId, sourceId, id])
   @@unique([sourceId, sequence])
@@ -1100,6 +1119,30 @@ model SourceManualRunRequest {
 
   @@unique([sourceId, idempotencyKey])
   @@index([projectId, status, createdAt])
+}
+
+model OperationalActionRequest {
+  id                    String @id
+  organizationId        String
+  projectId             String
+  action                OperationalActionType
+  status                OperationalActionStatus @default(REQUESTED)
+  sourceId              String?
+  sourceRevisionId      String?
+  sourcePublishSequence Int?
+  reason                String? @db.VarChar(500)
+  requestHash           String @db.Char(64)
+  requestedBy           String
+  outboxEventId         String? @unique
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+  project               Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction, map: "OperationalActionRequest_project_fkey")
+  source                Source? @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: NoAction, onUpdate: NoAction, map: "OperationalActionRequest_source_fkey")
+  sourceRevision        SourceRevision? @relation(fields: [organizationId, projectId, sourceId, sourceRevisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction, map: "OperationalActionRequest_revision_fkey")
+  outboxEvent           OutboxEvent? @relation(fields: [outboxEventId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "OperationalActionRequest_outbox_fkey")
+
+  @@unique([organizationId, projectId, id], map: "OperationalActionRequest_scope_id_key")
+  @@index([projectId, status, createdAt], map: "OperationalActionRequest_project_status_created_idx")
 }
 
 model ProjectCatalogSubscription {
@@ -1240,6 +1283,7 @@ model OutboxEvent {
   organization   Organization?   @relation(fields: [organizationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   idempotencyKey IdempotencyKey?
   jobRuns        JobRun[]
+  operationalActionRequest OperationalActionRequest?
 
   @@index([status, availableAt])
   @@index([lockedAt])

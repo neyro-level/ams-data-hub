@@ -29,6 +29,25 @@ require a scoped compatibility check; silently shifting old data is forbidden.
 - Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
   JSON with recursively sorted object keys.
 
+## Durable operational requests — MP-08 foundation
+
+`OperationalActionRequest` preserves the existing audited request ID and binds
+one exact project/action to an IDs-only outbox intent in the same command
+transaction. Composite Source/revision/project FKs and an INSERT trigger reject
+scope, topic, payload or audit identity mismatches. Private review justification
+stays in request/audit, never the queue payload. New requests are REQUESTED;
+declared lifecycle states alone are not executor completion.
+
+The web role creates requests only through the admin purpose. The worker can
+read with the exact single-project `operations-executor` purpose; there is no
+runtime UPDATE/DELETE grant until fenced execution exists. The ordinary outbox
+consumer defers all six reserved operational topics instead of failing them.
+Existing 14/30-day settled-intent retention detaches the optional outbox FK
+without deleting the durable request or changing its stable idempotency result.
+New INSERT still requires an exact existing intent. Existing idempotency expiry
+policy remains unchanged; no consumer, credential provisioning or production
+operation is activated by this foundation.
+
 ## Confirmed listing-agent assignments
 
 `ListingAgentBinding` is owned by project-state. It binds scoped Source/GOOD

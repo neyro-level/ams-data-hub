@@ -75,8 +75,19 @@ describe("fleet dashboard persistence projection", () => {
     expect(dashboard.auditEvents.some((event) => event.action === "operations-control.snapshot.build.request")).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "source.manual-run.request")).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "data-safety.freeze")).toBe(true);
-    const operationalOutbox = await runInPrincipalDatabaseTransaction(principal, (transaction) => transaction.outboxEvent.count({ where: { topic: { startsWith: "operations-control." } } }));
-    expect(operationalOutbox).toBe(0);
+    await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
+      const request = await transaction.operationalActionRequest.findUniqueOrThrow({ where: { id: build.requestId } });
+      expect(request).toMatchObject({ ...setup, sourceId: null, action: "SNAPSHOT_BUILD", status: "REQUESTED" });
+      if (!request.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+      const intent = await transaction.outboxEvent.findUniqueOrThrow({ where: { id: request.outboxEventId } });
+      expect(intent).toMatchObject({ organizationId: setup.organizationId,
+        topic: "operations-control.snapshot.build.request", status: "PENDING", schemaVersion: 1 });
+      expect(intent.payload).toEqual({ schemaVersion: 1, organizationId: setup.organizationId,
+        projectId: setup.projectId, requestId: build.requestId, action: "SNAPSHOT_BUILD" });
+      expect(await transaction.operationalActionRequest.count({ where: { projectId: setup.projectId } })).toBe(1);
+      expect(await transaction.outboxEvent.count({ where: { organizationId: setup.organizationId,
+        topic: { startsWith: "operations-control." } } })).toBe(1);
+    });
     const serialized = JSON.stringify(dashboard);
     expect(serialized).not.toContain(secretMarker);
     expect(serialized).not.toContain(manifestKey);

@@ -26,7 +26,7 @@ XML-профили и safety/import contracts; snapshot composer/signing/storage
 ACK/rollback contracts, media mirror, fleet requests, alerts и Exit Bundle.
 Это реализованные границы и компоненты, не доказательство готовности полного
 operational pipeline. Source composition, worker/scheduler и DB-to-snapshot
-assembly реализованы MP-02–MP-05; MP-05 provider delivery ещё ожидает gate.
+assembly реализованы и доставлены MP-02–MP-05.
 Operations executors/API и полное readiness proof требуют MP-08–MP-10.
 
 Owner decision 2026-10-06: текущая версия не требует 2FA/TOTP; OQ-09 DEFERRED,

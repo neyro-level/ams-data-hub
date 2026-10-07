@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OPERATIONAL_ACTION_TOPICS } from "../operations-control/index.ts";
 import type { JobWithMetadata, PgBoss } from "pg-boss";
 import { getWorkerReliabilityService } from "../../infrastructure/worker-service-container.ts";
 import {
@@ -100,7 +101,8 @@ async function processQueuedJob(
     return { claimed: 0, completed: 0, failed: 0 };
   }
 
-  if (topics && !topics.includes(event.topic) && ["snapshot.build.request", "ingestion.source.manual.request"].includes(event.topic)) {
+  if (topics && !topics.includes(event.topic) && ["snapshot.build.request", "ingestion.source.manual.request",
+    ...Object.values(OPERATIONAL_ACTION_TOPICS)].includes(event.topic)) {
     if (!reliability.defer) throw new Error("OUTBOX_DEFER_UNBOUND");
     await reliability.defer(event, "OUTBOX_EXECUTOR_RESERVED");
     await boss.complete(OUTBOX_DELIVERY_QUEUE, job.id, { status: "deferred", code: "OUTBOX_EXECUTOR_RESERVED" });

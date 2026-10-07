@@ -5,6 +5,9 @@ export { OperationsControlError } from "./contracts.ts";
 export {
   freezeJobsInputSchema,
   operationalActionSchema,
+  operationalActionIntentSchema,
+  operationalExecutionActionSchema,
+  OPERATIONAL_ACTION_TOPICS,
   requestOperationalActionInputSchema,
   unfreezeJobsInputSchema,
 } from "./contracts.ts";

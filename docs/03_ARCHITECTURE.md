@@ -284,7 +284,7 @@ remediation program preserves these boundaries while connecting them:
   The combined Source worker optionally registers the strict snapshot topic;
   active cancellation joins owned SDK work. Local synthetic PostgreSQL/pg-boss
   evidence is implementation proof, not live-provider or production activation.
-  Implementation is closed in Task Manager; exact-head epic delivery is pending.
+  Implementation and exact-head epic delivery are closed in Task Manager.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
@@ -311,8 +311,13 @@ remediation program preserves these boundaries while connecting them:
   exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
   boundaries, key rotation/revocation and last-good. MP-07 delivery passed its
   exact-head gate and is recorded in Task Manager. Budgets are not callback/RSS limits.
-- MP-08: Operations UI records requests; missing executors and HTTP discovery/
-  delivery/ACK composition are not represented as completed operations.
+- MP-08: admin requests atomically record a durable scoped request, audited
+  idempotency response and an exact IDs-only operational outbox intent. The
+  request survives settled-intent retention; mutable SUSPICIOUS admission never
+  prevents replay of an already accepted request. Worker reads are exact-purpose,
+  single-project and currently SELECT-only. Unsupported consumers reserve/defer
+  all six topics. No operational executor is registered by this foundation;
+  execution and HTTP discovery/delivery/ACK remain unfinished MP-08 work.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

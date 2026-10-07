@@ -142,7 +142,7 @@ explicit local combined worker/scheduler/manual composition is implemented
 within MP-04. Concurrency and controlled shutdown have local runtime evidence;
 Source health now has its explicit command and exact-owner qualification;
 MP-04 exact-head delivery is complete. Real snapshot
-assembly/publication is implemented by MP-05, whose provider gate remains open;
+assembly/publication is implemented and delivered by MP-05;
 operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate

@@ -179,6 +179,22 @@ export const freezeJobsInputSchema = z.object({ reason: z.string().trim().min(3)
 export const unfreezeJobsInputSchema = z.object({});
 
 export type OperationalAction = z.infer<typeof operationalActionSchema>;
+export const operationalExecutionActionSchema = operationalActionSchema.exclude(["RUN_SOURCE"]);
+export const operationalActionIntentSchema = z.object({
+  schemaVersion: z.literal(1),
+  organizationId: identifierSchema,
+  projectId: identifierSchema,
+  requestId: identifierSchema,
+  action: operationalExecutionActionSchema,
+}).strict();
+export const OPERATIONAL_ACTION_TOPICS: Readonly<Record<z.infer<typeof operationalExecutionActionSchema>, string>> = Object.freeze({
+  SNAPSHOT_BUILD: "operations-control.snapshot.build.request",
+  SNAPSHOT_PUBLISH: "operations-control.snapshot.publish.request",
+  SNAPSHOT_ROLLBACK: "operations-control.snapshot.rollback.request",
+  ACK_ROTATE: "operations-control.ack.rotate.request",
+  SUSPICIOUS_APPROVE: "operations-control.suspicious.approve.request",
+  SUSPICIOUS_REJECT: "operations-control.suspicious.reject.request",
+});
 export type RequestOperationalActionInput = z.infer<typeof requestOperationalActionInputSchema>;
 export type FreezeJobsInput = z.infer<typeof freezeJobsInputSchema>;
 export type UnfreezeJobsInput = z.infer<typeof unfreezeJobsInputSchema>;

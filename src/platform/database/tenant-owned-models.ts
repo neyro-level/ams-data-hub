@@ -25,6 +25,7 @@ export const TENANT_OWNED_MODELS = [
   "Source",
   "SourceCredentialRef",
   "SourceManualRunRequest",
+  "OperationalActionRequest",
   "SourceSafetyPolicy",
   "SourceRevision",
   "SourceRevisionRecord",

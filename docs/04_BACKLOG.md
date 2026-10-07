@@ -48,15 +48,18 @@ manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
 MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
 `e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
 84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
-Текущий участок — MP-05 assembly/publication: MP-05.1–MP-05.10 закрыты
-implementation ledger. MP-05.11 имеет concrete thirteen-dataset compose/sign,
+MP-05 доставлен PR #25 после exact-head RISKY Gate #287, merge
+`cfd06997693f0c5bb55ef6b285c6a4136013d18a`: 290 units, 166 native cases,
+Linux build PASS. Локальный main и публичное GitHub mirror совпадают.
+MP-05.1–MP-05.11 закрыты implementation ledger. MP-05.11 имеет concrete thirteen-dataset compose/sign,
 immutable binding, повторное Source/Project/Catalog/Media admission после PUT,
 atomic current/DeliveryRun и optional executor существующего Source worker.
 Targeted proof: 78 unit tests, 22 native publication/delivery cases, 3 full
 runtime-function cases с настоящим local pg-boss, enabled/disabled/config rejection
-и observed/cleared own-owner heartbeat. Closure определяется Task Manager;
-epic exact-head SourceCraft RISKY gate/merge пока не выполнены. Main, GitHub mirror
-и production этим implementation proof не обновляются.
+и observed/cleared own-owner heartbeat. Closure и delivery ledger принадлежат
+Task Manager; production не обновлялся. Текущий участок — MP-08.1:
+durable operational requests/outbox и шесть реальных исполнителей.
+Foundation checkpoint не закрывает этот task и не означает исполнение запросов.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
