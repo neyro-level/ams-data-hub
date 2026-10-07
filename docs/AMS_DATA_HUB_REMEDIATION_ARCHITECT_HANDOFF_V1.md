@@ -10,6 +10,41 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 optional outbox executor — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `dbc9348`. The existing combined source-worker has optional exact
+snapshot-topic registration; disabled mode keeps intake/maintenance unchanged.
+Module-owned config-free inspection precedes strict scoped historical GOOD
+membership, configuration and fresh capture. Stable outbox-derived capture
+identity, copied trust policy and existing per-project storage are reused.
+Signing registry stores reference names only; public entries are normalized
+Ed25519 SPKI (including misbound private-PEM regression), with reserved prototype
+key IDs denied. No resources, real keys, feeds or production operations are added.
+App/test types and seven unit suites passed 73/73 (25.66 seconds). Source trigger
+and extracted-facade native regression passed 35/35 in three suites (39.95 seconds).
+The final executor/active-abort native matrix passed 22/22 in two suites
+(24.87 seconds), with 48 forward migrations and completed test database cleanup:
+actual
+synthetic empty GOOD and canonical intent enqueue -> durable claim -> enabled
+capability -> capture/sign/14 SDK PUTs -> atomic publication; stale completion
+lease rejected, recovered event consumed through existing queue drain with actual
+NOBYPASS takeover/completion. Restart after freeze/missing keys/storage used the
+same run with no additional IO. Queue and SDK transports only are synthetic.
+Five active-abort cases cover caller HEAD/all thirteen artifact writes/manifest,
+and bound-owner HEAD/artifact cancellation while the invocation remains live.
+They join all owned requests before returning, with zero current/run and no later
+IO. The first run passed 21/22; manifest cancellation returned a raw transport
+error. Its awaited PUT rejection now checks owned cancellation before rethrow;
+the final native rerun passed without weakening the transport assertion.
+Architect findings (private PEM propagation and two-signal precedence) were fixed.
+Final app/test types, focused lint and eight unit suites pass 78/78
+(22.46 seconds). Quick-check contracts, types and full lint passed; dependency
+cruise initially found a private cross-module type import. Using the existing
+public type export fixes it: 407 modules / 1303 dependencies, static guards PASS.
+Docs canon, secret scan and diff checks pass. No rule was disabled or widened.
+Complete MP-05.11 closure, exact-head epic gate/merge and later readiness work
+remain required; this is not remote-provider or production shutdown proof.
+
 ### MP-05.11 final publication facade — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `20c144c`. A server-only facade now consumes the actual persisted

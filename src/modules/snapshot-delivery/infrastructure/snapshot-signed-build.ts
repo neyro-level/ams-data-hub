@@ -12,6 +12,7 @@ import { createSnapshotCandidateAssemblyServer } from "./snapshot-candidate-asse
 export function createSnapshotSignedBuildServer(bound: {
   organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head">;
   keyId: string; privateKeyRef: SecretRef; trustSet: SnapshotTrustSet;
+  signal?: AbortSignal;
 }) {
   const signer = createEd25519SecretRefSigner({ keyId: bound.keyId, privateKeyRef: bound.privateKeyRef });
   const trustSet: SnapshotTrustSet = Object.freeze({

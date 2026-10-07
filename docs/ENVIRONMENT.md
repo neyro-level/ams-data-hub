@@ -26,6 +26,8 @@ Use `.env.example` as the value-free project template.
 | `OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS` | worker | process shutdown deadline for active work, durable settlement and owned cleanup; defaults to `30000` ms |
 | `LOG_LEVEL` | server/worker | pino level |
 | `PROJECT_STORAGE_BINDINGS` | source-worker | value-free exact organization/project registry of five environment reference names; no implicit global S3 fallback |
+| `SNAPSHOT_BUILD_ENABLED` | existing combined source-worker | explicit `true`/`false`, absent means disabled; disabled leaves snapshot intents reserved and keeps existing intake/maintenance behavior |
+| `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: keyId, privateKeyRef, currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; no global/cross-project fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
@@ -34,6 +36,21 @@ the corresponding previous-release identities. Operators do not hand-edit
 those values.
 
 Provider credentials are intentionally absent. Add project-specific credentials only through an approved scope.
+
+Snapshot capability is repository wiring under verification, not a deployed
+worker or production readiness claim. Enabled startup validates the registry
+before queue startup; committed receipt/run inspection precedes actual signing
+key or project storage resolution. Private key values are never part of the
+registry. Missing/invalid project configuration yields finite failure codes for
+fresh work; committed replay uses only durable database identity. No new worker
+process or credential resource is provisioned by this preparation.
+Signing key IDs reject reserved prototype identifiers; resolved trust entries
+contain normalized Ed25519 public SPKI only, never an original private PEM.
+Snapshot staging forwards its owned cancellation signal to buffered S3 HEAD
+and PUT requests, with a 60-second adapter request bound. Artifact writes are
+fully joined before failure returns; cancellation cannot be treated as an
+optional missing image. This does not replace worker lease fencing or prove
+production shutdown behavior against the remote provider.
 
 Secret-bearing consumers accept a `SecretRef`, which contains only an approved
 environment variable name. The server-only resolver reads the corresponding

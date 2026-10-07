@@ -38,8 +38,8 @@ existing project content-addressed storage outside DB. Partial PUT failure
 leaves only orphan artifacts and the binding; no current pointer or DeliveryRun
 is registered by this seam. A failed artifact batch waits for every owned PUT
 to settle before returning failure, and never uploads its manifest afterward.
-Fresh admission and outbox registration remain
-required before MP-05.11 can be closed.
+Staging alone is not publication. Final fresh admission is owned by the facade
+below; registered outbox verification is still required before MP-05.11 closure.
 
 Newbuilding preview/apply acquires the common global safety advisory lock before
 its explicit Source row lock, matching the Source runtime lock order. An import
@@ -67,7 +67,8 @@ invalidate unchanged approved GOOD. The exact single-project publication purpose
 has scoped SELECT access to these facts and GOOD-only revisions/records; restrictive
 policies reject wildcard/multi-project/legacy publication readers and fact writes.
 This pre-PUT Source check does not protect the later upload window. Final post-PUT
-all-owner admission, atomic current/run and registered outbox remain required.
+all-owner admission and atomic current/run are owned by the final facade below,
+not by this pre-PUT Source check.
 
 Staging also prepares value-free project anchors from the validated receipt and
 the server-computed published Agent/assignment graph before HEAD. The pre-PUT
@@ -114,7 +115,7 @@ the required strong pin fail before HEAD and require a fresh capture identity;
 persisted receipt bytes/hashes are never rewritten. Timestamp-only protection is
 not substituted for the hash. The three scoped SELECT extensions keep existing
 grants and fact-write denial. Pre-PUT checks still require post-PUT repetition;
-current/run/outbox publication remains unfinished.
+the final facade repeats these checks after PUT; staging itself never publishes.
 
 The server-only final publication facade accepts only
 the scoped snapshot-input principal and persisted receipt hash lookup, never a
@@ -126,11 +127,38 @@ remain inside the callback so rollback covers both rows. An exact committed
 receipt/binding/run replay returns the same run without signing, HEAD, PUT or
 rewriting a newer pointer; a concurrent commit is checked again before reporting
 a staging/admission failure. Pending bindings remain immutable and conflicting
-new signatures cannot overwrite them. This facade is not registered outbox
-execution. Targeted native proof covers actual capture/signing and synthetic SDK
+new signatures cannot overwrite them. This facade alone is not an outbox
+executor. Targeted native proof covers actual capture/signing and synthetic SDK
 HEAD/PUT, all four post-PUT permission changes, atomic rollback/cancellation,
 concurrent committed fallback and restart/rotation replay. It does not prove a
 registered durable outbox execution, a live provider or production readiness.
+
+The existing combined source-worker optionally registers `snapshot.build.request`
+when `SNAPSHOT_BUILD_ENABLED=true`; absent/false preserves old intake and reserved
+snapshot intents. Its strict envelope/payload must agree on organization and
+contain exact project/source/revision/positive sequence. Ingestion owns the short
+metadata-only GOOD membership check. Historical GOOD remains valid after a newer
+head or producer disable; membership is not proof of canonical enqueue provenance.
+Capture identity is server-owned and stable across attempts, derived with the
+`snapshot-build-outbox-v1` domain from the durable outbox ID. Persisted exact
+receipt/binding/run replay precedes fresh admission and credential/storage reads.
+The enabled registry must still parse at startup; missing registry is not a
+config-free startup guarantee. Missing private credentials/key match fail later
+during real signing, not registry parsing.
+
+Publication commit is separate from fenced outbox completion. A lost completion
+lease cannot roll back publication; recovery reuses the same committed run and
+does not rewrite a newer pointer. Errors use finite codes, never SDK/config/DB
+messages. Owned lifecycle and invocation signals are combined through publication
+and staging; buffered S3 HEAD/PUT receive cancellation plus a 60-second request
+bound. Cancellation is not a missing-image omission. All artifact writes settle
+before failure; cancelled staging cannot upload its manifest afterward. This
+wiring has targeted local native proof: 22/22 across staging/publication and
+delivery suites, including the enabled capability and actual durable recovery
+queue-drain takeover/completion. The canonical GOOD enqueue uses a synthetic
+empty-feed fixture; queue/SDK transports are replaced, not the handler or database
+publication/settlement. This is not real source-worker process/remote-provider,
+ignoring-abort shutdown or production proof. Full MP-05.11 closure remains open.
 
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.

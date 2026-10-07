@@ -21,11 +21,13 @@ export interface CapturedMediaVerificationResult {
 }
 const scopeSchema = z.object({ organizationId: z.string().min(1).max(128), projectId: z.string().min(1).max(128) }).strict();
 /** Server-owned bound storage, never a request-supplied provider or capability. No DB calls here. */
-export function createCapturedMediaVerifier(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head"> }) {
+export function createCapturedMediaVerifier(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head">; signal?: AbortSignal }) {
   const scope = scopeSchema.parse({ organizationId: bound.organizationId, projectId: bound.projectId });
   const head = bound.storage.head.bind(bound.storage);
+  const checkSignal = () => { if (bound.signal?.aborted) throw new Error("SNAPSHOT_PUBLICATION_CANCELLED"); };
   return async (requested: typeof scope, raw: readonly CapturedMediaCandidate[]): Promise<CapturedMediaVerificationResult> => {
     if (requested.organizationId !== scope.organizationId || requested.projectId !== scope.projectId) throw new Error("SNAPSHOT_MEDIA_SCOPE_INVALID");
+    checkSignal();
     if (raw.length > 50_000) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
     const keys = new Map<string, CapturedMediaAsset>(); const positions = new Map<string, number>();
     // Complete pin/metadata preflight before the first HEAD. Copies prevent mutation during IO.
@@ -53,12 +55,15 @@ export function createCapturedMediaVerifier(bound: { organizationId: string; pro
       if (warning) report(warning);
       if (!asset) { if (!warning) report("MEDIA_ASSET_INVALID"); continue; }
       if (!objects.has(asset.storageKey)) {
-        try { const object = await head(asset.storageKey); objects.set(asset.storageKey, object ? { ...object } : null); }
-        catch { objects.set(asset.storageKey, null); }
+        checkSignal();
+        try {
+          const object = bound.signal ? await head(asset.storageKey, { signal: bound.signal }) : await head(asset.storageKey);
+          checkSignal(); objects.set(asset.storageKey, object ? { ...object } : null);
+        } catch { checkSignal(); objects.set(asset.storageKey, null); }
       }
       if (!matchesMediaObject(asset, objects.get(asset.storageKey))) { report("MEDIA_OBJECT_UNAVAILABLE"); continue; }
       result.attachments.push({ entityType, entityUid, media: mediaPublicV1Schema.parse({ ref: asset.sha256, kind: "IMAGE", position }) });
     }
-    return result;
+    checkSignal(); return result;
   };
 }

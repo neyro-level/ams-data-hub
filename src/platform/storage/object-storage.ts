@@ -27,7 +27,10 @@ export interface ObjectStoragePutInput {
   body: Uint8Array;
   contentType: string;
   sha256: string;
+  signal?: AbortSignal;
 }
+
+export interface ObjectStorageHeadOptions { signal?: AbortSignal }
 
 export interface ObjectStorageGetResult extends ObjectStorageObject {
   body: Uint8Array;
@@ -78,7 +81,7 @@ export interface ObjectStoragePresignedUrl {
 export interface ObjectStorage {
   put(input: ObjectStoragePutInput): Promise<ObjectStorageObject>;
   get(key: ObjectStorageKey): Promise<ObjectStorageGetResult | null>;
-  head(key: ObjectStorageKey): Promise<ObjectStorageObject | null>;
+  head(key: ObjectStorageKey, options?: ObjectStorageHeadOptions): Promise<ObjectStorageObject | null>;
   presignGet(input: ObjectStoragePresignGetInput): Promise<ObjectStoragePresignedUrl>;
 }
 
@@ -190,9 +193,9 @@ export class ProjectSnapshotStorage {
     return this.storage.get(key);
   }
 
-  public head(key: ObjectStorageKey): Promise<ObjectStorageObject | null> {
+  public head(key: ObjectStorageKey, options?: ObjectStorageHeadOptions): Promise<ObjectStorageObject | null> {
     this.assertProjectKey(key);
-    return this.storage.head(key);
+    return options ? this.storage.head(key, options) : this.storage.head(key);
   }
 
   public presignGet(input: ObjectStoragePresignGetInput): Promise<ObjectStoragePresignedUrl> {

@@ -23,6 +23,7 @@ import {
   type ObjectStoragePresignGetInput,
   type ObjectStoragePresignedUrl,
   type ObjectStoragePutInput,
+  type ObjectStorageHeadOptions,
   type ObjectStorageStreamingPutInput,
   type StreamingObjectStorage,
   type BoundedObjectStorage,
@@ -133,12 +134,15 @@ export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage, B
   public async put(input: ObjectStoragePutInput): Promise<ObjectStorageObject> {
     assertImmutableObjectStoragePut(input);
     const writtenAt = new Date();
-    const response = await this.client.send(new PutObjectCommand({
+    const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: input.key,
       Body: input.body,
       ContentType: input.contentType,
-    }));
+    });
+    const response = input.signal
+      ? await this.client.send(command, { abortSignal: AbortSignal.any([input.signal, AbortSignal.timeout(60_000)]) })
+      : await this.client.send(command);
 
     return {
       key: input.key,
@@ -282,10 +286,13 @@ export class S3ObjectStorage implements ObjectStorage, StreamingObjectStorage, B
     }
   }
 
-  public async head(key: ObjectStorageKey): Promise<ObjectStorageObject | null> {
+  public async head(key: ObjectStorageKey, options?: ObjectStorageHeadOptions): Promise<ObjectStorageObject | null> {
     const sha256 = getObjectStorageKeySha256(key);
     try {
-      const response = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      const command = new HeadObjectCommand({ Bucket: this.bucket, Key: key });
+      const response = options?.signal
+        ? await this.client.send(command, { abortSignal: AbortSignal.any([options.signal, AbortSignal.timeout(60_000)]) })
+        : await this.client.send(command);
       return toStoredObject({
         key,
         contentType: response.ContentType,

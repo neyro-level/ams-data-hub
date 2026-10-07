@@ -7,7 +7,7 @@ import { prepareSnapshotPublicationMediaPins, selectSnapshotPublicationMediaAnch
 import type { SnapshotCatalogSelection } from "../application/snapshot-catalog-selection.ts";
 
 /** Internal persisted receipt + server-selected project-owned storage. Call only outside DB transactions. */
-export function createSnapshotMediaProjectionServer(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head"> }) {
+export function createSnapshotMediaProjectionServer(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head">; signal?: AbortSignal }) {
   const verify = createCapturedMediaVerifier(bound);
   const { organizationId, projectId } = bound;
   return async (input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection) => {

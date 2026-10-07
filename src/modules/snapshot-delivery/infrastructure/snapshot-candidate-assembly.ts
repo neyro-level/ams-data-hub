@@ -25,7 +25,7 @@ const lookupSchema = z.object({ idempotencyKeyHash: z.string().regex(/^[a-f0-9]{
   requestHash: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 
 /** Server-owned candidate assembly from persisted receipts only. Not a publisher. */
-export function createSnapshotCandidateAssemblyServer(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head"> }) {
+export function createSnapshotCandidateAssemblyServer(bound: { organizationId: string; projectId: string; storage: Pick<ObjectStorage, "head">; signal?: AbortSignal }) {
   const scope = { organizationId: bound.organizationId, projectId: bound.projectId };
   const projectMedia = createSnapshotMediaProjectionServer(bound);
   return async (principal: PrincipalContext, rawLookup: z.input<typeof lookupSchema>) => {

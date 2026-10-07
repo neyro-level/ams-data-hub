@@ -9,7 +9,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
-      const snapshot = ["snapshot-input", "snapshot-publication"].includes(context.actorId);
+      const snapshot = ["snapshot-input", "snapshot-publication", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
       if (snapshot) {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
@@ -27,7 +27,9 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
     }
     return result;
   };
-  return { ...actual, runInAuthorizedDatabaseTransaction: authorized };
+  const system: typeof actual.runInSystemJobDatabaseTransaction = (input, execute) =>
+    authorized(actual.createSystemJobDatabaseAuthorizationContext(input), execute);
+  return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInSystemJobDatabaseTransaction: system };
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
   PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
@@ -37,6 +39,13 @@ import { calculateObjectSha256, createMediaKey } from "../../src/platform/storag
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
+import { createSnapshotBuildCapability } from "../../src/infrastructure/snapshot-build-capability.ts";
+import { enqueueSourceGoodSnapshot } from "../../src/modules/ingestion-core/infrastructure/source-snapshot-intent.ts";
+import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
+import { ReliabilityService } from "../../src/modules/platform-operations/application/reliability-service.ts";
+import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
+import { Prisma } from "../../src/generated/prisma/client.ts";
+import { drainOutboxWithDependencies } from "../../src/modules/platform-operations/worker.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -78,6 +87,133 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it("executes a canonical GOOD intent through the enabled capability and replays committed publication after lease recovery", async () => {
+    const setup = await fixture(); const { scope } = setup;
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-executor-setup", correlationId: randomUUID() };
+    const intent = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const source = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-executor", name: "Synthetic executor",
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const target = { ...scope, sourceId: source.id };
+      // Fixture-only empty GOOD. No real feed, imported inventory or provider IO.
+      const policy = { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, allowEmpty: true };
+      const analysis = analyzeImportSafety({ recordCount: 0, previousGoodRecordCount: null, invalidRecordCount: 0, issues: [] }, policy);
+      const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey, profileVersion: source.profileVersion,
+        safetyPolicy: policy, safetyAnalysis: JSON.parse(JSON.stringify(analysis)) as Prisma.InputJsonObject, recordCount: 0 } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawStorageKey: "synthetic-private/executor", rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+      const producer = createProjectJobPrincipal({ ...scope, jobName: "source-import", correlationId: randomUUID() });
+      if (producer.kind !== "project-job") throw new Error("SYNTHETIC_PRODUCER_PRINCIPAL_INVALID");
+      return enqueueSourceGoodSnapshot(tx, producer, target, { revisionId: revision.id, sequence: 1 });
+    });
+    let now = new Date(Date.now() + 1000);
+    const service = () => new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    const first = await service().claim("synthetic-snapshot-worker", 1000, ["snapshot.build.request"]);
+    expect(first?.outboxEventId).toBe(intent.outboxEventId); if (!first) throw new Error("SYNTHETIC_CLAIM_MISSING");
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const env = { SNAPSHOT_BUILD_ENABLED: "true", PROJECT_SNAPSHOT_SIGNING_BINDINGS: JSON.stringify([{ ...scope,
+      keyId: "synthetic-binding-key", privateKeyRef: "SYNTHETIC_BINDING_SIGNING_KEY", currentKeyId: "synthetic-binding-key",
+      nextKeyId: null, revokedKeyIds: [], publicKeyRefs: { "synthetic-binding-key": "SYNTHETIC_PUBLIC_KEY" } }]),
+      SYNTHETIC_PUBLIC_KEY: keys.publicKey.export({ format: "pem", type: "spki" }).toString() };
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand); return { ETag: "synthetic-etag" } as never;
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-durable-handler", client });
+    const resolveStorage = vi.fn(() => storage);
+    try {
+      const handler = createSnapshotBuildCapability(resolveStorage, env); if (!handler) throw new Error("SYNTHETIC_CAPABILITY_MISSING");
+      await handler(first); expect(send).toHaveBeenCalledTimes(14); expect(resolveStorage).toHaveBeenCalledOnce();
+      const original = await observer(scope, (tx) => tx.deliveryRun.findFirstOrThrow());
+      now = new Date(now.getTime() + 2000);
+      const recovered = await service().claim("synthetic-snapshot-worker", 1000, ["snapshot.build.request"]);
+      expect(recovered?.outboxEventId).toBe(intent.outboxEventId); expect(recovered?.attempt).toBe(2);
+      if (!recovered) throw new Error("SYNTHETIC_RECOVERY_MISSING");
+      await expect(service().complete(first)).rejects.toMatchObject({ code: "OUTBOX_LEASE_LOST" });
+      delete process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      const restart = createSnapshotBuildCapability(() => { throw new Error("SYNTHETIC_REPLAY_MUST_NOT_RESOLVE_STORAGE"); },
+        { ...env, SYNTHETIC_PUBLIC_KEY: "synthetic-missing-rotated-public-key" });
+      if (!restart) throw new Error("SYNTHETIC_CAPABILITY_MISSING");
+      // Replace only queue transport. Existing drain performs actual DB takeover,
+      // handler invocation and fenced settlement, not a fixture completion shortcut.
+      const queueComplete = vi.fn(async () => undefined);
+      const queue = { fetch: vi.fn(async () => [{ id: "synthetic-recovered-job", data: { schemaVersion: 1, event: recovered } }]),
+        send: vi.fn(), complete: queueComplete };
+      await expect(drainOutboxWithDependencies({ workerId: "synthetic-restarted-worker", maxEvents: 1 }, {
+        boss: queue as never, reliability: service(), heartbeat: vi.fn(async () => undefined),
+        topics: ["snapshot.build.request"], handle: restart,
+      })).resolves.toEqual({ claimed: 1, completed: 1, failed: 0 });
+      expect(queueComplete).toHaveBeenCalledWith("outbox.dispatch", "synthetic-recovered-job", { status: "success" });
+      expect(send).toHaveBeenCalledTimes(14);
+      await observer(scope, async (tx) => {
+        expect(await tx.deliveryRun.count()).toBe(1); expect((await tx.deliveryRun.findFirstOrThrow()).id).toBe(original.id);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).publishSequence).toBe(original.publishSequence);
+      });
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        expect((await tx.outboxEvent.findUniqueOrThrow({ where: { id: intent.outboxEventId } })).status).toBe("PROCESSED");
+        expect((await tx.jobRun.findUniqueOrThrow({ where: { id: recovered.jobRunId } })).status).toBe("SUCCESS");
+      });
+    } finally {
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: false, unfrozenAt: new Date() } }));
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  }, 60_000);
+  it.each(["head", "artifacts", "manifest", "bound-head", "bound-artifacts"])("cancels active %s SDK work and joins every owned request before returning", async (mode) => {
+    const phase = mode.replace("bound-", ""); const boundAbort = mode.startsWith("bound-");
+    const setup = await fixture(phase === "head"); const controller = new AbortController(); const invocation = new AbortController();
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let active = 0; let aborted = 0; let artifacts = 0; let manifests = 0;
+    const transport = async (command: unknown, options: unknown) => {
+      expect(cuts.active).toBe(0);
+      const signal = (options as { abortSignal?: AbortSignal })?.abortSignal;
+      expect(signal).toBeInstanceOf(AbortSignal);
+      if (!signal) throw new Error("SYNTHETIC_MISSING_ABORT_SIGNAL");
+      const isHead = command instanceof HeadObjectCommand;
+      const isManifest = command instanceof PutObjectCommand && command.input.ContentType === "application/json";
+      if (command instanceof PutObjectCommand) { if (isManifest) manifests++; else artifacts++; }
+      const held = (phase === "head" && isHead) || (phase === "artifacts" && !isHead && !isManifest) || (phase === "manifest" && isManifest);
+      if (!held) return { ETag: "synthetic-etag" };
+      active++;
+      if (phase !== "artifacts" || artifacts === 13) queueMicrotask(() => controller.abort());
+      try {
+        await new Promise<never>((_resolve, reject) => {
+          const cancel = () => { aborted++; setTimeout(() => reject(new Error("SYNTHETIC_TRANSPORT_ABORT")), aborted % 3); };
+          if (signal.aborted) cancel(); else signal.addEventListener("abort", cancel, { once: true });
+        });
+      } finally { active--; }
+    };
+    const send = vi.spyOn(client, "send").mockImplementation(transport as never);
+    try {
+      await expect(createSnapshotPublicationServer({ ...setup.scope,
+        ...(boundAbort ? { signal: controller.signal } : {}),
+        storage: new S3ObjectStorage({ bucket: "synthetic-active-abort", client }), keyId: "synthetic-binding-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: { currentKeyId: "synthetic-binding-key", nextKeyId: null,
+          revokedKeyIds: [], publicKeys: { "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup, boundAbort ? invocation.signal : controller.signal)).rejects.toThrow("SNAPSHOT_PUBLICATION_CANCELLED");
+      expect(invocation.signal.aborted).toBe(false);
+      expect(active).toBe(0); expect(aborted).toBe(phase === "artifacts" ? 13 : 1);
+      expect(artifacts).toBe(phase === "head" ? 0 : 13); expect(manifests).toBe(phase === "manifest" ? 1 : 0);
+      const calls = send.mock.calls.length; await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(send).toHaveBeenCalledTimes(calls); expect(active).toBe(0);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+        expect(await tx.snapshotPublicationBinding.count()).toBe(phase === "head" ? 0 : 1);
+      });
+    } finally {
+      controller.abort();
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  }, 60_000);
   it("replays a concurrent commit when cancelled just after initial no-run lookup", async () => {
     const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
     const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;

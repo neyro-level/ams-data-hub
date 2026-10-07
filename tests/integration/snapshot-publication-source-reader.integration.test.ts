@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server.ts";
 import { validateSnapshotInput } from "../../src/modules/snapshot-delivery/index.ts";
-import { createSnapshotPublicationSourceReader } from "../../src/modules/ingestion-core/server.ts";
+import { createSnapshotPublicationSourceReader, createSnapshotSourceGoodTriggerReader } from "../../src/modules/ingestion-core/server.ts";
 import { prepareSnapshotPublicationSourceAnchors, analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
@@ -71,6 +71,47 @@ function publication<T>(scope: { organizationId: string; projectId: string }, ex
   }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
 }
 describe("actual NOBYPASS publication source freshness", () => {
+  it("admits historical GOOD trigger metadata after head advance and producer OFF", async () => {
+    const s = await fixture();
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: s.sourceId }, data: { enabled: false, version: { increment: 1 } } }));
+    await publication(s.scope, async (tx) => {
+      const trace = vi.spyOn(tx.sourceRevision, "findFirst");
+      try {
+        await createSnapshotSourceGoodTriggerReader(tx)({ schemaVersion: 1, ...s.scope, sourceId: s.sourceId,
+          sourceRevisionId: s.revisions[0]!, sourceRevisionSequence: 1 });
+        expect(trace).toHaveBeenCalledOnce();
+        expect(trace.mock.calls[0]![0]).toEqual({ where: { ...s.scope, sourceId: s.sourceId, id: s.revisions[0], sequence: 1, status: "GOOD" }, select: { id: true } });
+        expect(JSON.stringify(await trace.mock.results[0]!.value)).not.toMatch(/payload|private|external|profile/u);
+      } finally { trace.mockRestore(); }
+    });
+  });
+  it.each(["source", "revision", "sequence", "project", "organization", "failed"])("denies invalid %s GOOD trigger membership", async (mode) => {
+    const s = await fixture();
+    const failed = await runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceRevision.create({ data: { ...s.scope, sourceId: s.sourceId,
+      sourceVersion: 1, adapterKey: s.sourceData.adapterKey, adapterVersion: s.sourceData.adapterVersion,
+      profileKey: s.sourceData.profileKey, profileVersion: s.sourceData.profileVersion,
+      safetyPolicy: BOOTSTRAP_SOURCE_SAFETY_POLICY, safetyAnalysis: {}, recordCount: 0, status: "FAILED", completedAt: new Date() } }));
+    const input = { schemaVersion: 1 as const, ...s.scope, sourceId: s.sourceId, sourceRevisionId: s.revisions[0]!, sourceRevisionSequence: 1 };
+    if (mode === "source") input.sourceId = "synthetic-nonexistent-source";
+    if (mode === "revision") input.sourceRevisionId = "synthetic-nonexistent-revision";
+    if (mode === "sequence") input.sourceRevisionSequence = 2;
+    if (mode === "project") input.projectId = s.foreignId;
+    if (mode === "organization") input.organizationId = "synthetic-foreign-org";
+    if (mode === "failed") input.sourceRevisionId = failed.id;
+    await expect(publication(s.scope, (tx) => createSnapshotSourceGoodTriggerReader(tx)(input))).rejects.toThrow("SNAPSHOT_BUILD_REQUEST_INVALID");
+  });
+  it("denies broad or legacy trigger purpose before any revision read", async () => {
+    const s = await fixture(); const input = { schemaVersion: 1 as const, ...s.scope, sourceId: s.sourceId,
+      sourceRevisionId: s.revisions[0]!, sourceRevisionSequence: 1 };
+    for (const projects of ["*", [], [s.scope.projectId, s.foreignId]] as const) {
+      await publication(s.scope, async (tx) => {
+        const trace = vi.spyOn(tx.sourceRevision, "findFirst");
+        try { await expect(createSnapshotSourceGoodTriggerReader(tx)(input)).rejects.toThrow("SNAPSHOT_BUILD_REQUEST_INVALID");
+          expect(trace).not.toHaveBeenCalled(); } finally { trace.mockRestore(); }
+      }, projects);
+    }
+    await publication(s.scope, (tx) => expect(createSnapshotSourceGoodTriggerReader(tx)(input)).rejects.toThrow("SNAPSHOT_BUILD_REQUEST_INVALID"), [s.scope.projectId], "job");
+  });
   it("accepts historical missing-grace GOOD and OFF/failed attempt with metadata-only queries", async () => {
     const setup = await fixture();
     expect(setup.anchors.inventory[0]!.factRevisionId).toBe(setup.revisions[0]);

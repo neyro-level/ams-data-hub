@@ -16,9 +16,11 @@ import type { ObjectStorage } from "../../../platform/storage/object-storage.ts"
 /** Prepare durable identity and immutable artifacts, never expose a current pointer. */
 export function createSnapshotArtifactStagingServer(bound: Parameters<typeof createSnapshotSignedBuildServer>[0] & { storage: ObjectStorage }) {
   const scope = { organizationId: bound.organizationId, projectId: bound.projectId };
-  const build = createSnapshotSignedBuildServer(bound);
   const storage = new ProjectSnapshotStorage(scope.projectId, bound.storage);
-  return async (principal: PrincipalContext, lookup: Parameters<typeof build>[1]) => {
+  return async (principal: PrincipalContext, lookup: Parameters<ReturnType<typeof createSnapshotSignedBuildServer>>[1], signal?: AbortSignal) => {
+    const signals = [...(signal ? [signal] : []), ...(bound.signal ? [bound.signal] : [])];
+    const ownedSignal = signals.length ? AbortSignal.any(signals) : AbortSignal.timeout(60_000);
+    const build = createSnapshotSignedBuildServer({ ...bound, signal: ownedSignal });
     const signed = await build(principal, lookup); // Strict scope/lookup and privacy/signature gates precede binding.
     const publication = createProjectJobPrincipal({ ...scope, jobName: "snapshot-publication", correlationId: principal.correlationId });
     const binding = await runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(publication),
@@ -33,7 +35,7 @@ export function createSnapshotArtifactStagingServer(bound: Parameters<typeof cre
       },
       { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
     const current = await stageSnapshotArtifacts({ organizationId: scope.organizationId,
-      composition: signed.composition, manifest: signed.manifest }, storage); // No DB cut remains open.
+      composition: signed.composition, manifest: signed.manifest }, storage, ownedSignal); // No DB cut remains open.
     if (current.manifestSha256 !== binding.manifestSha256
       || current.manifestKey !== createProjectSnapshotKey(scope.projectId, binding.manifestSha256)) {
       throw new Error("SNAPSHOT_PUBLICATION_STORAGE_MISMATCH");

@@ -1,0 +1,15 @@
+import "server-only";
+import { createSnapshotBuildRequestHandler, createProjectSnapshotSigningResolver } from "../modules/snapshot-delivery/server.ts";
+import type { ProjectObjectStorage, ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
+
+/** Optional capability of the EXISTING combined worker, not a new process.
+ * Disabled mode leaves snapshot intents reserved and old intake unaffected. */
+export function createSnapshotBuildCapability(resolveStorage: (scope: ProjectStorageScope) => ProjectObjectStorage,
+  environment: Readonly<Record<string, string | undefined>> = process.env) {
+  const enabled = environment.SNAPSHOT_BUILD_ENABLED;
+  if (enabled === undefined || enabled === "false") return null;
+  if (enabled !== "true") throw new Error("SNAPSHOT_BUILD_CAPABILITY_INVALID");
+  const resolveSigning = createProjectSnapshotSigningResolver(environment); // Strict registry before queue startup; no secrets resolved yet.
+  return createSnapshotBuildRequestHandler({ resolvePublication: (scope) => ({ ...scope,
+    ...resolveSigning(scope), storage: resolveStorage(scope) }) });
+}

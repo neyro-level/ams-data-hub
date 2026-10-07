@@ -33,7 +33,9 @@ export interface PublishSnapshotInput {
   manifest: SnapshotManifestV1;
 }
 
-export async function stageSnapshotArtifacts(input: PublishSnapshotInput, storage: ProjectSnapshotStorage): Promise<CurrentSnapshotManifest> {
+export async function stageSnapshotArtifacts(input: PublishSnapshotInput, storage: ProjectSnapshotStorage, signal?: AbortSignal): Promise<CurrentSnapshotManifest> {
+  const checkSignal = () => { if (signal?.aborted) throw new Error("SNAPSHOT_PUBLICATION_CANCELLED"); };
+  checkSignal();
   const { composition, manifest, organizationId } = input;
   const { signature: _signature, ...unsignedManifest } = manifest;
   void _signature;
@@ -49,10 +51,12 @@ export async function stageSnapshotArtifacts(input: PublishSnapshotInput, storag
     body: file.body,
     contentType: "application/gzip",
     sha256: file.manifest.sha256,
+    ...(signal ? { signal } : {}),
   })));
   // Do not return failure while owned writes are still running: retries and
   // worker shutdown must observe a fully settled artifact staging attempt.
   const failed = writes.find((write) => write.status === "rejected");
+  checkSignal();
   if (failed?.status === "rejected") throw failed.reason;
   const manifestBody = canonicalJsonBytes(manifest as unknown as CanonicalJsonValue);
   const manifestSha256 = calculateObjectSha256(manifestBody);
@@ -60,7 +64,9 @@ export async function stageSnapshotArtifacts(input: PublishSnapshotInput, storag
     body: manifestBody,
     contentType: "application/json",
     sha256: manifestSha256,
-  });
+    ...(signal ? { signal } : {}),
+  }).catch((error: unknown) => { checkSignal(); throw error; });
+  checkSignal();
   return {
     organizationId,
     projectId: manifest.projectId,
