@@ -92,6 +92,15 @@ regressions; новый runtime proof описан отдельно выше.
 35 scoped units, quick/types/lint/architecture PASS. Оставшиеся четыре
 исполнителя и полный MP-08.1 DoD не завершены.
 
+Следующий PUBLISH prerequisite — project-scoped bounded snapshot GET:
+ключ проекта, лимит и pre-abort проверяются до adapter IO; старый adapter
+без bounded capability не может вызвать fallback на unbounded GET.
+Targeted storage matrix — 52/52 PASS в пяти suites с actual S3 adapter и
+synthetic SDK transport, включая scope denial, size/hash rejection,
+cancellation и reader cleanup. Это не registered PUBLISH executor:
+выбор stage, strict public artifact verification и atomic publication/request
+result ещё требуют реализации и доказательств.
+
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
 MP-05.1 закрыт implementation ledger

@@ -142,7 +142,15 @@ Config-free exact replay precedes mutable admission and signer/storage IO,
 including concurrent committed-stage recovery after cancellation following an
 initial replay miss. Stage completion does not authorize later publication:
 PUBLISH must independently verify current trust, artifact integrity and fresh
-admission. The operational BUILD adapter pins capture identity to the accepted
+admission. The project-scoped snapshot storage wrapper exposes explicit bounded
+GET: project-key, byte-limit and already-aborted checks precede adapter IO;
+an adapter without bounded-read capability fails closed, never falling back to
+unbounded GET. The existing S3 adapter preserves streaming limits, digest checks,
+caller cancellation and owned reader cleanup. This storage prerequisite is not
+a completed operational PUBLISH executor. Signed file keys remain logical
+`kind.sha256.json.gz`; physical reads use the project/hash storage namespace,
+without rewriting signed manifests.
+The operational BUILD adapter pins capture identity to the accepted
 request ID, records RUNNING before capture and succeeds only against the same
 stage receipt under the complete current lease. SQL checks both request-derived
 idempotency and complete minor-zero capture request hash. It recovers a stage
