@@ -184,6 +184,26 @@ not remove existing legitimate import/mirror/admin policies or receipt/counter
 writes. Native denial and ordinary-workflow controls must pass before claiming
 the boundary fixed.
 
+Inventory media capture in MP-05.1 now reads exact scoped ACTIVE identity/hash
+and immutable GOOD image membership from the captured inventory pins, retaining
+producer positions (including duplicate images). An eligible historical mirror
+must reference a scoped GOOD record no newer than the fact revision and belong
+to that record's image membership. Capture stores relation revision/update
+tokens and allowlisted asset digest/type/size/key/rights markers, not producer
+URLs, filenames, license text or mutable relation IDs alone. The head pin must
+also match scoped Source.LastGood in that same cut. A capture-local buffer emits
+at most 200 records/1 MiB per part across listings, preserving repeated producer
+positions without one empty part per inventory; finish emits one empty section
+only when the whole media capture is empty. Any failure prevents finalization.
+HEAD/public DTO projection remains outside capture. Native proof covers
+historical grace, wrong/foreign/future/stale-head pins, warning omissions and
+remirror after capture; batching has separate resource regression tests.
+Agent/shared media associations, complete resolver composition and immutable
+receipt replay proof remain pending, so this is not MP-05.1 completion.
+Batching unit tests prove part-budget behavior, not database throughput: the
+current per-inventory SQL fanout still needs a measured/batched page capture
+seam within the real transaction timeout before supported capacity is claimed.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

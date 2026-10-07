@@ -15,6 +15,8 @@ import { createSourceSnapshotFactReader } from "../../src/modules/ingestion-core
 import { createProjectStateSnapshotFactReader } from "../../src/modules/project-state/server.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
+import { createMediaSnapshotFactReader } from "../../src/modules/media-assets/server.ts";
+import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
 
 const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-input-admin", correlationId: "synthetic-input" };
 async function setup() {
@@ -45,6 +47,86 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it("pins historical GOOD media assets and producer positions without foreign/future relations or remirror substitution", async () => {
+    const scope = await setup();
+    const uid = createUlid();
+    const urls = ["a", "b", "a", "c", "d", "e"].map((name) => `https://example.invalid/private/${name}.jpg`);
+    const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-media-input", name: "Synthetic media input", adapterKey: "yrl-realty-2010",
+        adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      async function good(sequence: number, externalId: string, inventoryUid: string, imageUrls: string[]) {
+        const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+          adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
+        await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId, inventoryUid,
+          orderKey: Buffer.from(externalId).toString("hex"), recordHash: "b".repeat(64),
+          payload: { schemaVersion: 1, draft: { imageUrls, contactPhones: ["synthetic-private-phone"] }, rawRecord: { private: true } } } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence,
+          rawStorageKey: `synthetic-private/${sequence}`, rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+          normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        return revision.id;
+      }
+      const historical = await good(1, "kept", uid, urls);
+      const head = await good(2, "new-only", createUlid(), []);
+      const future = await good(3, "kept", uid, [urls[4]!]);
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: head } });
+      await tx.inventoryIdentity.create({ data: { ...where, uid, externalOfferId: "kept", status: "ACTIVE",
+        normalizedHash: "b".repeat(64), sourceHash: "d".repeat(64), firstSeenAt: new Date(), lastSeenAt: new Date(),
+        missingGoodRuns: 1, missingSince: new Date() } });
+      async function asset(projectId: string, sha256: string) {
+        return tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId, sha256,
+          storageKey: createMediaKey(sha256), contentType: "image/jpeg", byteSize: 100, originalFileName: "synthetic-private.jpg",
+          rightsBasis: "LICENSED", source: "synthetic-private-producer", license: "synthetic-private-license", uploadedBy: "synthetic-admin" } });
+      }
+      const first = await asset(scope.projectId, "a".repeat(64));
+      const retained = await asset(scope.projectId, "c".repeat(64));
+      const foreign = await asset(scope.foreignProjectId, "f".repeat(64));
+      const relations = await Promise.all([0, 1, 3, 4, 5].map((index) => tx.mediaSource.create({ data: {
+        ...where, sourceRevisionId: index === 4 ? future : historical, entityType: "INVENTORY", entityUid: uid,
+        kind: "LISTING_IMAGE", position: 999, sourceUrl: urls[index]!, canonicalSourceUrl: urls[index]!,
+        status: index === 1 || index === 3 ? "WARNING" : "MIRRORED",
+        assetId: index === 3 ? null : index === 5 ? foreign.id : index === 1 ? retained.id : first.id,
+        firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: index === 3 ? null : new Date(),
+      } })));
+      return { sourceId: source.id, historical, head, firstAssetId: first.id, retainedAssetId: retained.id, firstRelationId: relations[0]!.id };
+    });
+    const pin = { sourceId: fixture.sourceId, inventoryUid: uid, externalOfferId: "kept", normalizedHash: "b".repeat(64),
+      factRevisionId: fixture.historical, factRevisionSequence: 1, approvedHeadId: fixture.head, approvedHeadSequence: 2 };
+    async function capture(tx: DatabaseTransaction) {
+      const rows: CanonicalJsonValue[] = [];
+      const reader = createMediaSnapshotFactReader(tx, (_kind, page) => rows.push(...page));
+      await reader.captureInventory(scope, pin);
+      reader.finishCapture();
+      return rows;
+    }
+    const captured = await worker(scope, async (tx) => {
+      const before = await capture(tx);
+      expect(before).toHaveLength(6);
+      for (const position of [0, 2]) expect(before[position]).toMatchObject({ position, asset: { id: fixture.firstAssetId, sha256: "a".repeat(64) } });
+      expect(before[1]).toMatchObject({ position: 1, mirrorStatus: "WARNING", asset: { id: fixture.retainedAssetId } });
+      for (const position of [3, 4, 5]) expect(before[position]).toMatchObject({ position, omission: "MEDIA_MIRROR_UNAVAILABLE" });
+      expect(JSON.stringify(before)).not.toMatch(/https:|sourceUrl|originalFileName|synthetic-private|contactPhones|rawRecord/u);
+      await runInPrincipalDatabaseTransaction(admin, (other) => other.mediaSource.update({ where: { id: fixture.firstRelationId },
+        data: { assetId: fixture.retainedAssetId, sourceRevisionId: fixture.head, position: 7 } }));
+      expect(await capture(tx)).toEqual(before);
+      await expect(createMediaSnapshotFactReader(tx, () => undefined).captureInventory(scope, { ...pin, normalizedHash: "e".repeat(64) }))
+        .rejects.toThrow("SNAPSHOT_INPUT_MEDIA_PIN_INVALID");
+      await expect(createMediaSnapshotFactReader(tx, () => undefined).captureInventory({ organizationId: scope.organizationId,
+        projectId: scope.foreignProjectId }, pin)).rejects.toThrow("SNAPSHOT_INPUT_MEDIA_PIN_INVALID");
+      await expect(createMediaSnapshotFactReader(tx, () => undefined).captureInventory(scope,
+        { ...pin, approvedHeadId: fixture.historical, approvedHeadSequence: 1 })).rejects.toThrow("SNAPSHOT_INPUT_MEDIA_PIN_INVALID");
+      return before;
+    });
+    expect(captured[0]).toMatchObject({ asset: { sha256: "a".repeat(64) } });
+    const fresh = await worker(scope, capture);
+    expect(fresh[0]).toMatchObject({ omission: "MEDIA_MIRROR_UNAVAILABLE" });
+    expect(captured[0]).toMatchObject({ asset: { sha256: "a".repeat(64) } });
+  });
+
   it("captures scoped project facts in one cut and omits unconsented agents and admin metadata", async () => {
     const scope = await setup();
     const publicUid = createUlid();

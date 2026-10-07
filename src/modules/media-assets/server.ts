@@ -1,4 +1,5 @@
 import "server-only";
+export { createMediaSnapshotFactReader, type InventorySnapshotMediaPin } from "./infrastructure/media-snapshot-facts.ts";
 
 import { runInPrincipalDatabaseTransaction } from "../../platform/database/transaction.ts";
 import { safeOutboundBuffered } from "../../platform/http/safe-outbound.ts";

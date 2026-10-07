@@ -136,7 +136,13 @@ remediation program preserves these boundaries while connecting them:
   independently of scope shape. Receipt/parts/counter writes and other existing
   job/admin purposes retain their previous policies. This closes legacy generic
   project-job write permissions; adding a SELECT policy alone was insufficient.
-  Remaining media associations and concrete command composition are
+  Inventory media capture now pins scoped historical GOOD image membership,
+  original repeated positions and complete allowlisted asset facts, not just
+  mutable relation IDs. It checks Source.LastGood in the same cut and omits
+  foreign/future/invalid mirrors; a cross-listing bounded buffer prevents early
+  part-budget exhaustion. Object HEAD and public media projection are outside
+  the DB capture transaction. Agent/shared media associations and concrete
+  command composition are
   still pending; native fact-reader/admission proof is not full build proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
