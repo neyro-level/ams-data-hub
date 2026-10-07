@@ -9,6 +9,7 @@ import {
   type NormalizedAgentEvidence,
 } from "../domain/agent-matching.ts";
 import type { AgentEvidenceScope, AgentMatchingRepository } from "./ports/agent-matching-repository.ts";
+import { resolveListingAgentBindings } from "./listing-agent-matching.ts";
 
 const evidenceSchema = z.object({
   fullNameRaw: z.string().trim().min(1).max(240),
@@ -45,6 +46,7 @@ export interface AgentMatchingResult {
 function requireScopedJob(principal: PrincipalContext, input: ReconcileFeedAgentsInput): ProjectJobPrincipal {
   if (
     principal.kind !== "project-job" ||
+    principal.jobName !== "agent-matching" ||
     principal.organizationId !== input.organizationId ||
     principal.projectId !== input.projectId
   ) throw new Error("AGENT_MATCHING_PROJECT_JOB_REQUIRED");
@@ -87,7 +89,15 @@ export function createFeedAgentMatchingCommands(dependencies: {
         observedAt: new Date(input.observedAt),
       };
       if (!await repository.sourceExists(scope)) throw new Error("AGENT_MATCHING_SOURCE_NOT_FOUND");
+      const requestedOffers = new Set<string>();
+      let claimCount = input.evidence.length;
+      for (const item of input.evidence) for (const externalId of item.offerExternalIds) {
+        claimCount++;
+        requestedOffers.add(externalId);
+        if (claimCount > 50_000 || requestedOffers.size > 50_000) throw new Error("AGENT_MATCHING_LIMIT_EXCEEDED");
+      }
       await repository.lockProject(input.organizationId, input.projectId);
+      const facts = await repository.readGoodOffers(scope, [...requestedOffers]);
       const evidence = deduplicate(input.evidence.map((item) => normalizeAgentEvidence({ ...item, sourceId: input.sourceId })));
       const ambiguousPhones = ambiguousPhoneNames(evidence);
       const sharedPhones = new Set(input.sharedOfficePhones);
@@ -133,6 +143,7 @@ export function createFeedAgentMatchingCommands(dependencies: {
         bindings.push({ evidenceKey: item.evidenceKey, agentUid, outcome, offerExternalIds: item.offerExternalIds });
       }
       const presence = await repository.reconcilePresence(scope, [...activeAgentUids]);
+      await repository.replaceListingBindings(scope, resolveListingAgentBindings(facts, bindings));
       return { bindings, activeAgents: presence.active, noActiveListings: presence.inactive };
     },
   });

@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-03/MP-06 delivered, MP-04 foundation / 2026-10-06
+### Remediation runtime state — 2026-10-07
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -107,8 +107,184 @@ remediation program preserves these boundaries while connecting them:
   execution remains MP-05/MP-08; scheduled source execution is implemented;
   service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
-  application pipeline. Real 13-dataset projectors, input resolution and
-  build/sign/publication orchestration are pending.
+  application pipeline. Real 13-dataset projectors and pinned input resolution
+  are implemented; full build/sign/publication orchestration remains pending.
+  MP-05.1 implementation is closed at pushed checkpoint `a074033`; epic delivery
+  remains pending. Forward-only input receipt/parts and project sequence
+  persistence now exist. Receipts require all 18 private fact sections,
+  transaction-bound inserts, immutable post-commit state, request/input hashes
+  and bounded replay. A positive sequence is reserved atomically with capture;
+  the scoped counter floors existing current/delivery/input sequences. Complete
+  transaction-bound DB fact resolution is now composed by the private
+  `captureSnapshotInput` command. It is not a public assembly/publication pipeline.
+  Transaction-bound shared-catalog and Source fact readers capture the scoped
+  subscription candidate closure and exact GOOD identity/hash membership,
+  including historical grace facts. Profile configuration is pinned once per
+  identity, not copied for every listing or loaded live during rebuild. Fact
+  reads are SELECT-only under `snapshot-input`; Source mutation policies stay
+  unchanged. The capture runner holds global-safety then project locks, checks
+  fresh admission in a bounded authorized Read Committed transaction, and keeps
+  every fact in the one outer Repeatable Read cut. This needs two available
+  pool connections; acquisition is bounded and failure rolls back capture.
+  No SECURITY DEFINER function or worker state-mutation grant is introduced.
+  Project-state capture also pins scoped contact candidates, consented visible
+  agents, editorial/media-order policy and persisted URL reservations/history.
+  Catalog observation capture pins selected own-project prices as exact decimal
+  strings and shared-media metadata without producer URLs/license text. Global
+  catalog membership does not authorize foreign project observations.
+  An additive restrictive RLS layer denies INSERT/UPDATE/DELETE by the
+  `snapshot-input` job purpose on captured fact/publication-floor tables,
+  independently of scope shape. Receipt/parts/counter writes and other existing
+  job/admin purposes retain their previous policies. This closes legacy generic
+  project-job write permissions; adding a SELECT policy alone was insufficient.
+  Inventory media capture now pins scoped historical GOOD image membership,
+  original repeated positions and complete allowlisted asset facts, not just
+  mutable relation IDs. It checks Source.LastGood in the same cut and omits
+  foreign/future/invalid mirrors; a cross-listing bounded buffer prevents early
+  part-budget exhaustion. Inventory capture now uses pages of at most 200 pins,
+  bulk scoped identity/head/fact checks and keyset-batched mirror queries.
+  SQL returns at most 1 MiB of image arrays or small split markers; a shared
+  32 MiB retained-URL budget covers current and historical memberships, with
+  historical requests deduplicated per inventory/revision and released per page.
+  This bounds retained representations, not process RSS. Native Source-to-media
+  capture of 4100 image-less identities uses 64 raw SQL calls and passes the
+  actual 30-second worker transaction. The complete command additionally captures
+  4100 image-bearing identities and 8200 media positions within that unchanged
+  transaction limit, then replays the persisted receipt.
+  Object HEAD and public media projection are outside
+  the DB capture transaction. Agent capture pins both assigned photo slots under
+  ACTIVE/visibility/consent gates, using scoped asset facts and an explicit
+  ASSIGNED_ASSET_ONLY marker; assignment is not approved feed-photo provenance.
+  Shared observation capture pins exact scoped development/building mirror
+  associations in page-batched queries, retaining eligible warning assets and
+  rights markers without requiring XML revisions for manual imports. Its
+  SHARED_OBSERVATION_MIRROR marker is not a GOOD feed claim. Public projectors
+  must use captured observation rights and fail closed on missing feed provenance.
+  The command persists all 18 sections atomically and creates a fresh builder
+  per transaction retry. Native NOBYPASS tests prove immutable replay after live
+  facts change, concurrent same-key capture, rollback and fresh freeze admission.
+  Replay skips fact rematerialization, not the current admission check.
+  `projectStateRevision` is the base Project version; captured version/value
+  parts and their input hash identify the complete state. `catalogRevision`
+  hashes captured catalog values, not a global sequence. Input capture alone is
+  not full build proof; public projection and signing are described below,
+  while publication remains pending. MP-05.2 implementation is closed.
+  Five captured candidate-closure projectors emit
+  strict geo/developer/development/building/price rows with explicit references,
+  cross-parent checks, deterministic order and exact decimal strings. Input
+  validation checks all 18 sections, part order/hashes, header/input digest and
+  captured catalog digest before projection. Catalog coordinates retain their
+  persisted seven-place precision; developer/development names and aliases
+  accept persisted 200-character values. Observation source/external IDs and
+  private catalog metadata are not copied into public values. Six additional
+  pure project-state projectors emit contacts, captured-gated agents, editorial,
+  persisted URLs, redirects and lifecycle. They reuse the existing editorial
+  mapper/captured media-order policy and omit closed agents/personal editorial.
+  Reservation IDs survive legitimate relinks; URL history/tombstones reference
+  reserved IDs, not mandatory active entity rows. Lifecycle retains inactive
+  state and events. Verified agent media is a server-owned input, not proof of
+  HEAD or fresh consent. MP-05.2 supplied these 11 projectors; subsequent tasks
+  below add subscription filtering, inventory GOOD resolution and verified media
+  to the complete thirteen-dataset candidate. Fresh publication remains pending.
+  Generated stored payload byte/record counts avoid repeated JSON sizing in
+  deferred commit checks without removing either header/part constraint trigger,
+  contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
+  pins, 8200 media positions and the original 30-second worker limit. Production
+  table rewrite/lock rehearsal is a separately approved release prerequisite.
+  The ingestion-owned server-only GOOD resolver reads exact captured scoped
+  revision/UID/external/hash/sequence/profile pins in pages of at most 200. It
+  recomputes the ingestion hash without draft provenance; live Source heads and
+  the profile registry do not replace pinned data. A SQL 4-MiB page guard splits
+  oversized pages before transfer, and malformed components return marker-only
+  failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
+  and coordinates use the captured location policy in the candidate projector
+  described below. Full signed build/publication orchestration remains unfinished.
+  GOOD resolution now excludes raw `draft.address` and private apartment fields
+  from its result. Optional `addressPublic` passes bounded NFKC-aware unit
+  redaction: explicit RU/EN unit components and exact captured apartment markers
+  are removed; ambiguous surviving markers or forbidden normalized content fail
+  closed. This is an address-unit boundary, not final location-policy/DTO proof.
+  The inventory candidate projector checks exact verified identity/profile pins,
+  normalizes property-specific sparse facts under captured unit/period rules,
+  applies deterministic STREET coordinates and uses the persisted captured URL.
+  Public DTOs omit private pins/invalid raw values and declare URL/media attachment
+  references. Safe-HTML text-token cleanup removes the leading internal source
+  code while retaining rich markup. Captured media admission now verifies
+  inventory pins, agent assignment/consent and shared ownership before sequential
+  project-bound HEAD outside DB. A build-local metadata-conflict-safe cache
+  retains repeated positions; strict opaque attachments reference their owners.
+  Server-owned candidate assembly now loads only persisted scoped receipts under
+  the snapshot-input principal, preflights captured inventory URL/profile settings,
+  performs HEAD outside DB, resolves immutable GOOD in pages of at most 200 and
+  immediately projects public records. Exact thirteen-dataset references/privacy
+  are checked; aggregate canonical array work is capped at 32 MiB including
+  brackets and page-spanning separators. Captured subscription selection applies
+  ALL_SHARED city scope or CURATED explicit INCLUDE, with EXCLUDE taking priority
+  over confirmed listing links. ACTIVE, unmerged developments and developers
+  determine the cohort; only ACTIVE, unmerged buildings survive. Geo anchors and
+  selected dependencies remain; prices, shared media (before HEAD) and editorial
+  follow selected owners. Inventory and persistent URL history are not pruned.
+  No live subscription lookup or receipt/hash rewriting occurs.
+  Inventory preflight also requires unique captured Source rows and exact
+  approved-head ID/sequence membership. Historical GOOD facts may be older than
+  the head but never newer; a missing/inconsistent head fails before object IO.
+  Capture reuses ingestion's shared apply SAFE policy/count/baseline/hash predicate
+  for heads and selected historical facts. Baselines are exact scoped immutable
+  GOOD rows, same source and adjacent GOOD sequence. Per-cut cached lookups use
+  pages of at most 200 pins; SQL rejects policy/analysis JSON above 4096 bytes each
+  before transfer. Private value-free approval pins/hashes are correlated during
+  preflight and excluded from public DTOs. Older receipts without this proof fail
+  closed and require new capture, never live enrichment or hash rewriting.
+  This is not signing/publication;
+  MP-05.6 adds project-state-owned `ListingAgentBinding`: exact scoped GOOD
+  revision, inventory UID and record hash, plus scoped Agent UID. The canonical
+  `agent-matching` command replaces the complete revision assignment set in one
+  transaction, not incremental pages. It accepts only trusted server evidence,
+  bounds aggregate evidence/offer claims to 50000, and checks global DataSafety
+  freeze under its mutation lock before the project matching lock. GOOD fact
+  membership is checked in pages of 200; database trigger and scoped FKs reject
+  foreign or forged pins. Snapshot capture is SELECT-only for these bindings.
+  Binding capture starts from scoped assignment rows before the correlated
+  historical fact lookup; it still requires the latest matching GOOD fact at or
+  before the head. An older binding cannot replace a missing newer assignment.
+  Captured exact-fact assignments publish `agentUid` and an agents reference only
+  when the captured Agent passes ACTIVE/showOnSite/consent. An unresolved or
+  ambiguous claim omits assignment; failed publication gate preserves inventory
+  and omits the personal block/photo. Existing project contacts remain available.
+  MP-05.7 computes `requiresProjectContact` from captured ACTIVE inventory: any
+  listing without an eligible captured agent assignment requires the exact
+  project/contacts row. Directory membership alone does not replace a listing
+  relation. Missing/foreign contact fails before media HEAD with the existing
+  fixed contact-required error. Candidate returns the derived flag for the
+  composer, which repeats the same admission. Empty inventory and a wholly bound
+  inventory set do not require fallback. No live contact enrichment or config
+  copy is introduced; current publication admission remains separate.
+  This does not automatically wire Source GOOD to matching or enable publication;
+  fresh consent/rights/publication admission is not replaced by captured replay.
+  MP-05.10 adds a server-only signed-build factory: strict scoped receipt lookup
+  feeds the existing assembler, composer privacy/reference guards and SecretRef
+  Ed25519 signer, then verifies against copied trusted/non-revoked key policy.
+  Manifest headers are receipt-derived; sourceRevisions is the sorted unique
+  union of approved captured GOOD heads and historical facts used by ACTIVE rows,
+  capped at 10000. generatedAt/publishedAt use capturedAt as stable identity time;
+  DeliveryRun.createdAt remains the delivery staleness clock. Factory-pinned
+  key configuration is not cross-process publication idempotency: MP-05.11 must
+  bind the signed identity durably before upload and enforce fresh admission.
+  Signing alone does not upload artifacts, update current or register outbox work.
+  MP-05.11 staging now binds immutable signed identity before PUT and checks
+  receipt-owned Source/cohort anchors and project permission anchors in a short
+  ReadCommitted cut under global then project-publication locks. Project checks
+  enforce active service, unfrozen jobs, captured contact version and published
+  Agent consent/version/photo slots and exact bindings without live enrichment
+  or personal-value reads. Fact writers take global before target row/domain
+  locks. Final publication repeats Source/Project/Catalog/Media admission after
+  settled artifact and manifest PUTs in one short global -> publication cut,
+  then atomically persists current and DeliveryRun. Exact committed replay
+  precedes configuration/fresh capture and never regresses a newer pointer.
+  The combined Source worker optionally registers the strict snapshot topic;
+  active cancellation joins owned SDK work. Local synthetic PostgreSQL/pg-boss
+  evidence is implementation proof, not live-provider or production activation.
+  Implementation is closed in Task Manager; exact-head epic delivery is pending.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
@@ -122,7 +298,8 @@ remediation program preserves these boundaries while connecting them:
   only external transport replaced. This does not enable a browser route or
   a real storage provider. Complete snapshot orchestration,
   historical missing-grace fact selection and consent-gated agent projection
-  remain subsequent gates.
+  are implemented by MP-05; remaining operations/API and readiness proof belong
+  to MP-08–MP-10.
 - MP-07: explicit immutable verifier policy now defines compressed/decompressed
   file, record-count and total-work limits. Factory configuration rejects unsafe
   overrides. Native gunzip has a finite output bound constrained by remaining
@@ -132,8 +309,8 @@ remediation program preserves these boundaries while connecting them:
   scope, sequence, set, lengths and all-copy hashes precede any decompression.
   Private bounded copies prevent hash-to-use mutation. Adversarial regressions
   exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
-  boundaries, key rotation/revocation and last-good; delivery review/gate must
-  still pass before this epic is delivered. Budgets are not callback/RSS limits.
+  boundaries, key rotation/revocation and last-good. MP-07 delivery passed its
+  exact-head gate and is recorded in Task Manager. Budgets are not callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

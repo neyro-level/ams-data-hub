@@ -461,11 +461,77 @@ model Project {
   inventoryIdentities      InventoryIdentity[]
   inventoryLifecycleEvents InventoryLifecycleEvent[]
   listingDevelopmentLinks  ListingDevelopmentLink[]
+  snapshotBuildInputs      SnapshotBuildInput[]
+  snapshotSequence         ProjectSnapshotSequence?
 
   @@unique([organizationId, slug])
   @@unique([organizationId, id])
   @@index([organizationId])
   @@index([status, updatedAt])
+}
+
+model ProjectSnapshotSequence {
+  organizationId       String
+  projectId            String
+  lastReservedSequence Int
+  project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId])
+}
+
+model SnapshotBuildInput {
+  id                   String @id @default(cuid())
+  organizationId       String
+  projectId            String
+  idempotencyKeyHash   String @db.Char(64)
+  requestHash          String @db.Char(64)
+  inputSchemaVersion   Int
+  projectorVersion     String @db.VarChar(64)
+  schemaMinor          Int
+  publishSequence      Int
+  projectStateRevision Int
+  catalogRevision      String @db.Char(64)
+  inputHash            String @db.Char(64)
+  capturedAt           DateTime @db.Timestamptz(3)
+  captureTransactionId BigInt @default(dbgenerated("txid_current()"))
+  project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  parts                SnapshotBuildInputPart[]
+  publicationBinding   SnapshotPublicationBinding?
+
+  @@unique([organizationId, projectId, id])
+  @@unique([organizationId, projectId, idempotencyKeyHash])
+  @@unique([organizationId, projectId, publishSequence])
+}
+
+model SnapshotBuildInputPart {
+  organizationId String
+  projectId      String
+  buildInputId   String
+  kind           String @db.VarChar(64)
+  partIndex      Int
+  payloadHash    String @db.Char(64)
+  payload        Json
+  payloadByteCount Int @default(dbgenerated())
+  payloadRecordCount Int @default(dbgenerated())
+  buildInput     SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([buildInputId, kind, partIndex])
+}
+
+model SnapshotPublicationBinding {
+  organizationId    String
+  projectId         String
+  buildInputId      String
+  inputHash         String @db.Char(64)
+  publishSequence   Int
+  keyId             String @db.VarChar(240)
+  manifestSha256    String @db.Char(64)
+  manifestCanonical String @db.Text
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  buildInput        SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, buildInputId])
+  @@unique([organizationId, projectId, publishSequence])
 }
 
 model ProjectCurrentSnapshotManifest {
@@ -571,6 +637,7 @@ model Agent {
   updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
   project               Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   externalIdentities    AgentExternalIdentity[]
+  listingBindings       ListingAgentBinding[]
   sourceEvidence        AgentSourceEvidence[]
   consentBatch          AgentConsentBatch?         @relation(fields: [organizationId, projectId, consentBatchId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: Cascade)
 
@@ -915,6 +982,7 @@ model SourceRevision {
   project                Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
   lastGoodFor            Source[] @relation("SourceLastGood")
   records                SourceRevisionRecord[]
+  agentBindings          ListingAgentBinding[]
 
   @@unique([organizationId, projectId, sourceId, id])
   @@unique([sourceId, sequence])
@@ -937,6 +1005,7 @@ model SourceRevisionRecord {
   @@id([revisionId, externalId])
   @@unique([revisionId, orderKey])
   @@index([projectId, sourceId, revisionId])
+  @@index([inventoryUid, externalId, recordHash], map: "SourceRevisionRecord_inventory_fact_idx")
 }
 
 model InventoryIdentity {
@@ -960,11 +1029,30 @@ model InventoryIdentity {
   project         Project                   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   source          Source                    @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
   lifecycleEvents InventoryLifecycleEvent[]
+  agentBindings   ListingAgentBinding[]
 
   @@unique([organizationId, projectId, sourceId, externalOfferId])
   @@unique([organizationId, projectId, uid])
   @@index([projectId, sourceId, status])
   @@index([sourceId, missingSince])
+}
+
+model ListingAgentBinding {
+  id               String @id @default(cuid())
+  organizationId   String
+  projectId        String
+  sourceId         String
+  sourceRevisionId String
+  inventoryUid     String @db.VarChar(26)
+  recordHash       String @db.Char(64)
+  agentUid         String @db.VarChar(26)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+  revision         SourceRevision @relation(fields: [organizationId, projectId, sourceId, sourceRevisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction)
+  inventory        InventoryIdentity @relation(fields: [organizationId, projectId, inventoryUid], references: [organizationId, projectId, uid], onDelete: NoAction, onUpdate: NoAction)
+  agent            Agent @relation(fields: [organizationId, projectId, agentUid], references: [organizationId, projectId, uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([organizationId, projectId, sourceRevisionId, inventoryUid])
+  @@index([organizationId, projectId, id])
 }
 
 model InventoryLifecycleEvent {

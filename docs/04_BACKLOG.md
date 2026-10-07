@@ -45,14 +45,159 @@ MP-04 доставлен PR #23 после exact-head RISKY Gate #236, merge
 `8dd7f7e6913e941dc3eee5ebff58f412d0dd8bcd`: concrete Source worker/scheduler,
 manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
 подтвердил native cron и реальные OS SIGTERM. GitHub mirror совпадает.
-Текущий участок — MP-07 bounded snapshot verifier, затем MP-05 assembly.
+MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
+`e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
+84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
+Текущий участок — MP-05 assembly/publication: MP-05.1–MP-05.10 закрыты
+implementation ledger. MP-05.11 имеет concrete thirteen-dataset compose/sign,
+immutable binding, повторное Source/Project/Catalog/Media admission после PUT,
+atomic current/DeliveryRun и optional executor существующего Source worker.
+Targeted proof: 78 unit tests, 22 native publication/delivery cases, 3 full
+runtime-function cases с настоящим local pg-boss, enabled/disabled/config rejection
+и observed/cleared own-owner heartbeat. Closure определяется Task Manager;
+epic exact-head SourceCraft RISKY gate/merge пока не выполнены. Main, GitHub mirror
+и production этим implementation proof не обновляются.
+
+Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
+их прежние pending формулировки не описывают текущий контур выше.
+MP-05.1 закрыт implementation ledger
+на pushed checkpoint `a074033`; MP-05.2 — projector DoD подтверждён,
+фактический implementation/delivery статус принадлежит Task Manager:
+полный private DB capture command, immutable input persistence и allocator
+прошли native NOBYPASS PostgreSQL proof: 18 sections, replay после изменения
+живых фактов, concurrent same-key capture, rollback и 4100 объектов/8200 media
+positions в неизменном 30-second worker limit. Clean pushed checkpoint и strict
+execution ledger подтверждены; public projectors/build/sign/publication
+ещё не завершены.
+Checkpoint `000329f` добавляет шесть project-state projectors к пяти catalog
+projectors: всего 11/13. Native PostgreSQL suite — 17/17 PASS, replay всех
+одиннадцати проекций после live mutations проверен. Generated stored sizes
+устраняют повторный JSON sizing на commit без удаления двух constraint triggers;
+4100/8200 capture — 25,4 секунды при прежнем лимите 30 секунд. Проверены forgery,
+late gap/overflow и rollback; types/lint/architecture, 38 targeted unit tests,
+docs/secrets — PASS. Интеграция GOOD inventory resolver, captured-media verification и
+общий 13-dataset build остаются работой MP-05.2, не объявляются завершёнными.
+Server-only ingestion resolver реализован отдельно: exact scoped GOOD pins,
+повторный normalized hash, captured profile без live registry/LastGood, SQL
+byte guard и marker-only malformed refusal. Native suite — 18/18 PASS, включая
+исторический grace, replay, scope/pin/hash rejection и профиль вне live registry.
+Его результат — внутренние кандидаты, не public DTO: location policy и полная
+inventory/media assembly ещё требуют реализации.
+Адресная граница GOOD resolver теперь исключает raw address/private apartment
+из результата и выдаёт только проверенный unit-redacted addressPublic либо
+отказ при неоднозначности. Native 18/18 и 63 targeted unit tests — PASS,
+включая Unicode, составные и слитные private marker regressions; 150 комбинаций
+проверены. Следующий candidate projector преобразует verified GOOD facts в
+InventoryEntity/public DTO: exact identity/profile pins, variant sparse facts,
+captured unit/period policy, STREET coordinates, persistent URL и media references,
+safe-HTML source-code cleanup. Серверная candidate assembly теперь связывает
+persisted receipt, captured profiles/URLs, HEAD вне DB и GOOD pages ≤200 с
+реальными 13 projectors; strict reference/privacy и aggregate 32 MiB canonical
+array budget включают brackets/commas. Captured selection применяет ALL_SHARED
+по subscribed cities либо CURATED по explicit INCLUDE; EXCLUDE сильнее confirmed
+listing links. ACTIVE/unmerged parent и building filters управляют catalog,
+prices, shared media до HEAD и editorial. Inventory и persistent URL history
+сохраняются; live subscription query и переписывание receipt/hash отсутствуют.
+MP-05.3 scoped native proof от 2026-10-07: 21/21 в двух suites, targeted units
+41/41, verify:quick — PASS; capture 4100/8200 — 16,245 секунды при лимите 30.
+Доказан replay после live edits и непустая URL history; HEAD synthetic, не live
+provider proof. Это implementation checkpoint, не завершение MP-05 delivery.
+MP-05.4 implementation закрыт на `44150a4`: ACTIVE inventory preflight проверяет unique captured Source и
+exact approved head ID/sequence, допускает исторический GOOD и producer-OFF.
+Apply safety predicate подключён к capture head и исторических ACTIVE facts:
+точный scoped GOOD baseline, immutable policy/analysis/counts и private hashes.
+SQL byte guard ограничивает policy/analysis до 4096 bytes каждый до передачи;
+preflight сверяет provenance, public DTO proof не содержит. Старые receipts без
+proof требуют нового capture, без live enrichment или переписывания hash.
+Первый MP-05.4 checkpoint от 2026-10-07: native 44/44 в трёх suites подтверждают
+actual two-source runtime → persisted capture → assembly, source-scoped UID,
+broken-run preservation, historical grace и replay под NOBYPASS. Units 26/26,
+quick/types/lint/docs/secrets — PASS. В том checkpoint capture approval proof
+ещё отсутствовал; его последующий delta проверяется отдельно. Эти проверки не
+доказывают live provider или production delivery.
+Capture approval checkpoint от 2026-10-07: native 46/46 в трёх suites — PASS,
+включая forged/oversized approval denial до receipt save и исторический baseline
+proof. Capture 4100/8200 — 12,498 секунды при неизменном лимите 30; targeted
+units 14/14, verify:quick, docs/secrets/diff — PASS. MP-05 epic delivery ещё открыт.
+MP-05.5 implementation proof: reuse explicit PublicInventoryDTO mapper, strict
+public/facts schemas и приватный captured GOOD resolver. Targeted units — 31/31
+PASS (все 11 property variants); actual four-profile Source → GOOD → capture →
+13-dataset assembler, private sentinels, finite coarsened geo и immutable replay —
+native 27/27 PASS. Quick/types/lint/architecture/docs/secrets/diff — PASS.
+Exact pushed closure ledger принадлежит Task Manager. Это не speculative full
+producer-fact mapping, agent gate или epic delivery.
+MP-05.6 implementation proof: durable scoped GOOD/hash → Agent assignment и captured
+publication gate реализованы; отсутствие consent/showOnSite/ACTIVE сохраняет
+listing и project contacts без personal block. Reconcile заменяет полный набор
+одной revision, не incremental pages; ambiguous/unresolved claim vetoes binding.
+Final native — 52/52 PASS в четырёх suites: assigned photo/HEAD omission,
+foreign scope, forged pin, unresolved claim/retry, actual REJECTED denial,
+historical grace и freeze. Capture 4100/8200 — 27,548 секунды при лимите 30;
+units 25/25, verify:quick (388 modules/1193 dependencies), final fixture types/lint
+и docs/secrets/diff — PASS. Exact pushed closure ledger хранится в Task Manager.
+Automatic ingestion matching,
+mandatory contact flag и fresh publication admission этим checkpoint не заявлены.
+MP-05.7 implementation proof: listing fallback requirement вычисляется из captured
+ACTIVE inventory без eligible Agent relation; exact scoped project/contacts
+обязателен до HEAD. Shared guard повторяется в composer, а candidate возвращает
+вычисленный flag. Empty/all-bound flows остаются optional. Unit/composer/project
+state — 29/29 PASS; final native — 50/50 в двух suites, включая required missing/
+foreign denial до HEAD, actual all-bound optional composition и immutable replay.
+Первая capacity-попытка превысила 30s; forward binding-reader correction сохранил
+точные scope/hash/latest GOOD/RLS условия. Повторный capture4100/8200 — 25,605s,
+project-state phase — 41ms; лимит 30s не изменён. Full quick + final delta types/
+lint/architecture, docs/secrets/diff — PASS. Exact pushed closure ledger — Beads.
+MP-05.8 implementation proof: actual NOBYPASS URL commands → captured input →
+public projectors → thirteen-dataset composer сохраняют reservation/publicUrlId
+при rename/relink, canonical paths, 301 redirects, GONE/tombstones и независимые
+reservations. Source pipeline доказывает actual INACTIVATED/REACTIVATED events,
+включая history без ACTIVE inventory; old receipt replay неизменен. URL-policy и
+consumer SEO fields не публикуются; assembler отвергает SEO overrides. Native
+baseline — 31/31 в трёх suites; final URL fixture после последнего assertion —
+1/1; project-state/composer units — 24/24; full verify:quick и final fixture
+types/lint — PASS. Consumer HTTP/SEO и signed publication этим не заявлены.
+MP-05.9 implementation proof: native first-counter INSERT ON CONFLICT устраняет
+Prisma empty-update upsert race; actual adapter-pg 40001 envelope повторяет весь
+RR capture, без blanket P2002 retry. Детерминированные concurrent cuts дают
+1/2 и доказанный retry; replay/same-key не расходуют лишний sequence. Проверены
+actual-command rollback, независимые project counters, manifest/delivery floor
+и INT_MAX fail-closed. Final native — 24/24 в двух suites, capture4100/8200 —
+14,233s при неизменных 30s; units — 15/15; full quick + final delta types/lint,
+docs/secrets/diff — PASS. Exact checkpoint/closure ledger — Beads. Global
+safety lock по-прежнему сериализует проекты; signed publication ещё не завершена.
+MP-05.10 implementation proof: server-owned receipt lookup → thirteen-dataset
+assembler → composer privacy/reference guards → SecretRef Ed25519 → trusted
+signature verification. Headers/source revisions derived from immutable cut;
+caller overrides denied. Native signing/URL — 2/2; final complete capture —
+22/22, including actual GOOD → signed portable-verifier roundtrip, corrupt-file
+rejection and immutable signed replay. Consumer fixture uses generic JSON plus
+exact reference-checked public graph, not universal consumer policy. Units —
+35/35; full quick — PASS (390/1206), final fixture types/lint — PASS. Capacity
+4100/8200 — 15,751s при прежних 30s. Exact checkpoint/closure ledger — Beads.
+generatedAt/publishedAt = capturedAt; DeliveryRun.createdAt is staleness clock.
+Durable identity binding, fresh admission, uploads/current/outbox — MP-05.11.
+Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
+unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
+Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
+после Source disable/profile change; targeted units — 31/31. Актуальный capacity
+proof MP-05.7 выше сохраняет лимит 30 секунд для capture4100/8200.
+Медиа-контур теперь включает receipt-only pin/consent/assignment admission,
+server-owned project-bound HEAD вне DB, build-local cache и strict opaque
+owner/position attachments с взаимными references. Missing/invalid mirrors
+дают конечные diagnostics; producer URL fallback отсутствует. Manual agent
+assignment приоритетен, shared observation не выдаётся за GOOD provenance.
+Native media/capture regression — 19/19 в двух suites: actual captured inventory/
+agent/shared → HEAD вне DB → public attachments и неизменный replay после live
+asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
+подтверждает hash/bytes и producer-off media read. Capture 4100/8200 — 13,9 секунды
+при прежнем лимите 30. Общий 13-dataset build и live provider proof этим не доказаны.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-05/MP-07–MP-10 нового remediation plan;
-MP-00–MP-04 и MP-06 закрыты.
-Далее — production composition, source worker/scheduler,
-snapshot assembly, public contracts, verifier hardening, operations executors
+Активная доработка: MP-05/MP-08–MP-10 нового remediation plan;
+MP-00–MP-04, MP-06 и MP-07 закрыты.
+Далее — snapshot public projectors, build/sign/publication orchestration,
+operations executors
 и синтетическое end-to-end proof. Реализация runtime adapters и расписаний
 входит в утверждённую доработку; их включение на production — нет.
 

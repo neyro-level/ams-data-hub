@@ -5,6 +5,16 @@ runtime source of truth; this file is their neutral model map.
 
 Prisma schema is the runtime source of truth.
 
+Prisma PostgreSQL pools pin each connection to `TimeZone=UTC` through connection
+startup options, for both URL and component configuration. The installed
+`adapter-pg` serializes Date values without a timezone offset and expects UTC
+timestamp results; a non-UTC session can therefore shift persisted instants.
+Signed snapshot timestamps must equal the receipt instant in PostgreSQL, not
+only the value returned by the ORM. This connection setting does not change
+server defaults or rewrite existing rows. Before a release against an existing
+non-UTC-written database, historical timestamps and immutable receipt digests
+require a scoped compatibility check; silently shifting old data is forbidden.
+
 ## Identity and transfer contracts
 
 - Project-owned persistence IDs use Prisma `cuid()`; Better Auth tables retain
@@ -18,6 +28,20 @@ Prisma schema is the runtime source of truth.
   `packages/data-contracts`; raw Prisma rows are not serializable as public DTOs.
 - Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
   JSON with recursively sorted object keys.
+
+## Confirmed listing-agent assignments
+
+`ListingAgentBinding` is owned by project-state. It binds scoped Source/GOOD
+revision, inventory UID and immutable record hash to a scoped Agent UID. Composite
+foreign keys enforce tenant ownership; a trigger verifies actual GOOD record
+membership. The forward migration is additive and does not backfill inferred
+assignments. Missing bindings omit public agent linkage, not inventory.
+The `agent-matching` project job alone writes the complete revision set in the
+existing command transaction, after DataSafety admission. Snapshot input reads
+only; worker is NOBYPASS with FORCE RLS. Public datasets expose only eligible
+`agentUid`, never private binding IDs, source pins, hashes or matching evidence.
+Rollback means disabling this new consumer/writer and forward-fixing; no
+production migration or destructive rollback is performed during remediation.
 
 ## Shared catalog geography
 
@@ -95,6 +119,13 @@ durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
 persisted without moving Last Good. GOOD records and revision metadata are
 immutable, protected by database triggers as well as application checks.
 
+The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
+`SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
+record hash. Exact historical GOOD resolution can locate the pinned record
+without scanning a source's complete revision history for every identity.
+Organization/project/source and GOOD predicates remain in the query; this
+index changes neither FORCE RLS nor record immutability or worker grants.
+
 `Source.lastGoodRevisionId` is a composite FK to the same org/project/source's
 revision, and the DB requires a GOOD target. A forward migration refuses legacy
 dangling pointers rather than inventing history or clearing Last Good.
@@ -149,6 +180,83 @@ storage is server-owned infrastructure, not a Source/job payload dependency.
 - notification categories: `SYSTEM`, `PROJECT`, `ACCESS`, `QUEUE`.
 
 ## Migration Policy
+
+The forward snapshot fact-writer migration acquires the existing global safety
+advisory lock in BEFORE STATEMENT INSERT/UPDATE/DELETE triggers on the seventeen
+publication-gate fact tables, before PostgreSQL target row locks. It changes no
+grants, RLS predicates or field/GOOD immutability guards; MediaAsset stays
+append-only for runtime roles. The table set includes selected catalog
+Developer/Development/Building lifecycle and merged-parent eligibility, not
+live regeneration of names, aliases, geo or prices. Legacy inventory takes global
+before its Source domain advisory key. Rollback disables publication admission
+and uses a forward fix rather than removing protections or rewriting history.
+Only the isolated synthetic database is migrated during this implementation;
+production admission and release remain separate.
+
+`SnapshotPublicationBinding` pins one receipt/sequence to its inputHash, keyId,
+canonical signed manifest text and exact manifest SHA-256 before object upload.
+It has a composite scoped receipt FK, receipt/sequence uniqueness, a 2-MiB text
+limit, exact-byte SHA check and immutable/header-correlation trigger. Only the
+single-project snapshot-publication worker purpose can SELECT/INSERT; UPDATE
+and DELETE are not granted. This purpose gains SELECT-only receipt/part access
+and restrictive fact-write denial; snapshot-input permissions are unchanged.
+The forward binding migration also corrects ListingAgentBinding's read-policy
+name to the canonical `_rls` convention with identical predicates and grants.
+Binding/artifact staging is not current publication or fresh consent admission.
+
+The forward publication Source-read migration adds exact-purpose scoped SELECT
+policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with
+restrictive scope policies preventing legacy broad job reads for this purpose.
+Existing grants and restrictive fact-write denial remain unchanged. The bounded
+ingestion reader transfers only head/cohort/historical membership metadata, not
+revision payloads, external producer identifiers or live projection settings.
+Its caller owns global then scoped publication locks in ReadCommitted; no fact
+row/domain locks are acquired. Pre-PUT staging admission is not final publication
+admission across object upload; no production migration or release is implied.
+
+The forward publication Project-read migration adds scoped SELECT policies for
+Project, ProjectPublicContact, Agent and ListingAgentBinding, plus global safety
+state for the exact single-project publication purpose. Restrictive policies
+prevent broad legacy project-job reads; grants and fact-write denial stay intact.
+Project admission compares active service status, unfrozen jobs, captured contact
+version, published Agent consent/version/photo slots and exact captured binding
+tuples. It uses value-free receipt anchors and bounded metadata reads, not personal
+values, whole Project.version or live graph enrichment. Optional absent contact
+addition and unrelated new Agents are allowed. This pre-PUT check must be repeated
+by the final post-PUT publisher; no current/run or outbox execution is implied.
+
+The forward publication Catalog-read migration adds exact-purpose SELECT to the
+three subscription tables and three shared catalog entity tables. Subscription
+scope is organization/project; Developer/Development/Building remain global, and
+selected UID restriction is the guarded reader contract, not row-level tenant
+ownership. Restrictive policies exclude broad/legacy publication purposes, while
+existing grants and write denials remain unchanged. Fresh admission compares full
+subscription mode/version/city/decision membership and selected entity lifecycle,
+merge and parent/city/district metadata, not values or whole entity versions.
+Direct membership writes remain protected by the existing global writer triggers.
+No historical migration, catalog data or remote environment is rewritten.
+
+The forward publication Media-read migration adds exact scoped SELECT and
+restrictive scope policies to MediaAsset, MediaSource and SharedMediaAsset, without
+new grants or write permissions. Media anchors contain only actual HEAD-verified
+attachment identity and copied asset/relation/shared permission metadata. Fresh
+SQL returns hashes and trim-presence booleans rather than URL/license/attribution
+values. Asset/relation/observation IDs are deduplicated for reads in pages of 200;
+owner-position attachments stay independent. Current MIRRORED/WARNING eligibility
+does not require exact attempt timestamps or relation revision equal to GOOD head.
+Inventory/shared private capture now adds relationCanonicalUrlHash; old receipts
+lacking a required pin fail closed before HEAD, requiring a new capture identity,
+not a historical hash/timestamp rewrite. Raw SQL reassociation with unchanged
+updatedAt is detected through the canonical hash. Full post-PUT admission and
+atomic publication remain separate; no remote migration or release is implied.
+
+`SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
+`GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
+Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.
+The forward-only `20261007093000_snapshot_input_generated_sizes` migration uses
+these exact values in aggregate budget checks, avoiding repeated JSON serialization
+at commit. Both deferred header/part triggers, all 18 sections, contiguous indices,
+part/record/byte limits, immutable guards and RLS remain unchanged.
 
 Applied migrations are immutable. Schema changes use additive, reviewed forward
 migrations; database rollback requires the isolated recovery contract in

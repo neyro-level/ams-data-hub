@@ -1,4 +1,5 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
 import type { CurrentSnapshotManifest, DeliveryRun, DeliveryRunStatus } from "../contracts.ts";
 import { assertDeliveryTransition } from "../domain/delivery-run.ts";
 import type {
@@ -48,6 +49,17 @@ export class PrismaSnapshotDeliveryRepository implements SnapshotDeliveryReposit
   constructor(private readonly transaction: DatabaseTransaction) {}
 
   async publishCurrentAndCreateRun(input: CreateDeliveryRunInput): Promise<DeliveryRun> {
+    // Caller owns a short ReadCommitted transaction. Serialize the pointer and
+    // run together; a retry of committed publication never rewrites current.
+    await lockSnapshotPublication(this.transaction, input);
+    const existing = await this.getRun(input.organizationId, input.projectId, input.publishSequence);
+    if (existing) {
+      if (existing.manifestKey !== input.manifestKey || existing.manifestSha256 !== input.manifestSha256
+        || existing.publishedAt.getTime() !== input.publishedAt.getTime()) {
+        throw new Error("SNAPSHOT_DELIVERY_MANIFEST_CONFLICT");
+      }
+      return existing;
+    }
     const current = await this.transaction.projectCurrentSnapshotManifest.findUnique({
       where: { organizationId_projectId: { organizationId: input.organizationId, projectId: input.projectId } },
       select: { publishSequence: true },

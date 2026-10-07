@@ -5,8 +5,9 @@ import type { DatabaseTransaction } from "../../../platform/database/transaction
 import type { ProjectJobPrincipal } from "../../../platform/authorization/principal.ts";
 import { PrismaDataSafetyRepository, assertMutatingJobsAllowed } from "../../platform-operations/server.ts";
 import type { SourceExecutionState, ResolvedSourceExecution } from "../application/source-execution-service.ts";
-import { normalizedContentHash, type RawArtifactReceipt } from "../application/import-pipeline.ts";
-import { analyzeImportSafety, type SafetyAnalysisResult } from "../domain/safety-engine.ts";
+import { type RawArtifactReceipt } from "../application/import-pipeline.ts";
+import { assertSourceRevisionApproval } from "../application/source-revision-approval.ts";
+import { type SafetyAnalysisResult } from "../domain/safety-engine.ts";
 import { reconcileMissingInventory, type InventoryIdentityState } from "../domain/inventory-lifecycle.ts";
 import { sourceSafetyPolicySchema } from "../domain/source-safety-policy-schema.ts";
 import { createUlid } from "@ams-data-hub/data-contracts";
@@ -143,16 +144,9 @@ export class PrismaSourceExecutionRepository {
   private assertSafeRevision(context: ResolvedSourceExecution, revision: {
     safetyPolicy: Prisma.JsonValue; safetyAnalysis: Prisma.JsonValue; recordCount: number; invalidRecordCount: number;
   }) {
-    const policy = sourceSafetyPolicySchema.parse(revision.safetyPolicy);
-    const analysis = analyzeImportSafety({ recordCount: revision.recordCount, invalidRecordCount: revision.invalidRecordCount,
-      previousGoodRecordCount: context.lastGood?.recordCount ?? null,
-      issues: revision.invalidRecordCount > 0 ? [{ severity: "CRITICAL", code: "SOURCE_RECORD_INVALID" }] : [],
-    }, policy);
-    if (analysis.disposition !== "SAFE" || normalizedContentHash(analysis) !== normalizedContentHash(revision.safetyAnalysis)) {
-      // Do not trust a status label or caller-supplied mutation plan as approval.
-      // Revision-bound manual approval belongs to the explicit review executor.
-      throw new Error("SOURCE_REVISION_SAFETY_INVALID");
-    }
+    // Do not trust a status label or caller-supplied mutation plan as approval.
+    // Revision-bound manual approval belongs to the explicit review executor.
+    assertSourceRevisionApproval(revision, context.lastGood?.recordCount ?? null);
   }
 
   private async reconcileMissing(context: ResolvedSourceExecution, revision: {

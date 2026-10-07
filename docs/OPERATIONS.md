@@ -33,11 +33,11 @@ These fixtures use explicit persisted synthetic safety policies and mocked
 HTTP/SDK transport; they do not recalibrate live profiles or prove provider
 compatibility. The combined `source-worker` command now owns native pg-boss
 source consumption and startup/between-job schedule reconciliation. Production
-activation and the remaining exact-head delivery gate are pending. No production
+activation remains pending; MP-04 exact-head delivery is complete. No production
 migration or credential creation is performed by the local test lifecycle.
 
 Default outbox claim is restricted to its actual maintenance handler topic.
-Snapshot intents remain PENDING until the real build executor is registered;
+Snapshot intents remain PENDING when optional snapshot execution is disabled;
 the real pg-boss default-drain regression also proves maintenance still completes.
 The concrete Source facade is exercised with `SET LOCAL ROLE ams_data_hub_worker`
 (NOBYPASSRLS), not just the setup login/application principal. A forward migration
@@ -48,7 +48,8 @@ shared `outbox.dispatch` queue or split executor queues. Topic-filtered database
 claim alone does not filter already-dispatched pg-boss jobs. The default worker
 checks the persisted topic after lease takeover and defers reserved Source/build
 topics it cannot execute; all other unknown topics remain explicit errors.
-The combined command registers maintenance and manual Source dispatch together.
+The combined command registers maintenance and manual Source dispatch together,
+plus snapshot execution when explicitly enabled with validated scoped bindings.
 
 Admin `Run Source` commits its request and IDs-only outbox intent atomically.
 Dispatch runs after commit and uses a deterministic request job ID plus Source
@@ -140,8 +141,9 @@ production source ingestion. SourceExecutionService is implemented by MP-03;
 explicit local combined worker/scheduler/manual composition is implemented
 within MP-04. Concurrency and controlled shutdown have local runtime evidence;
 Source health now has its explicit command and exact-owner qualification;
-exact-head delivery remains open. Real snapshot
-assembly is MP-05, and operations build/publish/rollback/
+MP-04 exact-head delivery is complete. Real snapshot
+assembly/publication is implemented by MP-05, whose provider gate remains open;
+operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any
@@ -199,6 +201,13 @@ role-specific required variables before starting the process. Registry
 credentials never enter application containers.
 
 ### Database role bootstrap and migration
+
+The forward migration `20261007093000_snapshot_input_generated_sizes` adds stored
+generated columns to `SnapshotBuildInputPart`. PostgreSQL may rewrite the existing
+table and take an exclusive schema lock. Before a separately approved production
+release, assess receipt-table size, rehearse on a representative restored copy,
+and schedule the migration lock/window with bounded lock acquisition. Local native
+integration proof is not evidence of production lock duration or release approval.
 
 Role bootstrap is a controlled one-shot step before the first migration against
 a new PostgreSQL cluster and whenever a runtime password is rotated. It creates

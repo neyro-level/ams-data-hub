@@ -127,11 +127,12 @@ export async function runInIdentityBootstrapDatabaseTransaction<TResult>(
 export async function runInAuthorizedDatabaseTransaction<TResult>(
   context: DatabaseAuthorizationContext,
   execute: (transaction: DatabaseTransaction) => Promise<TResult>,
+  options?: { isolationLevel?: Prisma.TransactionIsolationLevel; maxWait?: number; timeout?: number },
 ): Promise<TResult> {
   return getPrismaClient().$transaction(async (transaction) => {
     await setTransactionContext(transaction, context);
     return execute(transaction);
-  });
+  }, options);
 }
 
 export async function runInPrincipalDatabaseTransaction<TResult>(

@@ -4,6 +4,20 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 const gateway = vi.hoisted(() => vi.fn());
+const matchingRuntime = vi.hoisted(() => ({ cuts: 0 }));
+// defineCommand captures its runner at module construction, before later spies.
+vi.mock("../../src/platform/database/transaction.ts", async (original) => {
+  const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
+  const run: typeof actual.runInPrincipalDatabaseTransaction = (principal, execute) => actual.runInPrincipalDatabaseTransaction(principal, async (tx) => {
+    if (principal.kind === "project-job" && principal.jobName === "agent-matching") {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]); matchingRuntime.cuts++;
+    }
+    return execute(tx);
+  });
+  return { ...actual, runInPrincipalDatabaseTransaction: run };
+});
 vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
   return { ...actual, safeOutboundStream: gateway };
@@ -21,6 +35,13 @@ import { PrismaReliabilityRepository } from "../../src/modules/platform-operatio
 import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
+import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { composeSnapshot } from "../../src/modules/snapshot-delivery/index.ts";
+import { feedAgentMatchingCommands } from "../../src/modules/project-state/server.ts";
+import { extractVladisAgentEvidence, type YrlRawOffer } from "../../src/modules/ingestion-core/index.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -75,6 +96,353 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("assembles two policy-approved Sources while broken attempts preserve their own and other GOOD contributions", async () => {
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const initial = await context.read();
+    const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+      tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+    const second = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+      sourceKey: "synthetic-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+      adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+      datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+      safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+    });
+    await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: second.sourceId, version: second.version, enabled: true });
+    await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectCatalogSubscription.create({ data: {
+      ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } },
+    } }));
+    await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectPublicContact.create({ data: {
+      ...scope, phone: "+70000000077", messengers: [],
+    } }));
+    const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    let sourceWorkerCuts = 0;
+    const principalRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => {
+        if (principal.kind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); sourceWorkerCuts++;
+        }
+        return execute(tx);
+      }));
+    let workerCuts = 0;
+    const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((authorization, execute, options) =>
+      original(authorization, async (tx) => {
+        if (authorization.principalKind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); workerCuts++;
+        }
+        return execute(tx);
+      }, options));
+    try {
+      const aOffers = ["one", "two", "three", "four", "grace"];
+      context.provide(feed(...aOffers.map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const secondTarget = { ...scope, sourceId: second.sourceId };
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(secondTarget)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const identities = await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        const rows = await tx.inventoryIdentity.findMany({ where: scope, orderBy: { uid: "asc" } });
+        for (const [index, row] of rows.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: row.uid, publicUrlId: `7${String(index).padStart(15, "0")}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: row.uid, reservationId: reservation.id,
+            slug: `synthetic-${index}`, canonicalPath: `/inventory/synthetic-${index}` } });
+        }
+        return rows;
+      });
+      expect(identities).toHaveLength(6);
+      expect(new Set(identities.filter((row) => row.externalOfferId === "one").map((row) => row.uid)).size).toBe(2);
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      const capture = (key: string) => captureSnapshotInput(principal, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+      const lookup = (receipt: Awaited<ReturnType<typeof capture>>) => ({ idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash });
+      const firstReceipt = await capture("two-source-first"); const first = await assemble(principal, lookup(firstReceipt));
+      context.provide(feed(...aOffers.slice(0, 4).map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const beforeBroken = await context.read();
+      const stableReceipt = await capture("two-source-stable-a"); const stable = await assemble(principal, lookup(stableReceipt));
+      for (const [xml, expected] of [["<realty-feed>", "FAILED"], [feed(offer("one")), "SUSPICIOUS"], [feed(), "REJECTED"]] as const) {
+        context.provide(xml); expect((await context.runtime.run(context.target)).state).toBe("FAILED");
+        const unchanged = await context.read();
+        expect(unchanged.revisions.at(-1)!.status).toBe(expected);
+        expect(unchanged.source.lastGoodRevisionId).toBe(beforeBroken.source.lastGoodRevisionId);
+        expect(unchanged.identities).toEqual(beforeBroken.identities); expect(unchanged.events).toEqual(beforeBroken.events);
+      }
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run(secondTarget)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const nextReceipt = await capture("two-source-next"); const next = await assemble(principal, lookup(nextReceipt));
+      const inventory = (result: typeof first) => result.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+      expect(first.datasets).toHaveLength(13); expect(next.datasets).toHaveLength(13); expect(inventory(next)).toHaveLength(6);
+      for (const result of [stable, next]) expect(inventory(result).map((record) => record.key).sort())
+        .toEqual(identities.map((identity) => identity.uid).sort());
+      for (const row of identities.filter((identity) => identity.sourceId === context.target.sourceId)) {
+        expect(inventory(next).find((record) => record.key === row.uid)).toEqual(inventory(stable).find((record) => record.key === row.uid));
+      }
+      const bUid = identities.find((identity) => identity.sourceId === second.sourceId)!.uid;
+      expect(inventory(next).find((record) => record.key === bUid)!.value).toMatchObject({ price: 2000 });
+      const graceUid = identities.find((identity) => identity.externalOfferId === "grace")!.uid;
+      expect(nextReceipt.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload))
+        .toContainEqual(expect.objectContaining({ uid: graceUid, factRevisionSequence: 1, approvedHeadSequence: 2, missingGoodRuns: 1 }));
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.source.updateMany({ where: scope, data: { enabled: false, version: { increment: 1 } } });
+        await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: scope } });
+      });
+      expect(await assemble(principal, lookup(firstReceipt))).toEqual(first);
+      expect(await assemble(principal, lookup(nextReceipt))).toEqual(next);
+      await expect(assemble(createProjectJobPrincipal({ ...scope, projectId: "synthetic-foreign", jobName: "snapshot-input" }),
+        lookup(nextReceipt))).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      expect(head).not.toHaveBeenCalled(); expect(workerCuts).toBeGreaterThan(10); expect(sourceWorkerCuts).toBeGreaterThan(10);
+    } finally { role.mockRestore(); principalRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
+
+  it("captures a real confirmed GOOD agent binding, gates personal data and preserves immutable replay", async () => {
+    matchingRuntime.cuts = 0;
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let workerCuts = 0;
+    async function lower(tx: DatabaseTransaction) {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]); workerCuts++;
+    }
+    const sourceRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => { if (principal.kind === "project-job") await lower(tx); return execute(tx); }));
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => { if (principal.principalKind === "project-job") await lower(tx); return execute(tx); }, options));
+    try {
+      const agentOffer = (externalId: string) => offer(externalId).replace("</offer>",
+        "<sales-agent><name>Синтетический Агент</name><phone>+79590000001</phone></sales-agent></offer>");
+      context.provide(feed(...["one", "z2", "z3", "z4", "z5"].map(agentOffer)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read(); const identity = state.identities[0]!; const revision = state.revisions[0]!;
+      const record = state.records.find((row) => row.inventoryUid === identity.uid)!;
+      const raw = (record.payload as unknown as { rawRecord: YrlRawOffer["element"] }).rawRecord;
+      const extracted = extractVladisAgentEvidence({ line: 0, column: 0, element: raw })!;
+      expect(extracted).toMatchObject({ fullNameRaw: "Синтетический Агент", offerExternalId: "one" });
+      const { offerExternalId, ...evidence } = extracted;
+      const matchingJob = createProjectJobPrincipal({ ...scope, jobName: "agent-matching" });
+      const request = { ...scope, sourceId: context.target.sourceId, sourceRevisionId: revision.id,
+        observedAt: new Date().toISOString(), evidence: [{ ...evidence, offerExternalIds: [offerExternalId] }] };
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [{ ...evidence, offerExternalIds: Array.from({ length: 50_000 }, () => offerExternalId) }] }))
+        .rejects.toThrow("AGENT_MATCHING_LIMIT_EXCEEDED");
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request, sourceRevisionId: "missing-good" }))
+        .rejects.toThrow("AGENT_MATCHING_GOOD_FACT_INVALID");
+      const foreignJob = createProjectJobPrincipal({ ...scope, projectId: "synthetic-foreign", jobName: "agent-matching" });
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(foreignJob, request))
+        .rejects.toThrow("AGENT_MATCHING_PROJECT_JOB_REQUIRED");
+      const matched = await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
+      const agentUid = matched.bindings[0]!.agentUid!; expect(agentUid).toBeTruthy();
+      expect((await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request)).bindings[0]!.agentUid).toBe(agentUid);
+      expect(await runInPrincipalDatabaseTransaction(foreignJob, (tx) => tx.listingAgentBinding.findMany({ where: scope }))).toEqual([]);
+      // A second unresolved claim vetoes the durable assignment; full replay restores it.
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [...request.evidence, { fullNameRaw: "Синтетический Неподтвержденный", phoneRaw: "invalid",
+          offerExternalIds: [offerExternalId] }] });
+      expect(await runInPrincipalDatabaseTransaction(matchingJob, (tx) => tx.listingAgentBinding.findMany({ where: scope }))).toEqual([]);
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
+      await expect(runInPrincipalDatabaseTransaction(matchingJob, (tx) => tx.listingAgentBinding.create({ data: {
+        ...scope, sourceId: context.target.sourceId, sourceRevisionId: revision.id, inventoryUid: identity.uid,
+        recordHash: "f".repeat(64), agentUid } }))).rejects.toThrow("LISTING_AGENT_FACT_INVALID");
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        expect(await tx.listingAgentBinding.findMany({ where: scope })).toEqual([expect.objectContaining({
+          inventoryUid: identity.uid, sourceRevisionId: revision.id, recordHash: record.recordHash, agentUid })]);
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
+        for (const [index, listing] of state.identities.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: listing.uid, publicUrlId: `123456789012345${index}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: listing.uid,
+            reservationId: reservation.id, slug: `synthetic-gated-${index}`, canonicalPath: `/inventory/synthetic-gated-${index}` } });
+        }
+        const asset = await tx.mediaAsset.create({ data: { ...scope, sha256: "a".repeat(64),
+          storageKey: createMediaKey("a".repeat(64)), contentType: "image/jpeg", byteSize: 100,
+          originalFileName: "synthetic-private.jpg", source: "https://private.example.invalid/synthetic-photo",
+          rightsBasis: "LICENSED", license: "synthetic-license",
+          uploadedBy: "synthetic-admin" } });
+        await tx.agent.update({ where: { uid: agentUid }, data: { photoMediaId: asset.id } });
+      });
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      expect(await runInPrincipalDatabaseTransaction(principal, (tx) => tx.listingAgentBinding.deleteMany({ where: scope })))
+        .toMatchObject({ count: 0 });
+      const head = vi.fn(async (key: string) => ({ key, sha256: "a".repeat(64), contentType: "image/jpeg",
+        contentLength: 100, etag: null, lastModifiedAt: new Date(0) }));
+      const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      async function build(key: string) {
+        const receipt = await captureSnapshotInput(principal, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+        const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+        return { result: await assemble(principal, lookup), lookup, receipt };
+      }
+      function assertOmitted(result: Awaited<ReturnType<typeof assemble>>) {
+        expect(result.datasets.find((row) => row.kind === "agents")!.records).toEqual([]);
+        const listing = result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid)!;
+        expect(listing.value).toMatchObject({ uid: identity.uid });
+        expect(listing.value).not.toHaveProperty("agentUid");
+        expect(result.datasets.find((row) => row.kind === "media")!.records.filter((row) => row.key.startsWith("AGENT/"))).toEqual([]);
+        expect(result.datasets.find((row) => row.kind === "project/contacts")!.records[0]!.value).toMatchObject({ phone: "+70000000077" });
+      }
+      assertOmitted((await build("agent-no-consent")).result);
+      expect(head).not.toHaveBeenCalled();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.agent.update({ where: { uid: agentUid },
+        data: { showOnSite: true, consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-admin", consentBasis: "synthetic" } }));
+      const eligible = await build("agent-eligible");
+      expect(eligible.result.requiresProjectContact).toBe(true); // Four unbound listings still require fallback.
+      expect(eligible.result.datasets.find((row) => row.kind === "agents")!.records).toHaveLength(1);
+      expect(eligible.result.datasets.find((row) => row.kind === "media")!.records.map((row) => row.key)).toContain(`AGENT/${agentUid}/0`);
+      expect(eligible.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid)).toMatchObject({
+        value: { uid: identity.uid, agentUid }, references: expect.arrayContaining([{ kind: "agents", key: agentUid }]) });
+      const composeInput = (candidate: Awaited<ReturnType<typeof build>>) => ({ schemaMinor: candidate.receipt.schemaMinor, projectId: scope.projectId,
+        publishSequence: candidate.receipt.publishSequence, generatedAt: candidate.receipt.capturedAt.toISOString(),
+        publishedAt: candidate.receipt.capturedAt.toISOString(), catalogRevision: candidate.receipt.catalogRevision,
+        sourceRevisions: [revision.id], keyId: "synthetic-unsigned-key",
+        requiresProjectContact: candidate.result.requiresProjectContact, datasets: candidate.result.datasets });
+      const compositionInput = composeInput(eligible);
+      expect(composeSnapshot(compositionInput).files).toHaveLength(13);
+      expect(() => composeSnapshot({ ...compositionInput, datasets: eligible.result.datasets.map((dataset) =>
+        dataset.kind === "project/contacts" ? { ...dataset, records: [] } : dataset) })).toThrow("SNAPSHOT_PROJECT_CONTACT_REQUIRED");
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectPublicContact.delete({ where: { organizationId_projectId: scope } });
+        const foreign = await tx.project.create({ data: { organizationId: scope.organizationId,
+          name: "Synthetic foreign fallback", slug: `foreign-fallback-${randomUUID().slice(0, 8)}` } });
+        await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: foreign.id,
+          phone: "+70000000088", messengers: [] } });
+      });
+      const beforeMissingHeads = head.mock.calls.length;
+      await expect(build("required-contact-missing")).rejects.toThrow("SNAPSHOT_PROJECT_CONTACT_REQUIRED");
+      expect(head.mock.calls).toHaveLength(beforeMissingHeads);
+      expect(await assemble(principal, eligible.lookup)).toEqual(eligible.result); // Contact deletion cannot enrich/rewrite old receipt.
+      // All five persisted raw offers carry the same evidence: authoritative full-revision assignment.
+      for (const row of state.records) expect(extractVladisAgentEvidence({ line: 0, column: 0,
+        element: (row.payload as unknown as { rawRecord: YrlRawOffer["element"] }).rawRecord })).toMatchObject(evidence);
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [{ ...evidence, offerExternalIds: state.identities.map((row) => row.externalOfferId) }] });
+      const allBound = await build("all-bound-contact-optional");
+      expect(allBound.result.requiresProjectContact).toBe(false);
+      expect(allBound.result.datasets.find((row) => row.kind === "project/contacts")!.records).toEqual([]);
+      expect(composeSnapshot(composeInput(allBound)).files).toHaveLength(13);
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectPublicContact.create({ data: {
+        ...scope, phone: "+70000000077", messengers: [],
+      } }));
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
+      // One missing GOOD run retains the listing and its exact historical assignment.
+      context.provide(feed(...["z2", "z3", "z4", "z5"].map(agentOffer)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const grace = await build("agent-historical-grace");
+      expect(grace.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid))
+        .toMatchObject({ value: { uid: identity.uid, agentUid } });
+      context.provide(feed()); expect((await context.runtime.run(context.target)).state).toBe("FAILED");
+      const rejected = (await context.read()).revisions.at(-1)!; expect(rejected.status).toBe("REJECTED");
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request, sourceRevisionId: rejected.id }))
+        .rejects.toThrow("AGENT_MATCHING_GOOD_FACT_INVALID");
+      for (const [index, patch] of [{ status: "HIDDEN" as const }, { status: "DEPARTED" as const },
+        { status: "ACTIVE" as const, showOnSite: false }, { status: "ACTIVE" as const, showOnSite: true, consentConfirmedAt: null }].entries()) {
+        await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.agent.update({ where: { uid: agentUid }, data: patch }));
+        const beforeHeads = head.mock.calls.length;
+        assertOmitted((await build(`agent-gated-${index}`)).result);
+        expect(head.mock.calls).toHaveLength(beforeHeads);
+      }
+      expect(await assemble(principal, eligible.lookup)).toEqual(eligible.result);
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request)).rejects.toThrow("DATA_SAFETY_JOBS_FROZEN");
+      expect(workerCuts).toBeGreaterThan(10);
+      expect(matchingRuntime.cuts).toBeGreaterThan(2);
+    } finally {
+      sourceRole.mockRestore(); snapshotRole.mockRestore();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: false } }));
+      context.cleanup();
+    }
+  }, 60_000);
+
+  it.each([
+    ["yrl-realty-2010", "vladis-vt24-v1", "YRL"],
+    ["yrl-realty-2010", "joywork-domclick-v1", "YRL"],
+    ["avito-xml-v3", "joywork-avito-v3", "AVITO"],
+    ["cian-xml-v2", "joywork-cian-v2", "CIAN"],
+  ])("assembles only PublicInventoryDTO from actual %s / %s GOOD with private sentinels", async (adapter, profile, family) => {
+    const context = await setup(profile, undefined, adapter);
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const address = "Синтетический город, дом 9, кв. 424242";
+    const description = "Код объекта: PRIVATE-DTO-CODE. Публичный текст";
+    const image = "https://private.example.invalid/PRIVATE-DTO-IMAGE.jpg";
+    const xml = family === "YRL" ? feed(`<offer internal-id="PRIVATE-DTO-ID"><category>квартира</category><type>продажа</type>
+      <price><value>1000</value></price><location><address>${address}</address><apartment>424242</apartment>
+      <latitude>55.751234</latitude><longitude>37.612345</longitude></location><description>${description}</description>
+      <sales-agent><phone>+70000000001</phone></sales-agent><picture>${image}</picture><private-test>PRIVATE-DTO-RAW</private-test></offer>`)
+      : family === "AVITO" ? `<Ads formatVersion="3" target="Avito.ru"><Ad><Id>PRIVATE-DTO-ID</Id><Category>Квартиры</Category>
+        <OperationType>Продам</OperationType><Price>1000</Price><Address>${address}</Address><Latitude>55.751234</Latitude>
+        <Longitude>37.612345</Longitude><Description>${description}</Description><ContactPhone>+70000000001</ContactPhone>
+        <Images><Image url="${image}"/></Images><PrivateTest>PRIVATE-DTO-RAW</PrivateTest></Ad></Ads>`
+        : `<Feed><Feed_Version>2</Feed_Version><Object><ExternalId>PRIVATE-DTO-ID</ExternalId><Category>flatSale</Category>
+          <Price>1000</Price><Address>${address}</Address><Coordinates><Lat>55.751234</Lat><Lng>37.612345</Lng></Coordinates>
+          <Description>${description}</Description><Phones><PhoneSchema><Number>+70000000001</Number></PhoneSchema></Phones>
+          <Photos><PhotoSchema><FullUrl>${image}</FullUrl></PhotoSchema></Photos><PrivateTest>PRIVATE-DTO-RAW</PrivateTest></Object></Feed>`;
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let sourceCuts = 0; let snapshotCuts = 0;
+    async function lower(tx: DatabaseTransaction) {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+    }
+    const sourceRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => {
+        if (principal.kind === "project-job") { await lower(tx); sourceCuts++; }
+        return execute(tx);
+      }));
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => {
+        if (principal.principalKind === "project-job") { await lower(tx); snapshotCuts++; }
+        return execute(tx);
+      }, options));
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read(); const identity = state.identities[0]!;
+      expect(JSON.stringify(state.records[0]!.payload)).toContain("PRIVATE-DTO-RAW");
+      expect(JSON.stringify(state.records[0]!.payload)).toContain("+70000000001");
+      expect(state.records[0]!.payload).toMatchObject({ draft: { latitude: 55.751234, longitude: 37.612345 } });
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED",
+          cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
+        const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+          subjectUid: identity.uid, publicUrlId: "1234567890123456" } });
+        await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: identity.uid,
+          reservationId: reservation.id, slug: "synthetic-dto", canonicalPath: "/inventory/synthetic-dto" } });
+      });
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const receipt = await captureSnapshotInput(principal, { ...scope, idempotencyKey: "synthetic-dto", schemaMinor: 0 });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+      const result = await assemble(principal, lookup);
+      expect(result.datasets).toHaveLength(13);
+      const inventory = result.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+      expect(inventory).toHaveLength(1);
+      const dto = publicInventoryDtoSchema.parse(inventory[0]!.value);
+      expect(dto).toEqual(inventory[0]!.value);
+      expect(dto).toMatchObject({ uid: identity.uid, publicUrlId: "1234567890123456", locationPrecision: "STREET",
+        descriptionText: "Публичный текст", media: [] });
+      expect(dto.address.addressPublic).not.toContain("424242");
+      expect(dto.geo).toMatchObject({ latitude: { state: "VALUE", value: expect.any(Number) },
+        longitude: { state: "VALUE", value: expect.any(Number) } });
+      if (dto.geo.latitude.state !== "VALUE" || dto.geo.longitude.state !== "VALUE") throw new Error("SYNTHETIC_PUBLIC_GEO_MISSING");
+      expect(Number.isFinite(dto.geo.latitude.value) && Number.isFinite(dto.geo.longitude.value)).toBe(true);
+      expect(dto.geo).not.toEqual({ latitude: { state: "VALUE", value: 55.751234 }, longitude: { state: "VALUE", value: 37.612345 } });
+      expect(JSON.stringify(result.datasets)).not.toMatch(/PRIVATE-DTO|424242|70000000001|rawRecord|sourceHash|normalizedHash|sourceId|safetyPolicy|factApproval/u);
+      expect(head).not.toHaveBeenCalled();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.source.update({ where: { id: context.target.sourceId },
+        data: { enabled: false, profileKey: "default-v1", version: { increment: 1 } } }));
+      expect(await assemble(principal, lookup)).toEqual(result);
+      expect(sourceCuts).toBeGreaterThan(0); expect(snapshotCuts).toBeGreaterThan(0);
+    } finally { sourceRole.mockRestore(); snapshotRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
+
   it.each([
     ["yrl-realty-2010", "vladis-vt24-v1", feed(offer("one")), "YRL_2010"],
     ["yrl-realty-2010", "joywork-domclick-v1", feed(offer("one")), "DOMCLICK_YRL"],
@@ -373,14 +741,44 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
   });
 
   it("advances missing grace only on safe GOOD runs and preserves inventory across broken runs", async () => {
-    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
       deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 2 });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let snapshotCuts = 0;
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => {
+        if (principal.principalKind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); snapshotCuts++;
+        }
+        return execute(tx);
+      }, options));
     try {
       const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
       context.provide(feed(...all));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
       const initial = await context.read();
       const missingUid = initial.identities.find((item) => item.externalOfferId === "5")!.uid;
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED",
+          cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
+        for (const [index, row] of initial.identities.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: row.uid, publicUrlId: `123456789012345${index}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: row.uid,
+            reservationId: reservation.id, slug: `lifecycle-${index}`, canonicalPath: `/inventory/lifecycle-${index}` } });
+        }
+      });
+      const snapshotJob = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      async function build(key: string) {
+        const receipt = await captureSnapshotInput(snapshotJob, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+        const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+        return { lookup, result: await assemble(snapshotJob, lookup) };
+      }
       context.provide(feed(...all.slice(0, 4)));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
       const grace = await context.read();
@@ -401,13 +799,27 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       expect(inactive.identities).toHaveLength(5);
       expect(inactive.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "INACTIVE", missingGoodRuns: 2 });
       expect(inactive.events).toMatchObject([{ inventoryUid: missingUid, type: "INACTIVATED" }]);
+      const inactiveSnapshot = await build("lifecycle-inactive");
+      expect(inactiveSnapshot.result.datasets.find((dataset) => dataset.kind === "inventory")!.records.map((row) => row.key)).not.toContain(missingUid);
+      const inactiveLifecycle = inactiveSnapshot.result.datasets.find((dataset) => dataset.kind === "lifecycle")!.records.map((row) => row.value);
+      expect(inactiveLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-state", inventoryUid: missingUid, status: "INACTIVE" }));
+      expect(inactiveLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-event", inventoryUid: missingUid,
+        type: "INACTIVATED", occurredAt: inactive.events[0]!.occurredAt.toISOString() }));
       context.provide(feed(...all));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 4 });
       const reactivated = await context.read();
       expect(reactivated.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "ACTIVE", missingGoodRuns: 0, missingSince: null });
       expect(reactivated.events.map((event) => event.type)).toEqual(["INACTIVATED", "REACTIVATED"]);
-    } finally { context.cleanup(); }
-  });
+      const activeSnapshot = await build("lifecycle-reactivated");
+      expect(activeSnapshot.result.datasets.find((dataset) => dataset.kind === "inventory")!.records.map((row) => row.key)).toContain(missingUid);
+      const activeLifecycle = activeSnapshot.result.datasets.find((dataset) => dataset.kind === "lifecycle")!.records.map((row) => row.value);
+      for (const event of reactivated.events) expect(activeLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-event",
+        inventoryUid: missingUid, type: event.type, occurredAt: event.occurredAt.toISOString() }));
+      expect(activeLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-state", inventoryUid: missingUid, status: "ACTIVE" }));
+      expect(await assemble(snapshotJob, inactiveSnapshot.lookup)).toEqual(inactiveSnapshot.result);
+      expect(head).not.toHaveBeenCalled(); expect(snapshotCuts).toBeGreaterThan(3);
+    } finally { snapshotRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
 
   it("preserves pre-revision identities on baseline and requires both run and elapsed-time grace", async () => {
     const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,

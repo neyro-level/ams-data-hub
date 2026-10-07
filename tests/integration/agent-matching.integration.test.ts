@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { createUlid } from "@ams-data-hub/data-contracts";
 import { describe, expect, it } from "vitest";
 import { agentCommands, feedAgentMatchingCommands } from "../../src/modules/project-state/server.ts";
 import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 
 function admin(): PlatformAdminPrincipal {
   return { kind: "platform-admin", userId: `matching-admin-${randomUUID()}`, correlationId: randomUUID() };
@@ -39,12 +41,41 @@ describe("agent source evidence and guarded matching", () => {
         expectedNamespace: "",
         expectedProducer: "",
       });
-      const job = createProjectJobPrincipal({ jobName: "agent-matching-test", ...scope });
+      const revisions = await runInPrincipalDatabaseTransaction(principal, async (tx) => {
+        await tx.dataSafetyState.upsert({ where: { id: "global" }, create: { id: "global", jobsFrozen: false, unfrozenAt: new Date() },
+          update: { jobsFrozen: false, unfrozenAt: new Date() } });
+        const producer = await tx.source.findUniqueOrThrow({ where: { id: source.sourceId } });
+        const target = { ...scope, sourceId: producer.id };
+        const uids = new Map(Array.from({ length: 5 }, (_, index) => [`offer-${index + 1}`, createUlid()]));
+        for (const [externalOfferId, uid] of uids) await tx.inventoryIdentity.create({ data: { ...target, uid, externalOfferId,
+          firstSeenAt: new Date(), lastSeenAt: new Date(), sourceHash: "a".repeat(64), normalizedHash: "b".repeat(64) } });
+        const ids: string[] = []; let previousCount: number | null = null;
+        const policy = { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, maxDropPercent: 100, requireManualApprovalAboveDrop: false };
+        for (const offers of [["offer-1", "offer-2", "offer-3", "offer-4"], ["offer-5"], ["offer-5"], ["offer-5"]]) {
+          const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: producer.version,
+            adapterKey: producer.adapterKey, adapterVersion: producer.adapterVersion, profileKey: producer.profileKey,
+            profileVersion: producer.profileVersion, baseLastGoodRevisionId: ids.at(-1) ?? null,
+            recordCount: offers.length, safetyPolicy: policy, safetyAnalysis: JSON.parse(JSON.stringify(analyzeImportSafety({
+              recordCount: offers.length, previousGoodRecordCount: previousCount, invalidRecordCount: 0, issues: [],
+            }, policy))) } });
+          await tx.sourceRevisionRecord.createMany({ data: offers.map((externalId) => ({ ...target, revisionId: revision.id,
+            externalId, orderKey: Buffer.from(externalId).toString("hex"), inventoryUid: uids.get(externalId)!,
+            recordHash: "b".repeat(64), payload: { schemaVersion: 1, draft: { externalId }, fields: {} } })) });
+          await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: ids.length + 1,
+            rawStorageKey: "synthetic-matching", rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+            normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+          await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+          ids.push(revision.id); previousCount = offers.length;
+        }
+        await tx.source.update({ where: { id: producer.id }, data: { lastGoodRevisionId: ids.at(-1)! } });
+        return ids;
+      });
+      const job = createProjectJobPrincipal({ jobName: "agent-matching", ...scope });
       const observedAt = new Date("2026-10-05T00:00:00.000Z").toISOString();
       const first = await feedAgentMatchingCommands.reconcileFeedAgents(job, {
         ...scope,
         sourceId: source.sourceId,
-        sourceRevisionId: "revision-1",
+        sourceRevisionId: revisions[0]!,
         observedAt,
         sharedOfficePhones: ["+79590000099"],
         evidence: [
@@ -72,7 +103,7 @@ describe("agent source evidence and guarded matching", () => {
       const repeated = await feedAgentMatchingCommands.reconcileFeedAgents(job, {
         ...scope,
         sourceId: source.sourceId,
-        sourceRevisionId: "revision-2",
+        sourceRevisionId: revisions[1]!,
         observedAt: new Date("2026-10-05T01:00:00.000Z").toISOString(),
         sharedOfficePhones: ["+79590000099"],
         evidence: [{ fullNameRaw: "Анна Агент", phoneRaw: "+79590000001", photoSourceUrl: "https://media.example.invalid/changed.jpg", offerExternalIds: ["offer-5"] }],
@@ -82,7 +113,7 @@ describe("agent source evidence and guarded matching", () => {
       await feedAgentMatchingCommands.reconcileFeedAgents(job, {
         ...scope,
         sourceId: source.sourceId,
-        sourceRevisionId: "revision-3",
+        sourceRevisionId: revisions[2]!,
         observedAt: new Date("2026-10-05T02:00:00.000Z").toISOString(),
         sharedOfficePhones: ["+79590000099"],
         evidence: [{ fullNameRaw: "Другое Имя", phoneRaw: "+79590000001", offerExternalIds: ["offer-5"] }],
@@ -120,7 +151,7 @@ describe("agent source evidence and guarded matching", () => {
       await feedAgentMatchingCommands.reconcileFeedAgents(job, {
         ...scope,
         sourceId: source.sourceId,
-        sourceRevisionId: "revision-4",
+        sourceRevisionId: revisions[3]!,
         observedAt: new Date("2026-10-05T03:00:00.000Z").toISOString(),
         sharedOfficePhones: ["+79590000099"],
         evidence: [],

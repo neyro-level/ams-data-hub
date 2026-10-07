@@ -12,6 +12,7 @@ import {
 } from "../contracts.ts";
 import { assertSnapshotPrivacySafe } from "../domain/privacy-scanner.ts";
 import { SnapshotCompositionError } from "../domain/snapshot-error.ts";
+import { assertSnapshotProjectContact } from "./snapshot-project-contact.ts";
 
 function sortRecords(records: readonly SnapshotRecordInput[]): SnapshotRecordInput[] {
   return [...records].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
@@ -81,6 +82,7 @@ function composeDataset(dataset: SnapshotDatasetInput): SnapshotFileArtifact {
 }
 
 export function composeSnapshot(input: ComposeSnapshotInput): SnapshotComposition {
+  assertSnapshotDatasetIntegrity(input.datasets);
   const datasetIndex = indexDatasets(input.datasets);
   for (const kind of SNAPSHOT_DATASET_KINDS) {
     if (!input.datasets.some((dataset) => dataset.kind === kind)) {
@@ -88,9 +90,7 @@ export function composeSnapshot(input: ComposeSnapshotInput): SnapshotCompositio
     }
   }
   assertReferences(input.datasets, datasetIndex);
-  if (input.requiresProjectContact && !datasetIndex.has(`project/contacts\0${input.projectId}`)) {
-    throw new SnapshotCompositionError("SNAPSHOT_PROJECT_CONTACT_REQUIRED", input.projectId);
-  }
+  assertSnapshotProjectContact(input.datasets, input.projectId, input.requiresProjectContact);
 
   const byKind = new Map(input.datasets.map((dataset) => [dataset.kind, dataset] as const));
   const files = SNAPSHOT_DATASET_KINDS
@@ -115,6 +115,19 @@ export function composeSnapshot(input: ComposeSnapshotInput): SnapshotCompositio
     manifestPayload: canonicalJsonBytes(manifest as CanonicalJsonValue),
     files,
   };
+}
+
+/** Candidate assembly integrity; no signing or fresh publication admission. */
+export function assertSnapshotDatasetIntegrity(datasets: readonly SnapshotDatasetInput[]): void {
+  if (datasets.length !== SNAPSHOT_DATASET_KINDS.length || datasets.some((dataset) => !SNAPSHOT_DATASET_KINDS.includes(dataset.kind))) {
+    throw new SnapshotCompositionError("SNAPSHOT_DATASET_MISSING", "exact thirteen datasets required");
+  }
+  const index = indexDatasets(datasets);
+  for (const kind of SNAPSHOT_DATASET_KINDS) if (!datasets.some((dataset) => dataset.kind === kind)) {
+    throw new SnapshotCompositionError("SNAPSHOT_DATASET_MISSING", kind);
+  }
+  assertReferences(datasets, index);
+  for (const dataset of datasets) for (const record of dataset.records) assertSnapshotPrivacySafe(record.value);
 }
 
 export function snapshotManifestCanonicalJson(composition: SnapshotComposition): string {

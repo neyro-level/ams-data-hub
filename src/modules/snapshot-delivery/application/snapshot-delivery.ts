@@ -33,7 +33,9 @@ export interface PublishSnapshotInput {
   manifest: SnapshotManifestV1;
 }
 
-async function storeSnapshot(input: PublishSnapshotInput, storage: ProjectSnapshotStorage): Promise<CurrentSnapshotManifest> {
+export async function stageSnapshotArtifacts(input: PublishSnapshotInput, storage: ProjectSnapshotStorage, signal?: AbortSignal): Promise<CurrentSnapshotManifest> {
+  const checkSignal = () => { if (signal?.aborted) throw new Error("SNAPSHOT_PUBLICATION_CANCELLED"); };
+  checkSignal();
   const { composition, manifest, organizationId } = input;
   const { signature: _signature, ...unsignedManifest } = manifest;
   void _signature;
@@ -45,18 +47,26 @@ async function storeSnapshot(input: PublishSnapshotInput, storage: ProjectSnapsh
   ) {
     throw new Error("SNAPSHOT_DELIVERY_MANIFEST_MISMATCH");
   }
-  await Promise.all(composition.files.map((file) => storage.put({
+  const writes = await Promise.allSettled(composition.files.map((file) => storage.put({
     body: file.body,
     contentType: "application/gzip",
     sha256: file.manifest.sha256,
+    ...(signal ? { signal } : {}),
   })));
+  // Do not return failure while owned writes are still running: retries and
+  // worker shutdown must observe a fully settled artifact staging attempt.
+  const failed = writes.find((write) => write.status === "rejected");
+  checkSignal();
+  if (failed?.status === "rejected") throw failed.reason;
   const manifestBody = canonicalJsonBytes(manifest as unknown as CanonicalJsonValue);
   const manifestSha256 = calculateObjectSha256(manifestBody);
   const storedManifest = await storage.put({
     body: manifestBody,
     contentType: "application/json",
     sha256: manifestSha256,
-  });
+    ...(signal ? { signal } : {}),
+  }).catch((error: unknown) => { checkSignal(); throw error; });
+  checkSignal();
   return {
     organizationId,
     projectId: manifest.projectId,
@@ -83,7 +93,7 @@ export function createSnapshotDeliveryService(dependencies: SnapshotDeliveryDepe
 
   return {
     stageArtifacts(input: PublishSnapshotInput): Promise<CurrentSnapshotManifest> {
-      return storeSnapshot(input, dependencies.createProjectStorage(input.manifest.projectId));
+      return stageSnapshotArtifacts(input, dependencies.createProjectStorage(input.manifest.projectId));
     },
     registerPublication(current: CurrentSnapshotManifest, serviceState: ProjectServiceState): Promise<DeliveryRun> {
       assertProjectOperationAllowed(serviceState, "PUBLISH");

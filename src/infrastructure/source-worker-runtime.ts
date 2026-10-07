@@ -3,6 +3,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
+import { createSnapshotBuildCapability } from "./snapshot-build-capability.ts";
+import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 import { createSourceExecutionServer } from "../modules/ingestion-core/server.ts";
 import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, PgBossSourceJobQueue,
@@ -70,6 +72,7 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   assertSourceWorkerId(options.workerId);
   // Reject missing bindings before opening a queue or attempting any intake.
   const resolveStorage = createProjectObjectStorageResolver();
+  const snapshotBuild = createSnapshotBuildCapability(resolveStorage);
   // Revoke any previous incarnation before queue startup/reconciliation.
   try { await clearSourceWorkerHeartbeat(options.workerId); } catch { throw new Error("SOURCE_READINESS_CLEAR_FAILED"); }
   const boss = await getPgBoss();
@@ -87,7 +90,9 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       await settleTerminalSourceManualRequests(events);
       terminalCursor = events.length === 100 ? events.at(-1)!.id : "";
     },
-    outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC],
-      handle: (event) => event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event) : handleDefaultOutboxEvent(event) } }); }
+    outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC,
+      ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
+      handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
+        : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

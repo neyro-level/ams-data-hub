@@ -10,6 +10,437 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05 delivery fixture isolation — 2026-10-07
+
+Manual exact-head gate 284 on `76acfdb` passed 165/166 native cases; the
+durable-handler fixture claimed an older valid intent retained by another suite.
+Only fixture-owned availability and synthetic claim clocks were changed; no
+foreign intent is deleted/settled and no production claim rule is narrowed.
+Local combined Source-runtime/staging/full-worker regression passes 50/50 in
+three suites (56.72 seconds), with 48 migrations and completed cleanup. Test
+types/focused lint and docs/secrets/diff pass. The failed gate did not reach
+build; replacement exact-head provider gate remains required before merge.
+Current PRD/architecture/operations/contract claims were reconciled with the
+implemented MP-03–MP-07 state, preserving explicit undeployed/provider limits.
+
+### MP-05.11 full combined runtime function — 2026-10-07
+
+Native `snapshot-source-worker.integration.test.ts` calls the actual
+`runSourceWorker` with real local PostgreSQL and pg-boss startup, dispatch,
+fetch, registered snapshot handler and queue completion. Final three-mode matrix
+passes 3/3 (20.29 seconds), with 48 forward migrations and completed cleanup.
+Final full `pnpm verify:quick`, docs canon, secret scan and diff checks pass
+after this runtime fixture (407 modules / 1303 dependencies).
+Enabled registration produces fourteen exact-project immutable SDK PUTs, one
+current/run, PROCESSED intent and one SUCCESS job. Its exact-owner source-worker
+heartbeat is observed while running and absent after the joined stop. Disabled
+registration ignores invalid signing config and leaves the intent PENDING with
+no job or SDK IO; invalid enabled config fails before readiness/queue startup.
+Actual project/system worker cuts use NOBYPASS/non-superuser roles. Only SDK
+transport is replaced here; queue methods delegate to real pg-boss. Fixture-only
+empty GOOD/canonical enqueue uses owner setup, not Source ingestion runtime.
+Architect scoped review found no actionable findings. This proves the permanent
+runtime function, not main.ts CLI, OS SIGTERM, remote-provider or production
+operation. Task Manager owns implementation closure; MP-05 exact-head gate/merge
+and later plan epics remain separate work.
+
+The prerequisite sections below retain as-of checkpoint evidence. Their pending
+items describe those earlier cuts, not the current implementation above.
+
+### MP-05.11 optional outbox executor — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `dbc9348`. The existing combined source-worker has optional exact
+snapshot-topic registration; disabled mode keeps intake/maintenance unchanged.
+Module-owned config-free inspection precedes strict scoped historical GOOD
+membership, configuration and fresh capture. Stable outbox-derived capture
+identity, copied trust policy and existing per-project storage are reused.
+Signing registry stores reference names only; public entries are normalized
+Ed25519 SPKI (including misbound private-PEM regression), with reserved prototype
+key IDs denied. No resources, real keys, feeds or production operations are added.
+App/test types and seven unit suites passed 73/73 (25.66 seconds). Source trigger
+and extracted-facade native regression passed 35/35 in three suites (39.95 seconds).
+The final executor/active-abort native matrix passed 22/22 in two suites
+(24.87 seconds), with 48 forward migrations and completed test database cleanup:
+actual
+synthetic empty GOOD and canonical intent enqueue -> durable claim -> enabled
+capability -> capture/sign/14 SDK PUTs -> atomic publication; stale completion
+lease rejected, recovered event consumed through existing queue drain with actual
+NOBYPASS takeover/completion. Restart after freeze/missing keys/storage used the
+same run with no additional IO. Queue and SDK transports only are synthetic.
+Five active-abort cases cover caller HEAD/all thirteen artifact writes/manifest,
+and bound-owner HEAD/artifact cancellation while the invocation remains live.
+They join all owned requests before returning, with zero current/run and no later
+IO. The first run passed 21/22; manifest cancellation returned a raw transport
+error. Its awaited PUT rejection now checks owned cancellation before rethrow;
+the final native rerun passed without weakening the transport assertion.
+Architect findings (private PEM propagation and two-signal precedence) were fixed.
+Final app/test types, focused lint and eight unit suites pass 78/78
+(22.46 seconds). Quick-check contracts, types and full lint passed; dependency
+cruise initially found a private cross-module type import. Using the existing
+public type export fixes it: 407 modules / 1303 dependencies, static guards PASS.
+Docs canon, secret scan and diff checks pass. No rule was disabled or widened.
+The full runtime-function proof is recorded above; implementation closure remains
+Task Manager-owned. Exact-head epic gate/merge and later readiness work remain
+required; this is not remote-provider or production shutdown proof.
+
+### MP-05.11 final publication facade — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `20c144c`. A server-only facade now consumes the actual persisted
+receipt hash lookup and snapshot-input principal, then repeats all four owner
+readers after settled artifact PUTs in one global -> publication RC cut. Binding
+identity is rechecked before atomic current/run persistence. An exact committed
+run returns without signing, HEAD, PUT or a newer-pointer rewrite; failed staging
+also checks for a concurrent durable success. Cancellation after writes is checked
+inside the transaction callback, not after commit. Architect review found a narrow
+abort-between-early-replay-and-try gap; its check was moved inside the replay
+fallback boundary. Initial app types/lint passed. First native facade/delivery
+matrix passed 14/14 across two files (25.56 seconds) with synthetic SDK and local
+NOBYPASS publication roles, followed by database cleanup. Final native proof is
+16/16 across two files (33.98 seconds), after 48 local synthetic migrations and
+completed cleanup. Actual SDK transport is synthetic; publication uses the
+explicit NOBYPASS role. Deterministic post-early-cut concurrent commit -> abort
+and concurrent commit -> failed manifest PUT both return the same durable run,
+with no extra IO on committed replay. Nonempty actual captured Agent photo performs
+SDK HEAD; changing its asset rights/license after manifest PUT rejects at the
+Media reader before current/run. The initial fixture tried an invalid LICENSED/null
+transition rejected by the database constraint; the final fixture uses valid
+OWNED/null metadata, without relaxing constraints/grants. Project/Source/catalog/
+freeze post-PUT changes and cancellation after actual DB writes likewise preserve
+zero current/run. Restart with revoked/unconfigured signer returns the existing
+run and preserves a newer pointer. Final test types and focused lint pass;
+architect final read-only review found no actionable findings after the P2 fix.
+Full quick check PASS (402 modules / 1271 dependencies), docs canon, diff and
+secret scan PASS. Actual registered outbox,
+durable dispatch completion and complete MP-05.11 DoD remain required.
+
+### MP-05.11 Media admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `c66eda2`. The actual candidate preparation owns copied asset,
+relation and shared observation metadata before HEAD; only exact HEAD-verified
+owner/position/ref attachments receive publication anchors. Manual Agent photo
+priority and producer positions remain unchanged, including repeated positions
+sharing a URL-unique mirror relation. Pre-PUT checks compare selected immutable
+asset metadata/rights, eligible relation association and canonical URL hash,
+and shared parent/position/rights plus ECMAScript-trim license/attribution presence.
+Opaque shared manual revision identity is not forced to equal a GOOD revision.
+Raw manual spelling and canonical relation hashes are pinned independently.
+Metadata queries return no URLs, filenames, license/attribution values or payloads;
+IDs are deduplicated and paged by 200. A three-table forward SELECT extension
+keeps exact publication-purpose scope, existing grants and mutation denials.
+Older mirrored receipts without strong relation hashes fail before HEAD and
+require a fresh capture identity; persisted bytes/hashes/timestamps are not rewritten.
+Targeted units pass 26/26 across two files. Native media/staging/delivery passes
+22/22 across three files (23.17 seconds), after 48 synthetic-only migrations and
+completed cleanup. The initial native run exposed an unavailable `digest`
+function; the reader now uses the existing built-in SHA-256 UTF-8 contract.
+Architect read-only review found no actionable findings. Combined native admission,
+capture, staging and delivery passed 95/96 cases across seven files (124.96 seconds):
+the original 4100/8200 capture stays below 30 seconds and actual HEAD-selected 8200
+anchors pass Project -> Source -> Catalog -> Media in one unchanged five-second
+RC cut. The remaining owned writer fixture initially updated zero rows because
+its admin principal had no job-only write policy. After setting the actual scoped
+media job context, focused native media plus writer regressions pass 22/22 across
+two files (17.90 seconds), with unchanged grants, roles, RLS and lock deadlines.
+The owned NOBYPASS writer waits on the admission lock, then commits its URL change
+without touching updatedAt; old hashes reject. Fixture setup/capture uses owner
+login; publication and competing writer roles are explicitly NOBYPASS. Final post-PUT recheck,
+current/run orchestration and registered outbox execution remain unfinished.
+Final quick check PASS (401 modules / 1256 dependencies); docs canon, RLS coverage
+(49 models) and diff check PASS. No task closure, release gate, merge, mirror or
+production action is claimed.
+
+### MP-05.11 Catalog admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `c5b069a`. The actual selected catalog supplies copied permission
+anchors before HEAD. Pre-PUT admission compares exact subscription mode/version
+and complete city/decision sets, then only selected Developer/Development/Building
+lifecycle/merge/parent/city/district metadata in pages of 200. Names, versions,
+prices, geography projection and unrelated new eligible rows are not refreshed or
+compared. The forward six-table SELECT extension keeps subscription scope exact
+and shared catalog global; selected UID restriction belongs to the guarded reader,
+not tenant-owned RLS. Existing grants, write denials and global writer triggers
+remain unchanged. Pure anchor units are 11/11 PASS; app/test types and focused
+lint PASS. Native combined admission/capture/staging/delivery is 78/78 PASS in
+six files (124.02 seconds), after 47 synthetic-only forward migrations and
+completed cleanup. Original 4100/8200 capture stays below 30 seconds (21.021
+seconds outer cut); the same Project -> Source -> Catalog RC cut stays below the
+unchanged five-second assertion. It has an empty selected catalog, not a catalog
+maximum proof. Final focused native is 26/26 PASS in two files (21.18 seconds):
+401 actual selected rows per entity use exactly three pages [200,200,1] each,
+within the unchanged five-second admission cut, plus fact-writer regressions.
+Direct city/selection DML without version bump rejects; an owned actual NOBYPASS
+city INSERT waits behind admission, then commits and makes the old cut stale.
+Populated foreign subscription, wildcard/multi/legacy and wrong-actor guards
+deny; selected entity metadata changes reject while value/new-row edits pass.
+These catalog fixture captures use owner login; publication and competing writer
+roles are explicitly NOBYPASS. Full quick check PASS (399 modules / 1245
+dependencies); docs canon, RLS coverage (49 models) and diff check PASS. Architect
+code/tests review found no actionable findings; 5000-per-entity maxima are not
+claimed by these proofs.
+Final post-PUT media/all-owner admission, atomic current/run and actual outbox
+registration remain unfinished; no task closure or production action is claimed.
+
+### MP-05.11 Project admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `ffe5893`. The candidate owns value-free project anchors before
+HEAD, from the validated receipt and actual published Agent/binding graph. The
+staging pre-PUT cut checks unfrozen jobs, active project/service, captured contact
+version and exact published Agent consent/version/photo slots and binding tuples.
+It does not compare whole Project.version or enrich old snapshots with new Agents
+or optional contacts. Project-owned metadata reads use pages of 200 and no row or
+domain locks; a forward SELECT-only five-table RLS extension restricts the exact
+single-project publication purpose without new grants or relaxed write policies.
+Pure anchor units are 9/9 PASS; final test types and focused lint PASS. Native
+publication/capture/staging/delivery regression is 47/47 PASS across four files
+(88.68 seconds), after 46 forward migrations on the isolated synthetic database;
+cleanup completed. Actual NOBYPASS publication reads prove consent/contact/binding
+changes, metadata-only selects, wildcard/empty/multi-project/populated foreign
+scope and legacy-purpose/wrong-actor denial. An owned actual web consent writer
+waits behind the admission cut, then commits and makes old anchors stale. The
+original 4100/8200 capture stays below 30 seconds (outer cut 14.725 seconds);
+combined Project plus Source admission stays below the unchanged five-second RC
+assertion. The capacity fixture now has an actual required fallback contact,
+not a forged optional-contact flag; it is not full media/catalog admission.
+Project-reader fixture capture/setup use the owner login, not a NOBYPASS capture
+claim. Separate full-capture regressions exercise the worker role. Architect
+production-delta and test review found no actionable findings. Full quick check
+PASS (397 modules / 1238 dependencies); docs canon, RLS coverage (49 models) and
+diff check PASS for this delta.
+Final post-PUT all-owner admission, current/run atomic publication and registered
+outbox execution remain required; MP-05.11 stays IN_PROGRESS. No production,
+provider migration, release gate, merge or GitHub mirror is claimed.
+
+### MP-05.11 Source admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `a01099f`. The actual candidate/signed/staging pipeline owns
+copied Source/head and ACTIVE inventory metadata anchors derived from the
+validated receipt before object IO. Ingestion's bounded plain-read API checks
+the complete current Source and ACTIVE cohort plus historical GOOD membership
+under caller-owned global then scoped publication locks in ReadCommitted.
+No revision payload, producer external identifier or live profile is projected
+by this reader. Producer OFF/version/failed-attempt changes preserve eligibility
+when approved GOOD and normalized facts remain unchanged; historical missing-grace
+facts need not equal the head. Source checks run in the pre-PUT binding cut.
+A forward migration adds exact publication-purpose SELECT and restrictive scope
+policies on four existing fact tables without expanding mutation privileges.
+
+Final native PostgreSQL proof: 39/39 across four files in 103.72 seconds after
+45 local synthetic migrations. Tests cover actual persisted capture, historical
+GOOD and producer OFF/failed-attempt positives, changed dataset/cohort/hash/
+external membership, real committed new GOOD and null-to-GOOD head changes,
+wrong head/fact pins, NOBYPASS scope/read-only enforcement and metadata-only
+query tracing. Actual changed-cohort signed staging rejects before binding/PUT;
+existing signing, immutable staging/restart/rotation, current/run rollback and
+capture regressions pass. The unchanged 4100-inventory/8200-media fixture also
+passes fresh Source admission within the 5-second RC limit, using pages of 200;
+capture remains below its unchanged 30-second bound (outer cut 27.930 seconds).
+The initial correlated membership query exceeded 5 seconds; the final bounded
+set-oriented metadata joins pass without reducing volume or relaxing limits.
+Final app/test types and focused lint passed; targeted units are 22/3 files PASS.
+Final verify:quick passed (395 modules, 1231 dependencies); docs/RLS coverage
+confirmed 49 models and the staged secret/diff checks passed.
+Scoped architect code/RLS/join review found no actionable defects.
+This is not final publication admission across the upload window: project,
+subscription, Agent/contact/media gates, post-PUT recheck, atomic orchestration
+and registered outbox remain required. No merge, mirror or production action.
+
+### MP-05.11 fact-writer serialization prerequisite — 2026-10-07
+
+Checkpoint base `6351f8c`. A new forward migration installs BEFORE STATEMENT
+global safety advisory locks for INSERT/UPDATE/DELETE on exactly 17 final
+admission fact tables. Existing grants, RLS and immutable GOOD facts remain
+unchanged; MediaAsset retains its append-only runtime boundary. The three shared
+catalog tables cover lifecycle/merged-parent eligibility, not live regeneration
+of aliases, names, geo or prices. Legacy inventory identity commands now acquire
+global before their Source domain key, matching Source runtime lock order.
+Final test types and focused lint passed. Native PostgreSQL proof: 41/41 across
+four files in 46.69 seconds, after applying 44 migrations to the guarded synthetic
+database. Owned backend PID/database advisory waiters prove zero-row DML on all
+17 tables, actual Agent consent mutation, subscription membership INSERT/DELETE,
+and global-before-domain ordering. Agent and subscription row NOWAIT probes
+confirm waiting occurs before row acquisition; rollback releases owned work.
+Other INSERT/DELETE coverage is trigger-definition coverage, not separate
+actual-row mutation proof. Existing inventory, newbuilding and Source runtime
+regressions pass. verify:quick passed (393 modules, 1223 dependencies); scoped
+architect review found no actionable defects. No production migration was run.
+This prerequisite does not implement final fresh admission or registered outbox
+execution; MP-05.11 remains IN_PROGRESS. The final publisher must use plain
+fact SELECTs under global then scoped publication locks, without acquiring
+Source/path domain locks or fact FOR UPDATE locks afterward.
+
+### MP-05.11 newbuilding lock-order prerequisite — 2026-10-07
+
+Checkpoint base `09b4f81`. Newbuilding preview/apply's common repository read
+now takes the global safety advisory lock before Source FOR UPDATE, matching
+Source runtime and eliminating the identified opposite-order wait. Final native
+newbuilding regression: 7/7 PASS in 6.00 seconds. The two-connection proof pins
+the actual preview backend PID and database, observes its exact advisory waiter,
+and acquires the Source row NOWAIT before releasing global and joining preview.
+Preview/apply/stale-review/atomic rollback/tenant denial behavior remains covered.
+App/test types, focused lint, units 7/7 and scoped architect review passed.
+This prerequisite does not replace narrow fact-writer serialization, fresh
+admission or registered outbox execution; MP-05.11 remains IN_PROGRESS.
+
+### MP-05.11 signed binding and staging — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `57327a1`. Real server-owned signed build now binds exact scoped
+receipt/inputHash/sequence/keyId/canonical manifest SHA-256 before object IO.
+Database checks preserve receipt headers and timestamps, immutable grants and
+single-project publication-purpose RLS; captured facts remain read-only. The
+actual S3 adapter is exercised through a synthetic SDK transport, with no
+provider network or credentials. Partial uploads do not create current/run;
+restart retains binding and key rotation conflicts before PUT. Failed batches
+settle all owned PUTs before returning. Final native binding/foundation/capture/
+URL lifecycle regression passed 29/29 in 86.91 seconds; original capture limit
+remains 30 seconds, with the large fixture cut at 15.781 seconds. SQL epoch
+equality proves a known `.789Z` Date independently of the adapter roundtrip;
+a signed timestamp changed by one millisecond is rejected. Final test types and
+focused lint passed; verify:quick passed (393 modules, 1223 dependencies),
+targeted units 38/7 files passed, and RLS coverage confirmed 49 models. Scoped
+architect review found no actionable checkpoint defects.
+
+Native diagnostics found a three-hour timestamp shift from a non-UTC session
+and the installed adapter's offset-free Date conversion. Pool sessions now pin
+UTC through connection startup options; strict binding validation is unchanged.
+This does not rewrite existing rows or alter a database server. Historical
+non-UTC-written timestamp/receipt compatibility requires a separate scoped
+check before release; never rewrite immutable receipt hashes to mask drift.
+Module-owned fresh admission, serialized fact writers and registered outbox
+handling remain required for full MP-05.11 completion. No delivery gate, merge,
+GitHub mirror or production action is claimed by this partial checkpoint.
+
+### MP-05.11 repository foundation — 2026-10-07, IN_PROGRESS
+
+Task base `327f210`. Current/DeliveryRun repository takes global safety then
+scoped publication advisory locks in its caller-owned short ReadCommitted
+transaction. An existing committed run with matching key/digest/timestamp is
+returned without changing current, including replay after a newer publication;
+identity conflicts fail closed. Native NOBYPASS RC proof: 3/3 PASS, including
+concurrent duplicates, conflicting digest, rollback after pointer/run write,
+historical replay and lower uncommitted sequence rejection. Scoped architect
+review found no actionable foundation issues. This is not full MP-05.11:
+durable signed binding before PUT, module-owned fresh admission/readers, serialized
+fact-writer protocol and registered outbox handler remain pending. Agent admin
+CAS alone does not serialize consent changes with the publication safety lock.
+
+### MP-05.10 implementation proof — 2026-10-07
+
+Task base `b8de74a`. `createSnapshotSignedBuildServer` composes the actual
+persisted-receipt assembler, composer privacy/reference guards, existing
+SecretRef Ed25519 signer and trusted/non-revoked signature verification. Lookup
+is strict; caller headers/entities/keyId are not accepted. Manifest metadata
+comes from the validated receipt; sourceRevisions is the sorted unique union
+of captured approved GOOD heads and historical GOOD facts used by ACTIVE rows,
+bounded to 10000 IDs. No FAILED/REJECTED/baseline-only revision is invented.
+Signed generatedAt/publishedAt equal capturedAt: stable snapshot identity time,
+not the later pointer commit time. DeliveryRun.createdAt remains the delivery
+staleness clock. Key/trust configuration is copied and pinned for the factory;
+cross-process/rotation idempotency needs the durable binding before upload in
+MP-05.11. Signing failure returns a fixed error, not SecretRef/key material.
+Native URL/signing proof: 2/2 PASS. Final complete capture suite: 22/22 PASS,
+81.45s, including actual NOBYPASS capture with nonempty GOOD revision, signed
+thirteen-file portable-verifier roundtrip, corrupt artifact rejection and exact
+signed replay after live edits. Fixture consumer policy uses generic JSON plus
+exact reference-checked public graph equality, not a universal consumer schema.
+Historical/head revision union is additionally unit-proven. Units: 35/35 in
+four suites; full verify:quick PASS (390 modules, 1206 dependencies), final delta
+test types/lint PASS. Original capacity cut: 15.751s below unchanged 30s limit.
+Initial fixture TS2352, non-canonical property-order comparison and a preexisting
+5s test timeout remain recorded in Task Manager; no timeout/assertion was weakened.
+Exact pushed checkpoint and closure ledger belong to Task Manager. No fresh
+publication admission, artifact upload, current pointer or outbox registration
+is claimed by this checkpoint.
+
+### MP-05.9 implementation proof — 2026-10-07
+
+Task base `b29dec8`. Different-key concurrent first captures exposed a real
+`ProjectSnapshotSequence_pkey` violation: empty-update Prisma upsert can use
+SELECT/INSERT against a RepeatableRead cut established before advisory waiting.
+The forward correction uses atomic INSERT ON CONFLICT then the same scoped
+counter read/CAS; existing locks, monotonic trigger, unique receipt and bounded
+whole-transaction retry are preserved. Actual adapter-pg error is P2010 with
+`meta.driverAdapterError.cause.originalCode=40001` and
+`kind=TransactionWriteConflict`; the narrow classifier now admits it, alongside
+existing P2034/meta.code=40001, without blanket unique/error-message retry.
+Coverage includes actual command rollback, replay, separate project counters,
+publication/delivery floor and INT_MAX exhaustion. Native focused proof: 2/2
+PASS; a fixture-only barrier establishes both RR cuts before advisory waiting
+and asserts a real third transaction attempt, not just lucky Promise.all.
+Final native capture/URL regression: 24/24 in two suites, 103.54s; unchanged
+4100 inventory/8200 media capture: 14.233s under the original 30s limit. Units:
+15/15; full verify:quick (389 modules, 1197 dependencies), final delta app/test
+types and focused lint, docs/secrets/diff passed. Initial P2002 and then nested
+40001 failures are retained in Task Manager alongside the corrections, not
+discarded as environment failures. Exact pushed checkpoint/closure ledger is
+recorded in Task Manager. This does not claim independent projects make parallel progress while the
+exclusive global data-safety lock is held, or completed signed publication.
+
+### MP-05.8 implementation proof — 2026-10-07
+
+Task base `b0c4346`; existing persistent-state transfer is reused, not redesigned.
+Native URL commands run under NOBYPASS web role and snapshot capture/assembly
+under NOBYPASS worker: publish, rename with 301, relink with stable publicUrlId,
+registered REDIRECTED target, GONE/tombstone and reservation without entry.
+The strict thirteen-dataset composer receives captured state; old input replay
+does not change after live lifecycle mutation. Source-runtime proof additionally
+captures actual INACTIVATED/REACTIVATED events and state, retaining inactive
+history without an ACTIVE inventory row. No templates/reserved namespaces or
+consumer SEO policy enter the public result; injected assembler SEO overrides
+are rejected by the strict lookup contract. Native baseline: 31/31 in source
+runtime, URL lifecycle and URL registry suites; final URL fixture rerun after
+the override assertion: 1/1. Project-state/composer units: 24/24. Full
+verify:quick passed (389 modules, 1197 dependencies); final fixture types/lint
+passed. Exact pushed checkpoint and closure ledger belong to Task Manager.
+This is not consumer HTTP/410/sitemap implementation or epic delivery.
+
+### MP-05.7 implementation proof — 2026-10-07
+
+Task base `8c13e69`. Canon §30/§32A defines existing listing fallback flow:
+captured ACTIVE inventory without eligible confirmed agent relation requires
+the exact project's contact. Candidate derives this predicate, admits the
+strict projected contact before HEAD, and returns `requiresProjectContact`.
+Composer reuses the same guard; a directory Agent or foreign contact cannot
+replace the listing relation/project row. Empty/all-bound flows are optional.
+No new configuration, live contact lookup, duplicate phone or public schema is
+introduced. Native fixture exercises actual matching/capture/composer, required
+missing/foreign denial, all-bound optional flow and immutable contact replay.
+Final unit/composer/project-state tests passed 29/29; final native passed 50/50
+in two suites (102.06s), including actual required/optional composition, scoped
+missing/foreign denial before HEAD and immutable contact replay.
+First final native run passed all contact scenarios but failed full capture at
+the unchanged 30s transaction limit (49/50). Scoped forward correction starts
+binding selection from actual assignment rows before the correlated historical
+lookup; exact latest GOOD/hash/scope/RLS predicates remain. The new project-state
+phase timing is diagnostic only. Repeat capacity capture4100/8200 passed in
+25.605s, including project-state 41ms, under the unchanged 30s timeout. Full quick
+and final SQL/test delta types/lint/architecture checks passed (389 modules,
+1197 dependencies); docs/secrets/diff passed. Large binding-history scalability
+is not proved by the empty-binding capacity fixture; exact nonempty/historical
+binding semantics are proved by the separate canonical command/capture tests.
+Exact pushed checkpoint/closure belongs to Beads; epic delivery remains open.
+
+### MP-05.6 implementation proof — 2026-10-07
+
+Base checkpoint `408a077`; no closure or epic delivery claim. Project-state now
+owns an exact scoped GOOD/revision/hash → Agent binding. Canonical server-only
+matching replaces one full revision's assignments atomically, rejects aggregate
+claims above 50000, checks DataSafety under the global lock before project lock,
+and loads fact membership in pages of 200. Scoped FKs/GOOD trigger and FORCE RLS
+provide independent database checks. Capture is read-only for this assignment.
+Candidate assembly uses captured fact pins and captured eligible Agent rows;
+ambiguous/unresolved linkage is omitted, and failed ACTIVE/showOnSite/consent
+retains listing/contact fallback without personal block/photo. Immutable replay
+does not imply fresh publication approval. Automatic Source GOOD → matching,
+mandatory contact enforcement and signing/publication are not claimed here.
+Final native passed 52 tests in four suites with real command composition and
+explicit NOBYPASS matching runtime: assigned photo and all gate HEAD omissions,
+foreign scope, forged pin, cap, capture delete denial, unresolved veto/retry,
+historical GOOD grace, actual REJECTED revision denial, replay and DataSafety
+freeze. Capacity capture 4100/8200 took 27.548 seconds under the unchanged 30s
+limit. Units 25/25, full verify:quick (388 modules/1193 dependencies), final
+fixture types/lint and docs/secrets/diff passed. Exact checkpoint/closure pointer
+belongs to the Task Manager ledger; epic delivery remains open.
+
 The exact owner source was read in full. Inventory schema version 2 contains
 11 epics, 75 implementation tasks and 11 delivery tasks: 97 managed nodes.
 The existing Task Manager helper's Validate actually passed: coverage 11/11,
@@ -132,6 +563,399 @@ coverage; acceptance stays the source's requirement, not a new checklist graph.
 
 ## REQUIRES CHECK
 
+### Completed input-capture contract: MP-05.1
+
+WORK on the approved graph: capture a complete, bounded, project-scoped DB
+input in one Repeatable Read transaction, reserve its positive publication
+sequence in that transaction, and persist immutable allowlisted fact parts.
+An identical idempotency request returns the original input; changed parameters
+conflict. Catalog revision identifies captured values, not a timestamp or a
+mutable latest-change pointer. Historical GOOD inventory facts still backing
+ACTIVE grace identities are pinned with their actual revision. No network,
+object-storage or signing work occurs inside capture. Existing module-owned
+queries and command/authorized-transaction seams are extended, not bypassed.
+
+Verification must exercise the concrete resolver and repository with a scoped
+NOBYPASS worker on the isolated synthetic database: tenant isolation, one-cut
+reads, immutable retry, historical fact matching, positive sequence, bounded
+capture and rollback. Public projection, signing/publication, production and
+real feeds remain outside this checkpoint. MP-05.1 implementation was closed
+by the strict Task Manager helper at clean pushed checkpoint `a074033` after
+complete resolver/native proof; persistence scaffolding alone was insufficient.
+
+Capture retry constructs a new fact builder inside every transaction attempt.
+Fresh admission uses a second bounded authorized Read Committed transaction
+while the outer global-safety/project locks are held; it never acquires the
+same locks recursively. This preserves the caller's single Repeatable Read fact
+cut without privileging a SQL function or granting worker UPDATE on Project or
+DataSafetyState. Pool acquisition/transaction failure is fail-closed, not an
+excuse to proceed with the old admission cut. New scoped SELECT policies do
+not authorize writes to Source, catalog, agent or project facts.
+
+The project-state capture reader now selects scoped public contact candidates,
+consented ACTIVE visible agents, editorial facts without internal presentation
+notes, media-order policy and persistent URL entries/reservations, redirects,
+tombstones, confirmed listing links and lifecycle facts in that same caller cut.
+Reservations without an entry remain pinned; no replacement public URL IDs are
+allocated during capture. Private consent actors/bases and non-publishable agent
+data are not selected. These are private input facts, not public DTOs; the
+complete command now composes them with media association capture below.
+
+Catalog candidate capture returns its bounded development UID closure. Own-project
+price/shared-media observations are selected only within that closure and pinned
+in the same cut; decimal values stay exact strings. Producer URLs are replaced
+by a private digest and license/attribution text by eligibility markers, not
+copied into the receipt. This metadata is not proof of a mirrored public asset.
+Legacy generic project-job policies were found to permit fact mutation under
+the capture purpose. A forward-only restrictive policy layer now denies fact
+and publication-floor INSERT/UPDATE/DELETE for `snapshot-input` (including its
+legacy job representation), even with wildcard/multiple/empty scopes. It does
+not remove existing legitimate import/mirror/admin policies or receipt/counter
+writes. Native denial and ordinary-workflow controls must pass before claiming
+the boundary fixed.
+
+Inventory media capture in MP-05.1 now reads exact scoped ACTIVE identity/hash
+and immutable GOOD image membership from the captured inventory pins, retaining
+producer positions (including duplicate images). An eligible historical mirror
+must reference a scoped GOOD record no newer than the fact revision and belong
+to that record's image membership. Capture stores relation revision/update
+tokens and allowlisted asset digest/type/size/key/rights markers, not producer
+URLs, filenames, license text or mutable relation IDs alone. The head pin must
+also match scoped Source.LastGood in that same cut. A capture-local buffer emits
+at most 200 records/1 MiB per part across listings, preserving repeated producer
+positions without one empty part per inventory; finish emits one empty section
+only when the whole media capture is empty. Any failure prevents finalization.
+HEAD/public DTO projection remains outside capture. Native proof covers
+historical grace, wrong/foreign/future/stale-head pins, warning omissions and
+remirror after capture; batching has separate resource regression tests.
+Agent photo capture now pins scoped eligible assets for both assignment slots,
+with ACTIVE/visibility/consent gating and ASSIGNED_ASSET_ONLY provenance. It
+does not choose slot priority or prove approved feed-photo origin; feed-photo
+public projection must omit absent proof rather than treating assignment as GOOD.
+Shared observation capture now pins scoped development/building associations and
+eligible mirrored asset facts in page-batched queries. Manual import observations
+do not need a fabricated XML revision: SHARED_OBSERVATION_MIRROR records the
+actual association, not GOOD-backed feed provenance. Captured shared-media facts
+remain the rights/attribution-marker source for future projectors; no live reads
+may substitute changed rights or remirrored assets during replay.
+The private `captureSnapshotInput` command now composes all readers and persists
+all 18 sections with a positive sequence in one transaction. Its receipt-first
+path skips fact rematerialization but still requires fresh current admission.
+Every retry constructs a new builder. Catalog revision hashes captured catalog
+values; project-state revision is the base Project version, with full captured
+version/value parts and input hash identifying the complete state.
+Inventory media capture now validates up to 200 pins with one scoped bulk query,
+then reads mirrors in keyset pages of 200. Current and historical image membership
+queries return at most 1 MiB of arrays or small split markers; normalized leaves
+share a 32 MiB retained-URL budget before accumulation. Historical requests are
+deduplicated per inventory/revision and released after each mirror page. This is
+a bound on retained representations, not RSS. The awaited Source page visitor
+keeps Source and media capture in the same cut and propagates failures.
+Native NOBYPASS Source-to-media capture of 4100 image-less identities now uses
+64 raw SQL calls and passes the actual 30-second worker transaction. Unit tests
+cover split accumulation and combined current/historical URL-budget exhaustion.
+The complete command additionally passes native capture of 4100 image-bearing
+identities and 8200 media positions within the unchanged 30-second transaction
+limit, followed by persisted replay. The 16-test native suite also proves
+immutable replay after live facts change, concurrent same-key requests, atomic
+rollback, foreign-scope denial and fresh freeze admission. This proves the
+private input-capture boundary, not 13-dataset projection, signing, publication
+or production capacity. Clean pushed implementation checkpoint and strict
+Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
+
+### Verified implementation contract: MP-05.5
+
+Reuse the existing explicit `toPublicInventoryDto` allowlist and strict public
+schema after captured GOOD normalization; do not add a second mapper or spread
+Prisma rows. Task acceptance is the public DTO boundary, not speculative complete
+producer-field mapping. Missing/unsupported facts remain explicit ABSENT/INVALID.
+Prove all eleven property variants and the four approved actual Source pipelines
+through GOOD, persisted capture and thirteen-dataset assembly under NOBYPASS.
+Private raw/phone/apartment/source-code/media sentinels must be present upstream
+and absent downstream; public coordinates are coarsened and receipt replay must
+survive live Source/profile edits. Agent gates/fallback, signing/publication and
+production are out of scope. Targeted projector/preflight units 31/31 PASS,
+including all eleven property variants. Final native Source-runtime suite 27/27
+PASS (24.88 seconds) includes four actual profile pipelines, upstream private
+sentinels, strict public DTOs across thirteen datasets and immutable replay.
+Both source and snapshot transactions use independently asserted NOBYPASS roles.
+The geo proof requires exact persisted coordinates and finite public VALUE
+coordinates distinct from the exact pair, so ABSENT cannot manufacture PASS.
+Verify:quick, test types/lint/architecture, docs/secrets/diff PASS. Reused production
+mapper/resolver/projector unchanged; no speculative facts or second mapper.
+Task closure/exact pushed ledger is recorded in Task Manager; epic Gate/merge,
+agent binding/gates and publication remain separate unfinished work.
+
+### Implemented contract: MP-05.4
+
+MP-05.4 implementation is closed at `44150a403cbe3ca8c1ca4faa0336b7a105a13ac7`;
+the contract and checkpoint evidence below are retained as history. MP-05 epic
+delivery remains open until the remaining tasks and exact-head Gate/merge.
+
+Require captured Source membership and exact approved head ID/sequence for every
+ACTIVE inventory pin before object IO; historical fact sequence may be below the
+head, never above it. Reuse the actual ingestion apply SAFE predicate for pinned
+policy, persisted analysis, counts and baseline; capture must emit value-free
+approval provenance rather than trust a GOOD status or mutable current policy.
+No-head source without ACTIVE inventory is an empty contribution. Broken latest
+attempts and producer disable must not remove existing captured GOOD. Verify two
+actual same-project Source pipelines and persisted assembly: A malformed/
+suspicious/rejected attempts preserve its GOOD while B updates; same external IDs
+remain source-scoped, missing grace/replay and foreign denial remain intact.
+No schema rewrite, production, real feeds/PII/secrets, fact-completeness expansion,
+agent binding or signing/publication in this task. Required checks: targeted
+units, types/lint/quick, actual scoped native proof, docs/secrets/diff and exact
+pushed checkpoint ledger. Current first delta adds head-membership preflight and
+shared apply approval predicate. The first native multi-source proof below is
+PASS. Subsequent capture wiring now validates head and historical fact approval
+against exact scoped immutable GOOD baselines and emits private value-free proof.
+SQL byte guards reject policy/analysis JSON above 4096 bytes each before transfer;
+the initial head read no longer transfers raw policy. Per-cut approval cache and
+200-pin lookups preserve bounded access. Receipt preflight correlates proof pins
+and equal-head hashes; older proof-less receipts require fresh capture, not live
+enrichment/hash rewriting. Final regression evidence and pushed ledger are still
+required before MP-05.4 closure.
+
+First checkpoint evidence (2026-10-07): actual same-project Source pipelines use
+the NOBYPASS worker, real spool/S3 adapter and synthetic external transport. A's
+malformed, suspicious drop and rejected empty attempts preserve its previous GOOD
+and inventory while B updates. Equal external IDs remain distinct source-scoped
+UIDs; historical missing-grace facts survive. Real persisted capture/13-dataset
+assembly/replay and foreign-scope denial pass. Separate principal/authorized role
+wrappers and exact UID sets prevent false-positive proofs. Native three suites
+44/44 PASS; unchanged 4100/8200 capture limit remains 30 seconds (24.825 seconds).
+Targeted units 26/26, verify:quick, final test types/focused lint, docs/secrets/diff
+PASS. Architect findings in fixture fixed and reviewed with no new findings.
+No real provider/import data, signing, publication, merge or production claim.
+
+Capture approval checkpoint evidence (2026-10-07): scoped PostgreSQL NOBYPASS
+three-suite regression 46/46 PASS (78.88 seconds). Forged SAFE analysis and
+oversized private review siblings reject before receipt persistence; historical
+fact/head baseline proof is explicitly asserted. The actual two-source runtime
+and thirteen-dataset assembly/replay remain green. Original 4100/8200 complete
+capture takes 12.498 seconds within the unchanged 30-second boundary; cached
+head/fact approval adds one SQL byte guard (page seam 65 raw queries, not 64).
+Targeted approval/preflight units 14/14, verify:quick (386 modules, 1187
+dependencies), docs canon, secret scan and diff checks PASS. Architect byte-read
+finding and native fixture setup errors were fixed, not bypassed. This is
+implementation evidence only; MP-05 epic Gate/merge and publication remain pending.
+
+### Active implementation contract: MP-05.3
+
+Select a deterministic public catalog cohort from the immutable captured
+subscription and candidate closure, never by a live subscription query or by
+rewriting receipt parts/hashes. Reuse the existing query semantics: ALL_SHARED
+subscribed cities minus EXCLUDE; CURATED explicit INCLUDE minus EXCLUDE, without
+an implicit city restriction. Development/developer/building must be ACTIVE and
+not merged. Confirmed listing links expand capture, not subscription authority.
+Preserve subscribed-city anchors and selected dependency closure; omit excluded
+catalog owners, their prices, shared media before HEAD and catalog editorial.
+Keep inventory and persistent URL/redirect/tombstone/lifecycle history intact.
+Verify native scoped capture-to-selection/replay, linked exclusions, CURATED
+outside-city inclusion, inactive/merged parents/buildings, zero excluded HEAD,
+reference/privacy integrity, unit/static checks and original capacity limit.
+No production, real feeds/PII, credentials or historical migration changes.
+
+Implemented evidence (2026-10-07): real persisted capture/assembly under the
+NOBYPASS worker selects ALL_SHARED and CURATED across two synthetic cities;
+confirmed excluded/outside links retain both GOOD listings without admitting
+their catalog owners. Inactive developer, merged development and inactive/merged
+buildings are omitted with dependent prices. Distinct shared assets prove only
+selected HEAD calls outside transactions. Nonempty URL/redirect/tombstone history
+survives exclusions; replay remains unchanged after source-off, live lifecycle/
+link edits and subscription deletion. Foreign project is rejected before HEAD.
+Native suites: 21/21 PASS; original 4100/8200 capture stays within 30 seconds
+(16.245 seconds). Targeted units: 41/41 PASS. verify:quick, final test types,
+focused lint, docs canon, secret scan and diff checks PASS. Architect scoped
+static reviews have no actionable findings. External HEAD is synthetic, not a
+live-provider proof; fresh publication gates and MP-05 epic delivery remain open.
+
+### Active implementation contract: MP-05.2
+
+Unified candidate assembly extension: load only a persisted scoped receipt under
+the snapshot-input project-job principal; validate captured inventory/URL/profile
+inputs before object IO; perform HEAD outside database transactions; resolve
+immutable GOOD facts in pages of at most 200 and immediately project each page
+to public records. Compose the five catalog, six project-state, inventory and
+media datasets with exact-kind/reference/privacy checks and bounded public work.
+No raw page accumulation, live profile/Source lookup, inferred agent identity,
+signing or publication. Verification must use actual persisted capture/resolver
+with synthetic NOBYPASS PostgreSQL, all thirteen datasets and replay after live
+edits; partial helpers alone do not close this task. Existing production, secret,
+PII and historical-migration stop conditions remain unchanged.
+
+Unified candidate proof now uses actual persisted capture with normalized GOOD
+draft/fields and recomputed record hashes, persistent inventory URL, all thirteen
+real datasets and unsigned deterministic composition. Native replay remains
+identical after live Source/profile/catalog/contact/editorial/agent/media edits.
+A separate 201-record historical grace case verifies fact sequence 1 under
+captured head sequence 2, real resolver pages `[200, 1]`, producer-off/reprofile
+replay and no object HEAD for absent media. The final two native suites PASS
+20/20; unchanged 4100/8200 capture takes 13.1 seconds under the original 30-second
+worker limit. Final units PASS 59/59; full static checks PASS (383 modules/1170
+dependencies), with final test TypeScript/lint after the strict-scope fixture
+correction. Docs/secrets/diff checks are recorded in Task Manager. Synthetic
+object transport is not a live-provider proof. Cohort/policy composition, complete
+source-fact preservation, confirmed listing-agent binding and fresh admission,
+signing/publication remain subsequent implementation work, not proved by this
+candidate checkpoint.
+
+Compose all 13 public dataset projectors from the immutable captured input and
+its exact scoped GOOD references. Reuse existing domain-owned public DTO/media,
+contact, editorial and URL mappings; never pass raw Prisma rows to the composer.
+Projection must not replace captured facts, rights or profile configuration with
+live values. Immutable GOOD draft loading is scoped, hash/revision checked and
+bounded; producer URLs, raw records, storage coordinates and consent internals
+are not public dataset fields. Public media verification occurs outside capture.
+Catalog selection, agent/contact fallback and persisted URL/lifecycle semantics
+must remain compatible with the subsequent MP-05.3–8 tasks, not be invented by
+generic field spreading. Empty datasets remain explicit; reference/privacy
+validation fails closed. Tests must prove actual 13-dataset composition,
+determinism, privacy and unchanged receipt replay using synthetic fixtures.
+Signing/publication and runtime activation remain later tasks. No deployment,
+real feeds, real PII or new credentials are authorized by this contract.
+
+The first MP-05.2 checkpoint implements only the five catalog/geo/price candidate
+closure projectors, with strict public schemas, deterministic order, explicit
+references and cross-parent validation. Receipt validation checks bounded all-18
+parts and their order/hashes plus the header/input/catalog digests. Prices retain
+exact decimal strings; no observation source/external IDs or private metadata
+are spread into public rows. Persisted seven-place coordinates and 200-character
+developer/development names/aliases remain supported. This does not yet apply
+subscription filtering. The next checkpoint adds six pure project-state
+projectors: official contacts, captured-gated agents, editorial, persisted URLs,
+redirects and lifecycle. Existing editorial/media-order mapping is reused without
+private notes; closed personal publication gates omit agents and their editorial.
+Verified agent media is a trusted server-owned input, not HEAD/fresh consent proof.
+URL reservations keep their assigned IDs even after relinks; redirects/tombstones
+reference those persisted rows. Historical state/events do not require an active
+inventory row. Actual GOOD inventory resolution, imported inventory URL readiness,
+public media verification and complete-build proof remain required before
+MP-05.2 closure; 11 pure projectors are not a complete 13-dataset pipeline.
+
+Native PostgreSQL proof projects the actual captured catalog and project-state
+candidate closure, including persisted seven-place Decimal coordinates and
+200-character names/aliases. Persisted replay preserves all eleven datasets
+after live catalog/contact/editorial/URL changes and agent consent revocation;
+this is replay proof, not permission to publish revoked personal data.
+Capacity reruns exposed complete-capture results over the unchanged 30-second
+limit. The additive identity/hash lookup index has a natural NOBYPASS EXPLAIN
+regression. Phase instrumentation additionally exposed repeated JSON sizing in
+deferred commit checks; forward-only generated stored sizes preserve both
+triggers and all integrity limits. The final native 17-test suite passes the
+original 4100-identity/8200-media assertion (25.4 seconds including admission;
+outer transaction 25.3 seconds, source/media 22.8 seconds, save 2.0 seconds).
+Generated-count fidelity, forgery rejection (SQLSTATE 428C9), late gap/record
+overflow after an immediate header check and full rollback are also verified.
+Stored-column production rewrite/lock rehearsal remains a release prerequisite.
+The next MP-05.2 checkpoint adds a server-only ingestion-owned exact GOOD resolver.
+It accepts at most 200 captured pins and scoped revision/hash/sequence/profile
+identities, rechecks the normalized ingestion hash, and never consults live
+LastGood or the profile registry. SQL guards a 4-MiB projected page before transfer;
+oversized pages split, malformed draft/fields return markers without payload.
+Only allowlisted normalized draft candidates, finite selected scalar fields and
+exact internal identity pins leave the resolver. The pins include source/external
+identity, normalized hash and captured profile identity; they are never public
+DTO fields. No raw record, producer media URLs or phones leave the resolver.
+These candidates are NOT public DTOs; address/coordinates still require captured
+location policy and inventory schema projection. The subsequent inventory
+candidate projector applies captured profile policy;
+the subsequent media checkpoint supplies receipt-owned HEAD verification;
+unified receipt assembly remains pending.
+Native 18/18 PostgreSQL NOBYPASS tests verify historical missing-grace GOOD
+resolution, foreign scope/wrong hash/sequence/profile rejection, unchanged facts
+after live Source edits, and marker-only refusal of missing/null draft/fields.
+The worker can see those malformed GOOD records, so the marker proof is not an
+RLS-denial false positive. A captured-only profile absent from the runtime registry
+resolves successfully; a matching stored hash whose payload differs is rejected
+by recomputation. Original 4100/8200 capture still passes the unchanged 30-second
+assertion (outer transaction 23.8 seconds). Four targeted resolver unit tests
+cover allowlists, duplicate/bounded pages, split leaves and oversized-leaf refusal;
+mock batching evidence does not substitute for complete public-build capacity.
+The next address boundary consumes finite captured private apartment paths
+internally and excludes raw address/private markers from resolver output.
+Optional `addressPublic` is bounded and normalized with NFKC-aware forbidden
+content checks before/after normalization. Explicit unit components, compound
+numbers and attached exact captured markers are removed; ambiguous values fail
+closed instead of using the raw address. The subsequent candidate projector
+applies captured STREET precision and InventoryEntity/DTO assembly. No arbitrary public-address
+fallback or profile-registry lookup is introduced.
+Address verification: native 18/18 NOBYPASS suite passes historical GOOD address
+redaction/replay, Unicode-created forbidden content rejection, spaced compound
+and attached alphabetic compound unit removal. Original 4100/8200 capture still
+passes the unchanged 30-second limit (final outer transaction 23.7 seconds).
+Targeted units are 63/63 across eight files, including 150 composed address
+label/separator/private-marker combinations. Architect-found Unicode/partial
+compound/attached-marker bypasses were fixed and rereviewed; no complete public
+inventory or thirteen-dataset assembly proof is claimed by this checkpoint.
+No fixture volume or worker limit was reduced/relaxed; full public assembly
+capacity and unified orchestration are still unproven; the subsequent checkpoint
+implements captured media verification separately.
+
+The inventory candidate projector now normalizes actual verified GOOD candidates,
+not caller-provided InventoryEntity objects. It checks exact source/external/hash/
+profile pins, constructs each property's full sparse variant, uses captured unit
+and rent-period aliases, preserves false/zero, and emits finite INVALID reasons
+without producer raw values. Format-only profiles use an explicit versioned
+family baseline; missing address/URL, unknown rent period and partial coordinates
+reject readiness, with no invented currency, identifiers or period. Persistent
+captured URL entries supply publicUrlId; references include URL and owner/position
+media attachments. Coordinates pass deterministic STREET policy before the DTO.
+Private source codes are removed through bounded safe-HTML text-token passes,
+including split markup/NBSP, without flattening rich HTML. Unrecognized leading
+codes reject. Unitless heights remain INVALID pending captured unit semantics;
+unselected variant facts remain ABSENT, not inferred facts. Private externalId
+accepts the ingestion identity bound of 240 characters; it is omitted publicly.
+This pure candidate seam is not complete receipt orchestration or media HEAD proof,
+confirmed agent linkage or thirteen-dataset closure. Native PostgreSQL NOBYPASS
+suite is 18/18 PASS, including real captured identity/profile/persisted URL → GOOD
+candidate → public inventory and identical replay after Source disable/profile
+change. Original 4100/8200 capture passes the unchanged 30-second assertion
+(outer transaction 13.9 seconds in this run). Targeted units are 31/31 across
+three files, including format-only profiles, property variants, unknown units/
+periods, zero/false, pin mismatches, media-reference closure and rich-HTML code
+removal across inline markup/NBSP/br/block boundaries. Architect-found attachment
+and HTML-boundary P2 issues were fixed and rereviewed with no new targeted findings.
+
+Active MP-05.2 captured-profile extension uses the existing orchestration Task
+Contract: adapt only receipt-owned GOOD resolver identity, case semantics and
+finite field mappings, with no live registry lookup. Configuration-only YRL
+uses the explicit versioned case-sensitive parser baseline; format-owned
+profiles retain their captured flag (CIAN is case-insensitive). The selection
+omits office contacts, pattern strings and other unused private configuration;
+Only ACTIVE inventory fact profiles are required: unrelated legacy default
+sources do not block the build, while required unsupported/missing profiles,
+duplicate identities/targets and incompatible families reject. This is
+not the full configuration projection or unified 13-dataset assembly proof.
+
+Active MP-05.2 media Task Contract: verify receipt-owned inventory GOOD
+pins, captured agent consent/assignment and shared observation associations before
+any IO; reuse immutable asset/key/rights/HEAD matching; sequential project-bound
+HEAD outside DB with a bounded build-lifetime cache; emit strict owner-position
+opaque attachments and finite diagnostics, never producer URLs/private metadata.
+Manual agent photo assignment has deterministic priority over feed assignment;
+HEAD failure omits it rather than silently overriding the owner's selection.
+Required proof: targeted eligibility/HEAD/privacy/reference/replay regressions,
+native captured-fact composition, types/lint/architecture/docs/secrets. No production,
+new credentials, migrations, real feeds or fresh-publication gate changes.
+Media checkpoint implementation: `createSnapshotMediaProjectionServer` composes
+receipt admission, media-owned captured verification and the strict media dataset.
+It owns candidate/HEAD metadata copies, pins the server-selected HEAD port, and
+uses build-local cache/conflict checks. Explicit omissions cannot publish a
+supplied asset; malformed digest/key/type/size/rights are finite invalid-asset
+diagnostics without IO. Mirrored WARNING can retain a verified immutable object;
+duplicate owner positions are explicitly ambiguous omissions. Public rows contain
+only owner and MediaPublicV1, with reciprocal owner/attachment references.
+Native proof is 19/19 across snapshot-build-input and media-projection suites:
+actual PostgreSQL NOBYPASS capture of inventory/agent/shared media → HEAD outside
+traced transactions → public media/agent maps → identical replay after live asset
+key/consent edits. The capture proof uses a synthetic HEAD port; the separate
+existing media suite uses the real S3 adapter with only SDK transport replaced,
+validating immutable keys/hash/actual synthetic image bytes and producer-off read.
+Original 4100/8200 capture passes the unchanged 30-second limit (outer transaction
+13.9 seconds). No live-provider, fresh-publication or unified thirteen-dataset
+composition proof is claimed. Architect targeted review and latest closure found
+no actionable findings; final unit/static evidence is recorded in Task Manager.
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

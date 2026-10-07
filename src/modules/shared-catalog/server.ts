@@ -1,6 +1,8 @@
 import "server-only";
+export { createSnapshotPublicationCatalogReader } from "./infrastructure/snapshot-publication-catalog-reader.ts";
 
 export { normalizeGeoName } from "./domain/normalize-geo-name.ts";
+export { createCatalogSnapshotFactReader } from "./application/catalog-snapshot-facts.ts";
 export { SharedCatalogError } from "./domain/shared-catalog-error.ts";
 
 import { createSharedCatalogCommands } from "./application/shared-catalog-commands.ts";

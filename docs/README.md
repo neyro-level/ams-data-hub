@@ -22,9 +22,9 @@ Exact v4 — неизменяемый approval artifact с исходным SHA-
 Новый approved remediation plan от 2026-10-06 — активный execution source.
 Он не переоткрывает исторические задачи v4. MP-00 согласовал owner decisions;
 MP-01 удалил текущий TOTP contour с password/session regressions и новой
-forward migration. MP-02–MP-04 и MP-06 доставлены; delivery evidence хранится
+forward migration. MP-02–MP-04, MP-06 и MP-07 доставлены; delivery evidence хранится
 в Task Manager. Snapshot assembly, operations и production readiness требуют
-оставшихся MP-05 и MP-07–MP-10;
+оставшихся MP-05 и MP-08–MP-10;
 закрытый v4 не является доказательством этих результатов.
 До отдельной release-команды владельца разрешены только доработки и
 non-production проверки, не production rollout.

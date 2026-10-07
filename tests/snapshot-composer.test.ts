@@ -2,6 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   composeSnapshot,
+  assertSnapshotDatasetIntegrity,
   projectPublicCoordinates,
   SNAPSHOT_DATASET_KINDS,
   snapshotManifestCanonicalJson,
@@ -40,6 +41,15 @@ const safeDatasets = (): SnapshotDatasetInput[] => {
 };
 
 describe("Snapshot Composer", () => {
+  it("admits exactly thirteen candidate datasets and rejects duplicates, missing kinds and orphan refs", () => {
+    expect(() => assertSnapshotDatasetIntegrity(safeDatasets())).not.toThrow();
+    expect(() => assertSnapshotDatasetIntegrity(safeDatasets().slice(1))).toThrow("SNAPSHOT_DATASET_MISSING");
+    expect(() => assertSnapshotDatasetIntegrity([...safeDatasets(), safeDatasets()[0]!])).toThrow("SNAPSHOT_DATASET_MISSING");
+    const duplicate = safeDatasets(); duplicate[1] = duplicate[0]!;
+    expect(() => assertSnapshotDatasetIntegrity(duplicate)).toThrow("SNAPSHOT_DATASET_DUPLICATE");
+    const orphan = safeDatasets(); orphan.find((dataset) => dataset.kind === "developers")!.records = [];
+    expect(() => assertSnapshotDatasetIntegrity(orphan)).toThrow("SNAPSHOT_REFERENCE_BROKEN");
+  });
   it("creates deterministic gzip datasets and an unsigned canonical manifest", () => {
     const first = composeSnapshot(baseInput(safeDatasets()));
     const shuffled = safeDatasets().reverse().map((dataset) => ({ ...dataset, records: [...dataset.records].reverse() }));

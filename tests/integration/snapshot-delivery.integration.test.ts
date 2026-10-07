@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
 import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/index.ts";
 import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
-import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
 function admin(): PlatformAdminPrincipal {
   return { kind: "platform-admin", userId: `delivery-admin-${randomUUID()}`, correlationId: randomUUID() };
@@ -22,6 +22,46 @@ function tenant(organizationId: string, projectIds: readonly string[]): TenantUs
 }
 
 describe("snapshot delivery persistence", () => {
+  it("serializes real NOBYPASS publication replay/conflicts and rolls current/run back together", async () => {
+    const principal = admin();
+    const scope = await runInPrincipalDatabaseTransaction(principal, async (tx) => {
+      const suffix = randomUUID().slice(0, 8);
+      const organization = await tx.organization.create({ data: { name: "Synthetic publication", slug: `publication-${suffix}` } });
+      const project = await tx.project.create({ data: { organizationId: organization.id, name: "Synthetic publication", slug: `publication-${suffix}` } });
+      return { organizationId: organization.id, projectId: project.id };
+    });
+    const worker = <T>(execute: (tx: DatabaseTransaction) => Promise<T>) => runInAuthorizedDatabaseTransaction({
+      principalKind: "project-job", actorId: "snapshot-publication", organizationId: scope.organizationId,
+      projectIds: [scope.projectId], correlationId: randomUUID(),
+    }, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      return execute(tx);
+    }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
+    const input = { ...scope, publishSequence: 1, manifestKey: `snapshots/${scope.projectId}/${"a".repeat(64)}`,
+      manifestSha256: "a".repeat(64), publishedAt: new Date("2026-10-07T00:00:00.000Z") };
+    const runs = await Promise.all([1, 2].map(() => worker((tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun(input))));
+    expect(runs[0]).toEqual(runs[1]);
+    await expect(worker((tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...input, manifestSha256: "b".repeat(64) })))
+      .rejects.toThrow("SNAPSHOT_DELIVERY_MANIFEST_CONFLICT");
+    await expect(worker(async (tx) => {
+      await new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...input, publishSequence: 2 });
+      throw new Error("SYNTHETIC_AFTER_POINTER_ROLLBACK");
+    })).rejects.toThrow("SYNTHETIC_AFTER_POINTER_ROLLBACK");
+    await worker(async (tx) => {
+      expect(await tx.deliveryRun.count()).toBe(1);
+      expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).publishSequence).toBe(1);
+    });
+    await worker((tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...input, publishSequence: 3 }));
+    expect(await worker((tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun(input))).toEqual(runs[0]);
+    await expect(worker((tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...input, publishSequence: 2 })))
+      .rejects.toThrow("SNAPSHOT_DELIVERY_SEQUENCE_STALE");
+    await worker(async (tx) => {
+      expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).publishSequence).toBe(3);
+      expect(await tx.deliveryRun.count()).toBe(2);
+    });
+  }, 30_000);
   it("persists current manifest atomically, enforces transitions, stale cutoff, and project RLS", async () => {
     const principal = admin();
     const suffix = randomUUID().slice(0, 8);
@@ -75,7 +115,7 @@ describe("snapshot delivery persistence", () => {
         manifestKey: `snapshots/${setup.projectAId}/${"b".repeat(64)}`,
         manifestSha256: "b".repeat(64),
         publishedAt: new Date("2026-10-05T01:00:00.000Z"),
-      })).rejects.toThrow("SNAPSHOT_DELIVERY_SEQUENCE_STALE");
+      })).rejects.toThrow("SNAPSHOT_DELIVERY_MANIFEST_CONFLICT");
     });
 
     await runInPrincipalDatabaseTransaction(tenant(setup.organizationId, [setup.projectAId]), async (transaction) => {

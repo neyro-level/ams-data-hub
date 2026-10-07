@@ -16,6 +16,9 @@ export function createPgPoolConfig(databaseUrl: string): PoolConfig {
     password: decodeURIComponent(parsed.password),
     database,
     ssl: parsed.searchParams.get("sslmode") === "disable" ? false : undefined,
+    // adapter-pg serializes Date values without an offset and expects UTC
+    // timestamptz results. Pin every pooled session, not the database server.
+    options: "-c timezone=UTC",
   };
 }
 
@@ -35,6 +38,7 @@ export function createPgPoolConfigFromEnvironment(env: DatabaseEnvironment): Poo
       password: parsedEnvironment.DATABASE_PASSWORD,
       database: parsedEnvironment.DATABASE_NAME,
       ssl: parsedEnvironment.DATABASE_SSLMODE === "disable" ? false : undefined,
+      options: "-c timezone=UTC",
     };
   }
 

@@ -25,11 +25,12 @@ memberships, projects, audit, idempotency, outbox и worker; общий ката
 XML-профили и safety/import contracts; snapshot composer/signing/storage,
 ACK/rollback contracts, media mirror, fleet requests, alerts и Exit Bundle.
 Это реализованные границы и компоненты, не доказательство готовности полного
-operational pipeline. Реальная Source composition, worker/scheduler,
-DB-to-snapshot assembly и operations executors ещё требуют MP-02–MP-09.
+operational pipeline. Source composition, worker/scheduler и DB-to-snapshot
+assembly реализованы MP-02–MP-05; MP-05 provider delivery ещё ожидает gate.
+Operations executors/API и полное readiness proof требуют MP-08–MP-10.
 
 Owner decision 2026-10-06: текущая версия не требует 2FA/TOTP; OQ-09 DEFERRED,
-возврат к вопросу — post-pilot по явному решению владельца. MP-01 удаляет
+возврат к вопросу — post-pilot по явному решению владельца. MP-01 удалил
 legacy TOTP plugin, login branch, principal/env gate и factor schema новой
 forward migration. Auth regression и delivery evidence принадлежат Task Manager.
 Username/password, свежая enabled session, server authorization, rate limits
