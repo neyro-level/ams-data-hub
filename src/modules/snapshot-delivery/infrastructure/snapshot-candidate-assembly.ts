@@ -4,6 +4,7 @@ import type { PrincipalContext } from "../../../platform/authorization/principal
 import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction } from "../../../platform/database/transaction.ts";
 import type { ObjectStorage } from "../../../platform/storage/object-storage.ts";
 import { createSnapshotGoodFactResolver } from "../../ingestion-core/server.ts";
+import { prepareSnapshotPublicationSourceAnchors } from "../../ingestion-core/index.ts";
 import type { SnapshotDatasetInput, SnapshotRecordInput } from "../contracts.ts";
 import { SNAPSHOT_INPUT_PAGE_SIZE } from "../application/snapshot-build-input.ts";
 import { SnapshotAssemblyBudget } from "../application/snapshot-assembly-budget.ts";
@@ -36,6 +37,10 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
       .find(scope.organizationId, scope.projectId, lookup.idempotencyKeyHash, lookup.requestHash), options);
     if (!receipt) throw new Error("SNAPSHOT_INPUT_NOT_FOUND");
     const captured = prepareSnapshotInventoryInput(receipt);
+    const sourceAnchors = prepareSnapshotPublicationSourceAnchors({
+      sources: receipt.parts.filter((part) => part.kind === "sources").flatMap((part) => part.payload),
+      inventory: receipt.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload),
+    });
     const selection = selectSnapshotCatalog(receipt);
     const catalog = projectSnapshotCatalog(receipt, selection);
     const preview = projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before object IO.
@@ -61,7 +66,7 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     }, options);
     const datasets: SnapshotDatasetInput[] = [...catalog, ...projectState, { kind: "inventory", records }, media.dataset];
     assertSnapshotDatasetIntegrity(datasets);
-    return { receiptId: receipt.id, inputHash: receipt.inputHash, requiresProjectContact, datasets, diagnostics: media.diagnostics,
+    return { receiptId: receipt.id, inputHash: receipt.inputHash, sourceAnchors, requiresProjectContact, datasets, diagnostics: media.diagnostics,
       manifestMetadata: { projectId: receipt.projectId, schemaMinor: receipt.schemaMinor, publishSequence: receipt.publishSequence,
         generatedAt: receipt.capturedAt.toISOString(), catalogRevision: receipt.catalogRevision, sourceRevisions: captured.sourceRevisions } };
   };

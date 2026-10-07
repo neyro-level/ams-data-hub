@@ -1,4 +1,5 @@
 export * from "./contracts.ts";
+export { prepareSnapshotPublicationSourceAnchors, type SnapshotPublicationSourceAnchors } from "./application/snapshot-publication-source-anchors.ts";
 export { MAX_SOURCE_INTAKE_LIMITS, resolveSourceIntakeLimits, type SourceIntakeLimits } from "./domain/source-intake-policy.ts";
 export {
   adapterProfileRegistry,

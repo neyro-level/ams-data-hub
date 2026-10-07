@@ -204,6 +204,16 @@ The forward binding migration also corrects ListingAgentBinding's read-policy
 name to the canonical `_rls` convention with identical predicates and grants.
 Binding/artifact staging is not current publication or fresh consent admission.
 
+The forward publication Source-read migration adds exact-purpose scoped SELECT
+policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with
+restrictive scope policies preventing legacy broad job reads for this purpose.
+Existing grants and restrictive fact-write denial remain unchanged. The bounded
+ingestion reader transfers only head/cohort/historical membership metadata, not
+revision payloads, external producer identifiers or live projection settings.
+Its caller owns global then scoped publication locks in ReadCommitted; no fact
+row/domain locks are acquired. Pre-PUT staging admission is not final publication
+admission across object upload; no production migration or release is implied.
+
 `SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
 `GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
 Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.

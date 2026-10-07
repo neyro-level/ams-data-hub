@@ -14,12 +14,13 @@ import {
   projectSnapshotInventory,
   composeSnapshot, SNAPSHOT_DATASET_KINDS,
   type SnapshotInventoryProjectionInput,
+  validateSnapshotInput,
 } from "../../src/modules/snapshot-delivery/index.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { createCatalogSnapshotFactReader } from "../../src/modules/shared-catalog/server.ts";
-import { createSourceSnapshotFactReader, createSnapshotGoodFactResolver, normalizedContentHash,
+import { createSourceSnapshotFactReader, createSnapshotGoodFactResolver, createSnapshotPublicationSourceReader, normalizedContentHash,
   type SnapshotGoodFactPin } from "../../src/modules/ingestion-core/server.ts";
 import { createProjectStateSnapshotFactReader } from "../../src/modules/project-state/server.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
@@ -30,7 +31,8 @@ import { createProjectJobPrincipal } from "../../src/platform/authorization/prin
 import * as mediaFacade from "../../src/modules/media-assets/server.ts";
 import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
 import * as projectStateFacade from "../../src/modules/project-state/server.ts";
-import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
+import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY, prepareSnapshotPublicationSourceAnchors } from "../../src/modules/ingestion-core/index.ts";
+import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 
 // Explicit fixture policy permits the deliberate large historical/head count
 // changes used below; production policy/approval predicates are unchanged.
@@ -734,6 +736,21 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     expect(receipt.parts.filter((part) => part.kind === "media").flatMap((part) => part.payload)).toHaveLength(8200);
     expect([...new Set(receipt.parts.map((part) => part.kind))]).toEqual([...SNAPSHOT_INPUT_PART_KINDS]);
     expect(await captureWithWorkerRole(exactScope, "synthetic-full-capacity")).toEqual(receipt);
+    const parts = validateSnapshotInput(receipt);
+    const anchors = prepareSnapshotPublicationSourceAnchors({ sources: parts.filter((part) => part.kind === "sources").flatMap((part) => part.payload),
+      inventory: parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload) });
+    const freshStarted = performance.now();
+    await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "snapshot-publication",
+      organizationId: exactScope.organizationId, projectIds: [exactScope.projectId], correlationId: randomUUID() }, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname=current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      await lockSnapshotPublication(tx, exactScope);
+      await createSnapshotPublicationSourceReader(tx)(exactScope, anchors);
+    }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
+    const freshElapsed = Math.round(performance.now() - freshStarted);
+    expect(freshElapsed).toBeLessThan(5000);
+    console.info(`snapshot_source_fresh_capacity=PASS inventories=4100 page_size=200 elapsed_ms=${freshElapsed}`);
   }, 120_000);
 
   it("pins scoped shared observation mirrors without requiring an XML revision for manual imports", async () => {

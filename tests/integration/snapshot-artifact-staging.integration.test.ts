@@ -60,6 +60,35 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it("rejects a changed Source cohort before binding or any artifact PUT", async () => {
+    const setup = await fixture();
+    await runInPrincipalDatabaseTransaction({ kind: "platform-admin", userId: "synthetic-fresh-staging", correlationId: randomUUID() },
+      (tx) => tx.source.create({ data: { ...setup.scope, sourceKey: "synthetic-added-after-capture", name: "Synthetic added source",
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } }));
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockResolvedValue({ ETag: "synthetic-etag" } as never);
+    try {
+      await expect(createSnapshotArtifactStagingServer({ ...setup.scope,
+        storage: new S3ObjectStorage({ bucket: "synthetic-binding-bucket", client }), keyId: "synthetic-binding-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: { currentKeyId: "synthetic-binding-key",
+          nextKeyId: null, revokedKeyIds: [], publicKeys: {
+            "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup)).rejects.toThrow("SNAPSHOT_PUBLICATION_SOURCE_STALE");
+      expect(send).not.toHaveBeenCalled();
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.count()).toBe(0);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0);
+        expect(await tx.deliveryRun.count()).toBe(0);
+      });
+    } finally {
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  });
+
   it("binds before PUT, leaves no partial current after failure, replays on restart and denies key-rotation substitution", async () => {
     cuts.roles = 0; const setup = await fixture(); const { scope } = setup;
     const client = new S3Client({ endpoint: "https://synthetic-storage.example.invalid", region: "synthetic-1",

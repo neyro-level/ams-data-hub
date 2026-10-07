@@ -1,4 +1,5 @@
 import "server-only";
+export { createSnapshotPublicationSourceReader } from "./infrastructure/snapshot-publication-source-reader.ts";
 export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
 export { createSnapshotGoodFactResolver, type SnapshotGoodFactPin, type SnapshotGoodNormalizedFact,
   type SnapshotCapturedFactProfile } from "./infrastructure/snapshot-good-fact-resolver.ts";

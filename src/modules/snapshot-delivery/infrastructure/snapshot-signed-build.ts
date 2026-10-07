@@ -37,7 +37,7 @@ export function createSnapshotSignedBuildServer(bound: {
     });
     const verification = verifySnapshotSignatureCandidate({ manifest, trustSet, lastGood: null });
     if (!verification.accepted) throw new Error("SNAPSHOT_BUILD_SIGNATURE_INVALID");
-    return { receiptId: candidate.receiptId, inputHash: candidate.inputHash,
+    return { receiptId: candidate.receiptId, inputHash: candidate.inputHash, sourceAnchors: candidate.sourceAnchors,
       composition, manifest, diagnostics: candidate.diagnostics };
   };
 }

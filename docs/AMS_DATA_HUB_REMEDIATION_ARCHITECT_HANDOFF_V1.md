@@ -10,6 +10,40 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 Source admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `a01099f`. The actual candidate/signed/staging pipeline owns
+copied Source/head and ACTIVE inventory metadata anchors derived from the
+validated receipt before object IO. Ingestion's bounded plain-read API checks
+the complete current Source and ACTIVE cohort plus historical GOOD membership
+under caller-owned global then scoped publication locks in ReadCommitted.
+No revision payload, producer external identifier or live profile is projected
+by this reader. Producer OFF/version/failed-attempt changes preserve eligibility
+when approved GOOD and normalized facts remain unchanged; historical missing-grace
+facts need not equal the head. Source checks run in the pre-PUT binding cut.
+A forward migration adds exact publication-purpose SELECT and restrictive scope
+policies on four existing fact tables without expanding mutation privileges.
+
+Final native PostgreSQL proof: 39/39 across four files in 103.72 seconds after
+45 local synthetic migrations. Tests cover actual persisted capture, historical
+GOOD and producer OFF/failed-attempt positives, changed dataset/cohort/hash/
+external membership, real committed new GOOD and null-to-GOOD head changes,
+wrong head/fact pins, NOBYPASS scope/read-only enforcement and metadata-only
+query tracing. Actual changed-cohort signed staging rejects before binding/PUT;
+existing signing, immutable staging/restart/rotation, current/run rollback and
+capture regressions pass. The unchanged 4100-inventory/8200-media fixture also
+passes fresh Source admission within the 5-second RC limit, using pages of 200;
+capture remains below its unchanged 30-second bound (outer cut 27.930 seconds).
+The initial correlated membership query exceeded 5 seconds; the final bounded
+set-oriented metadata joins pass without reducing volume or relaxing limits.
+Final app/test types and focused lint passed; targeted units are 22/3 files PASS.
+Final verify:quick passed (395 modules, 1231 dependencies); docs/RLS coverage
+confirmed 49 models and the staged secret/diff checks passed.
+Scoped architect code/RLS/join review found no actionable defects.
+This is not final publication admission across the upload window: project,
+subscription, Agent/contact/media gates, post-PUT recheck, atomic orchestration
+and registered outbox remain required. No merge, mirror or production action.
+
 ### MP-05.11 fact-writer serialization prerequisite — 2026-10-07
 
 Checkpoint base `6351f8c`. A new forward migration installs BEFORE STATEMENT

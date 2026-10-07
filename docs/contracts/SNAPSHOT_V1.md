@@ -57,6 +57,18 @@ follow this order. Final publication must use plain scoped reads under global
 then its project publication lock, not acquire Source/path locks or regenerate
 historical URL/catalog facts. These writer locks do not themselves publish.
 
+Staging prepares copied, value-free Source/head and ACTIVE inventory anchors
+from the validated receipt before object IO. Its pre-PUT binding cut checks exact
+Source dataset/sharing/head ID/sequence/hash and the complete ACTIVE UID/source/
+normalizedHash cohort, including additions. Historical GOOD membership is checked
+through metadata only; a retained missing-grace fact may precede its approved
+head. Source enabled/version/lastAttempt changes and failed imports do not alone
+invalidate unchanged approved GOOD. The exact single-project publication purpose
+has scoped SELECT access to these facts and GOOD-only revisions/records; restrictive
+policies reject wildcard/multi-project/legacy publication readers and fact writes.
+This pre-PUT Source check does not protect the later upload window. Final post-PUT
+all-owner admission, atomic current/run and registered outbox remain required.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
