@@ -78,10 +78,17 @@ PUT и повторного четырёхстороннего admission. Replay
 теперь привязывает capture к requestId, использует полный lease fence до IO и
 перед success и проверяет полный request hash в SQL. Он регистрируется в той же
 общей очереди при существующем SNAPSHOT_BUILD_ENABLED=true. Native runtime
-proof этого нового operational topic ещё требует проверки. Concrete adapter
+proof нового operational topic выполнен: actual combined worker/pg-boss,
+enabled completion, disabled reserved/no IO, invalid config before startup и
+recovery после stage/result crash с expired lease, freeze/SUSPENDED и
+недоступными key/storage refs. Наблюдались active/cleared own heartbeat,
+один capture/stage и 14 PUT total; BUILD не создал current/DeliveryRun.
+Вместе с тремя GOOD-topic regressions isolated runtime matrix — 7/7 PASS.
+Это runtime-function/synthetic SDK proof, не live provider/OS signal/production.
+Concrete adapter
 прошёл native normal/crash/takeover/wrong-minor сценарии в PostgreSQL: 70/70
 в пяти suites вместе с существующими lifecycle/rejection/delivery/runtime
-regressions. Эти runtime regressions не заменяют proof нового topic.
+regressions; новый runtime proof описан отдельно выше.
 35 scoped units, quick/types/lint/architecture PASS. Оставшиеся четыре
 исполнителя и полный MP-08.1 DoD не завершены.
 

@@ -151,6 +151,13 @@ even after freeze/suspension/key rotation. Stale attempt may leave private
 staging but cannot succeed the request. The combined worker registers this
 distinct topic only when the existing SNAPSHOT_BUILD_ENABLED capability is true;
 disabled mode reserves it. Manual BUILD never invokes the GOOD-intent publisher.
+Actual combined-runtime native proof now covers operational enabled completion,
+disabled reserved/no IO, invalid registry before startup and expired-lease recovery
+after stage/result crash. Recovery uses one saved capture/stage and fourteen total
+PUTs with jobs frozen, project suspended and unavailable key/storage references;
+it leaves current/DeliveryRun absent. Exact own heartbeat is observed while active
+and absent after joined stop. Only the synthetic SDK transport is replaced: this
+is not OS-signal, remote-provider or production proof.
 
 The existing combined source-worker optionally registers `snapshot.build.request`
 when `SNAPSHOT_BUILD_ENABLED=true`; absent/false preserves old intake and reserved

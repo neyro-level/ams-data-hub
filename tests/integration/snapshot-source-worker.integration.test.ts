@@ -8,7 +8,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = (context, execute, options) =>
     actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
       const worker = context.principalKind === "project-job" || context.principalKind === "system-job";
-      const snapshot = ["snapshot-input", "snapshot-publication"].includes(context.actorId);
+      const snapshot = ["snapshot-input", "snapshot-publication", "operations-executor"].includes(context.actorId);
       if (worker) {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
@@ -35,6 +35,13 @@ import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/wor
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
+import { requestOperationalAction } from "../../src/modules/operations-control/server.ts";
+import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
+import { createOperationalSnapshotBuildCapability } from "../../src/infrastructure/snapshot-build-capability.ts";
+import { createProjectObjectStorageResolver } from "../../src/platform/storage/project-object-storage.ts";
+import { ReliabilityService } from "../../src/modules/platform-operations/application/reliability-service.ts";
+import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
+import { OPERATIONAL_ACTION_TOPICS } from "../../src/modules/operations-control/index.ts";
 
 async function fixture() {
   const suffix = randomUUID().slice(0, 8);
@@ -67,13 +74,35 @@ async function fixture() {
     // Prior suites may retain their own valid pending intents. Prioritize only
     // this fixture's event so the enabled runtime stops after its own success.
     await tx.outboxEvent.update({ where: { id: intent.outboxEventId }, data: { availableAt: new Date("2000-01-01T00:00:00.000Z") } });
-    return { admin, scope, intent, suffix };
+    return { admin, scope, intent, suffix, requestId: null as string | null };
   });
 }
 
+async function operationalFixture() {
+  const setup = await fixture();
+  // Preserve the valid GOOD intent, but isolate this test's distinct operation.
+  await runInPrincipalDatabaseTransaction(setup.admin, (tx) => tx.outboxEvent.update({
+    where: { id: setup.intent.outboxEventId }, data: { availableAt: new Date("2050-01-01T00:00:00Z") },
+  }));
+  const accepted = await requestOperationalAction(setup.admin, { ...setup.scope, action: "SNAPSHOT_BUILD",
+    sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+  const outboxEventId = await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
+    const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+    if (!row.outboxEventId) throw new Error("SYNTHETIC_BUILD_INTENT_MISSING");
+    await tx.outboxEvent.update({ where: { id: row.outboxEventId }, data: { availableAt: new Date("1995-01-01T00:00:00Z") } });
+    return row.outboxEventId;
+  });
+  return { ...setup, intent: { ...setup.intent, outboxEventId }, requestId: accepted.requestId };
+}
+
 describe("actual combined source-worker snapshot capability", () => {
-  it.each(["enabled", "disabled", "invalid"])("uses real pg-boss with %s snapshot registration", async (mode) => {
-    const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+  it.each([
+    { mode: "enabled", operational: false }, { mode: "disabled", operational: false }, { mode: "invalid", operational: false },
+    { mode: "enabled", operational: true }, { mode: "disabled", operational: true }, { mode: "invalid", operational: true },
+    { mode: "recovery", operational: true },
+  ])("uses real pg-boss with $mode registration (operational=$operational)", async ({ mode, operational }) => {
+    const setup = operational ? await operationalFixture() : await fixture(); const { scope } = setup; const controller = new AbortController();
+    const executes = mode === "enabled" || mode === "recovery";
     evidence.snapshotCuts = 0; evidence.snapshotRoles = 0; evidence.systemRoles = 0;
     const keys = generateKeyPairSync("ed25519"); const bucket = `synthetic-snapshot-${setup.suffix}`;
     vi.stubEnv("PROJECT_STORAGE_BINDINGS", JSON.stringify([{ ...scope, bucketRef: "SYNTHETIC_SNAPSHOT_BUCKET",
@@ -83,7 +112,7 @@ describe("actual combined source-worker snapshot capability", () => {
     vi.stubEnv("SYNTHETIC_SNAPSHOT_REGION", "ru-1"); vi.stubEnv("SYNTHETIC_SNAPSHOT_ACCESS", "synthetic-snapshot-access");
     vi.stubEnv("SYNTHETIC_SNAPSHOT_SECRET", "synthetic-snapshot-secret");
     vi.stubEnv("SNAPSHOT_BUILD_ENABLED", mode === "disabled" ? "false" : "true");
-    vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", mode === "enabled" ? JSON.stringify([{ ...scope, keyId: "synthetic",
+    vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", executes ? JSON.stringify([{ ...scope, keyId: "synthetic",
       privateKeyRef: "SYNTHETIC_SNAPSHOT_PRIVATE", currentKeyId: "synthetic", nextKeyId: null, revokedKeyIds: [],
       publicKeyRefs: { synthetic: "SYNTHETIC_SNAPSHOT_PUBLIC" } }]) : "synthetic-invalid-registry");
     vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
@@ -98,6 +127,29 @@ describe("actual combined source-worker snapshot capability", () => {
     let completeSpy: { mockRestore(): void } | undefined; let fetchSpy: { mockRestore(): void } | undefined;
     const timer = setTimeout(() => controller.abort(), 60_000);
     try {
+      if (mode === "recovery") {
+        const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => new Date("1995-01-01T00:00:01Z"));
+        const lease = await reliability.claim("synthetic-build-before-crash", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+        if (!lease || lease.outboxEventId !== setup.intent.outboxEventId) throw new Error("SYNTHETIC_BUILD_LEASE_MISSING");
+        const crash = vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedStagedSnapshot")
+          .mockRejectedValueOnce(new Error("SYNTHETIC_BUILD_RESULT_CRASH"));
+        try {
+          const execute = createOperationalSnapshotBuildCapability(createProjectObjectStorageResolver());
+          if (!execute) throw new Error("SYNTHETIC_BUILD_CAPABILITY_MISSING");
+          await expect(execute(lease)).rejects.toThrow("SYNTHETIC_BUILD_RESULT_CRASH");
+        } finally { crash.mockRestore(); }
+        expect(sdk).toHaveBeenCalledTimes(14);
+        await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
+          expect(await tx.snapshotArtifactStageReceipt.count({ where: scope })).toBe(1);
+          expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(0);
+          expect(await tx.deliveryRun.count({ where: scope })).toBe(0);
+          await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+          await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
+        });
+        // Registry remains valid at startup; no signing/storage references may be resolved during recovery.
+        vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", ""); vi.stubEnv("SYNTHETIC_SNAPSHOT_PUBLIC", "");
+        vi.stubEnv("SYNTHETIC_SNAPSHOT_BUCKET", ""); vi.stubEnv("SYNTHETIC_SNAPSHOT_SECRET", "");
+      }
       if (mode === "invalid") {
         await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 }))
           .rejects.toThrow("PROJECT_SNAPSHOT_SIGNING_BINDINGS_INVALID");
@@ -126,25 +178,31 @@ describe("actual combined source-worker snapshot capability", () => {
         });
         await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 })).resolves.toEqual({ fetched: 0, completed: 0, failed: 0 });
         expect(evidence.systemRoles).toBeGreaterThan(0);
-        if (mode === "enabled") {
+        if (executes) {
           expect(queueJobId).toBeDefined(); expect(evidence.snapshotRoles).toBeGreaterThan(0); expect(sdk).toHaveBeenCalledTimes(14);
           const inspect = await getPgBoss(); expect((await inspect.getJobById("outbox.dispatch", queueJobId!))?.state).toBe("completed");
         }
       }
       await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
-        expect((await tx.outboxEvent.findUniqueOrThrow({ where: { id: setup.intent.outboxEventId } })).status).toBe(mode === "enabled" ? "PROCESSED" : "PENDING");
-        expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "enabled" ? 1 : 0);
-        expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(mode === "enabled" ? 1 : 0);
+        expect((await tx.outboxEvent.findUniqueOrThrow({ where: { id: setup.intent.outboxEventId } })).status).toBe(executes ? "PROCESSED" : "PENDING");
+        expect(await tx.deliveryRun.count({ where: scope })).toBe(executes && !operational ? 1 : 0);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(executes && !operational ? 1 : 0);
+        if (setup.requestId) {
+          expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: setup.requestId } })).status).toBe(executes ? "SUCCEEDED" : "REQUESTED");
+          expect(await tx.snapshotArtifactStageReceipt.count({ where: scope })).toBe(executes ? 1 : 0);
+          expect(await tx.snapshotBuildInput.count({ where: scope })).toBe(executes ? 1 : 0);
+        }
         expect(await tx.runtimeHeartbeat.count({ where: { runtime: "source-worker", workerId } })).toBe(0);
         const jobs = await tx.jobRun.findMany({ where: { outboxEventId: setup.intent.outboxEventId } });
-        expect(jobs).toHaveLength(mode === "enabled" ? 1 : 0);
-        if (mode === "enabled") expect(jobs[0]).toMatchObject({ status: "SUCCESS", workerId });
+        expect(jobs).toHaveLength(mode === "recovery" ? 2 : executes ? 1 : 0);
+        if (executes) expect(jobs.find((job) => job.status === "SUCCESS")).toMatchObject({ status: "SUCCESS", workerId });
+        if (mode === "recovery") expect(jobs.find((job) => job.attempt === 1)).toMatchObject({ status: "FAILED", workerId: "synthetic-build-before-crash" });
       });
-      if (mode !== "enabled") expect(sdk).not.toHaveBeenCalled();
+      if (!executes) expect(sdk).not.toHaveBeenCalled();
       // These deliberately unexecuted intents must remain PENDING, not be
       // manufactured as completed. After all disabled/invalid assertions,
       // move only this fixture's availability outside other suites' clocks.
-      if (mode !== "enabled") await runInPrincipalDatabaseTransaction(setup.admin, (tx) =>
+      if (!executes) await runInPrincipalDatabaseTransaction(setup.admin, (tx) =>
         tx.outboxEvent.updateMany({ where: { id: setup.intent.outboxEventId, status: "PENDING" },
           data: { availableAt: new Date("2050-01-01T00:00:00.000Z") } }));
     } finally {

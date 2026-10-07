@@ -149,6 +149,15 @@ does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any
 separately authorized exact-main release.
 
+Operational BUILD is registered by the existing combined source-worker only
+with SNAPSHOT_BUILD_ENABLED=true; absent/false leaves its requests reserved.
+It stages a request-owned immutable signed build, never publishes current.
+Local native runtime proof covers enabled completion, disabled/invalid startup,
+and crash recovery using the saved stage under a new lease without repeated
+capture/PUT or credential resolution. It observes and clears the exact worker's
+heartbeat. This synthetic pg-boss/SDK proof does not activate production or
+prove a live provider. PUBLISH, rollback, ACK rotation and approval remain work.
+
 ## Streaming raw artifacts — remediation foundation
 
 MP-02 separates `safeOutboundBuffered` (small files/media, maximum 50 MiB)
