@@ -6,6 +6,7 @@ import { z } from "zod";
 import { calculateObjectSha256, createProjectSnapshotKey, ProjectSnapshotStorage,
   type ObjectStorage, type BoundedObjectStorage } from "../../../platform/storage/object-storage.ts";
 import { verifySnapshotPublicArtifacts } from "../application/snapshot-public-verification.ts";
+import { unsignedSnapshotManifestV1Schema, type SnapshotComposition } from "../contracts.ts";
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const bindingSchema = z.object({ projectId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u),
@@ -18,10 +19,11 @@ function cancelled(signal?: AbortSignal) {
 
 /** Internal artifact-only seam. Caller must own scoped stage/binding loading and
  * fresh final admission/lease. This function cannot publish or record success. */
-export async function readStagedSnapshotArtifacts(input: {
+type ArtifactReadInput = {
   projectId: string; binding: StagedArtifactBinding; storage: ObjectStorage & BoundedObjectStorage;
   trustSet: SnapshotTrustSet; lastGood: SnapshotAcceptanceState | null; signal?: AbortSignal;
-}) {
+};
+async function readVerifiedArtifacts(input: ArtifactReadInput) {
   const binding = bindingSchema.parse(input.binding);
   if (binding.projectId !== input.projectId) throw new Error("SNAPSHOT_PUBLICATION_BINDING_CONFLICT");
   if (input.lastGood && (input.lastGood.projectId !== input.projectId || input.lastGood.schemaMajor !== 1)) {
@@ -78,5 +80,23 @@ export async function readStagedSnapshotArtifacts(input: {
   cancelled(signal);
   const verified = verifySnapshotPublicArtifacts({ ...verifyInput, files });
   if (!verified.accepted) throw new Error(`SNAPSHOT_ARTIFACT_${verified.reason}`);
-  return verified;
+  return { verified, files };
+}
+
+/** Ordinary selected PUBLISH deliberately does not expose artifact bodies. */
+export async function readStagedSnapshotArtifacts(input: ArtifactReadInput) {
+  return (await readVerifiedArtifacts(input)).verified;
+}
+
+/** Snapshot-private unchanged-file reuse. This does NOT establish DB source
+ * approval or historical-key trust; the caller owns those separate boundaries.
+ * Identical verifier, limits and bounded reads; no recompression or new IO. */
+export async function readStagedSnapshotComposition(input: ArtifactReadInput) {
+  const { verified, files } = await readVerifiedArtifacts(input);
+  const { signature: _signature, ...unsigned } = verified.manifest; void _signature;
+  const manifest = unsignedSnapshotManifestV1Schema.parse(unsigned);
+  const composition: SnapshotComposition = { manifest,
+    manifestPayload: canonicalJsonBytes(manifest as CanonicalJsonValue),
+    files: manifest.files.map((descriptor) => ({ manifest: { ...descriptor }, body: files[descriptor.key]! })) };
+  return { verified, composition };
 }

@@ -61,10 +61,17 @@ historical permission admission; SQL proves identity/lease, not external IO.
 These new tables use exact-purpose FORCE RLS and minimal insert/read/stage-column
 grants. No normal binding/capture or operational success guard is relaxed.
 
+The snapshot-private staged artifact reader also returns an unsigned composition
+with the original hash-verified compressed bytes after complete signature,
+privacy, dataset and reference verification. It uses the same fourteen bounded
+GETs and fixed limits, without recompression or extra IO; ordinary selected
+PUBLISH still receives only verified manifest/datasets. This byte-reuse seam does
+not prove database source approval or relax revoked/current/next consumer trust.
+
 This repository is internal, not a registered executable rollback. Source GET
 authentication with retained archival public key, safe current-key signing/restart
-facade, bounded unchanged-file reuse, atomic current/run/request success and runtime
-registration remain required. Synthetic tests compose the actual signer and
+facade, atomic current/run/request success and runtime registration remain
+required. Synthetic tests compose the actual signer and
 storage/domain repositories to prove the metadata boundary, not a completed
 operational executor or provider/production activation.
 

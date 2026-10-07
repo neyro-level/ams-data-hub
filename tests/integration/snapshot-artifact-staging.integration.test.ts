@@ -1,6 +1,6 @@
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { canonicalJson, canonicalJsonBytes, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 
 const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
@@ -59,7 +59,7 @@ import { OperationalActionLifecycleRepository } from "../../src/modules/operatio
 import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
 import { snapshotInputRequestHashes } from "../../src/modules/snapshot-delivery/index.ts";
 import { settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
-import { readStagedSnapshotArtifacts } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
+import { readStagedSnapshotArtifacts, readStagedSnapshotComposition } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
 import { inspectSelectedSnapshotStageServer, loadSelectedSnapshotCaptureServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-selected-stage.ts";
 import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-input-repository.ts";
 import { prepareSelectedSnapshotAdmission } from "../../src/modules/snapshot-delivery/application/snapshot-selected-admission.ts";
@@ -69,7 +69,7 @@ import { createSnapshotPublicationProjectReader } from "../../src/modules/projec
 import { PrismaSnapshotRollbackRepository, type SnapshotRollbackLease } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
 import { composeRollbackSnapshot } from "../../src/modules/snapshot-delivery/application/snapshot-rollback.ts";
 import { signSnapshotManifest, verifySnapshotSignatureCandidate } from "../../src/modules/snapshot-delivery/application/snapshot-signing.ts";
-import { snapshotManifestV1Schema, type SnapshotComposition } from "../../src/modules/snapshot-delivery/contracts.ts";
+import { snapshotManifestV1Schema } from "../../src/modules/snapshot-delivery/contracts.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -240,12 +240,14 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         expect(newer.publishSequence).toBe(reservation.publishSequence + 1);
         expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation); // Never reallocate.
       }
-      const { signature: _signature, ...unsigned } = sourceManifest; void _signature;
-      const source: SnapshotComposition = { manifest: unsigned, manifestPayload: canonicalJsonBytes(unsigned as CanonicalJsonValue),
-        files: sourceManifest.files.map((manifest) => ({ manifest, body: objects.get(createProjectSnapshotKey(scope.projectId, manifest.sha256))! })) };
+      const { verified, composition: source } = await readStagedSnapshotComposition({ projectId: scope.projectId, storage, trustSet, lastGood: null,
+        binding: { projectId: scope.projectId, publishSequence: sourceRun.publishSequence, keyId: sourceManifest.keyId,
+          manifestSha256: stage.manifestSha256, manifestCanonical: canonicalJson(sourceManifest as CanonicalJsonValue) } });
+      for (const file of source.files) expect(Buffer.from(file.body).equals(
+        objects.get(createProjectSnapshotKey(scope.projectId, file.manifest.sha256))!)).toBe(true);
       const composition = composeRollbackSnapshot({ source, currentPublishSequence: reservation.publishSequence - 1,
         generatedAt: reservation.createdAt.toISOString(), publishedAt: reservation.createdAt.toISOString(), keyId: "synthetic-rollback-key" });
-      expect(composition.files.map((row) => row.body)).toEqual(source.files.map((row) => row.body));
+      expect(composition.files.map((row) => Buffer.from(row.body))).toEqual(source.files.map((row) => Buffer.from(row.body)));
       const manifest = await signSnapshotManifest(composition, createEd25519SecretRefSigner({ keyId: "synthetic-rollback-key", privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") }));
       expect(verifySnapshotSignatureCandidate({ manifest, trustSet, lastGood: { projectId: scope.projectId, schemaMajor: 1, publishSequence: sourceRun.publishSequence } }).accepted).toBe(true);
       if (mode === "content") await expect(cut((repo) => repo.bind(lease, { ...manifest, catalogRevision: "f".repeat(64) })))
@@ -277,9 +279,6 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       await expect(cut((repo) => repo.markStaged({ ...lease, attempt: lease.attempt + 1 }))).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
       await storage.put({ key: createProjectSnapshotKey(scope.projectId, binding.manifestSha256), body: new TextEncoder().encode(binding.manifestCanonical), contentType: "application/json", sha256: binding.manifestSha256 });
       const captured = await loadSelectedSnapshotCaptureServer(setup.principal, { buildInputId: stage.buildInputId });
-      const verified = await readStagedSnapshotArtifacts({ projectId: scope.projectId, storage, trustSet, lastGood: null,
-        binding: { projectId: scope.projectId, publishSequence: sourceRun.publishSequence, keyId: sourceManifest.keyId,
-          manifestSha256: stage.manifestSha256, manifestCanonical: canonicalJson(sourceManifest as CanonicalJsonValue) } });
       const anchors = prepareSelectedSnapshotAdmission(captured.receipt, verified);
       const staged = await cut(async (repo, tx) => { await repo.fence(lease); await admitHistoricalSnapshotRollback(tx, scope, anchors); return repo.markStaged(lease); });
       expect(staged.stagedAt).toBeInstanceOf(Date); expect(puts).toBe(15);

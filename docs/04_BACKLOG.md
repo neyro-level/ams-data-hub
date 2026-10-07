@@ -209,6 +209,13 @@ forgery, scope NULL/empty denial, overflow и prior-rollback ancestry. Architect
 428/1447, RLS coverage 53 models, docs и secrets PASS. Это internal repository
 proof, не rollback execution: safe-key recovery, owned manifest-only staging,
 full-lease atomic current/run/result и operational runtime ещё открыты.
+Bounded reader теперь возвращает snapshot-private composition с исходными
+authenticated compressed bytes без recompression/extra GET; обычный PUBLISH API
+не раскрывает bodies. Native staging matrix — 58/58 PASS, 56 migrations, 47,97s,
+final reset; 52 scoped units PASS. Byte identity, fourteen bounded GETs, stream
+cleanup, revoked-key denial и private-field rejection проверены. Types/lint и
+architecture 428/1448 PASS; scoped architect review без actionable findings.
+Это unchanged-file prerequisite, не архивный trust или operational rollback.
 MP-08.1 остаётся IN_PROGRESS, зарегистрированы только три из шести executors.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;

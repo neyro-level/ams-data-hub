@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { composeSnapshot, signSnapshotManifest, SNAPSHOT_DATASET_KINDS, projectSnapshotInventory,
   type SnapshotDatasetKind, type SnapshotComposition, type SnapshotManifestV1 } from "../src/modules/snapshot-delivery/index.ts";
 import { joyworkYandexRealtyProfile } from "../src/modules/ingestion-core/index.ts";
-import { readStagedSnapshotArtifacts } from "../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
+import { readStagedSnapshotArtifacts, readStagedSnapshotComposition } from "../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
 import { calculateObjectSha256, createProjectSnapshotKey } from "../src/platform/storage/object-storage.ts";
 import { S3ObjectStorage } from "../src/platform/storage/timeweb-s3-object-storage.ts";
 
@@ -125,6 +125,32 @@ async function fixture(attack?: (data: Data) => void, changeManifest?: (manifest
 }
 
 describe("selected staged snapshot artifact verification", () => {
+  it("retains authenticated compressed bytes for rollback without extra IO or recompression", async () => {
+    const f = await fixture();
+    const { verified, composition } = await readStagedSnapshotComposition(f.input);
+    expect(verified.datasets).toEqual(f.data);
+    expect(composition.manifest).toEqual(f.composition.manifest);
+    expect(composition.manifestPayload).toEqual(f.composition.manifestPayload);
+    expect(composition.files.map((file) => ({ manifest: file.manifest, body: Buffer.from(file.body) })))
+      .toEqual(f.composition.files.map((file) => ({ manifest: file.manifest, body: Buffer.from(file.body) })));
+    expect(composition.manifest).not.toHaveProperty("signature");
+    for (const file of composition.files) {
+      expect(calculateObjectSha256(file.body)).toBe(file.manifest.sha256);
+      expect(Buffer.from(file.body).equals(f.objects.get(createProjectSnapshotKey(f.binding.projectId, file.manifest.sha256))!)).toBe(true);
+    }
+    expect(f.keys).toHaveLength(14); expect(f.destroyed).toHaveBeenCalledTimes(14);
+    expect(f.allocated).not.toHaveBeenCalled();
+    for (const call of f.forbidden) expect(call).not.toHaveBeenCalled();
+  });
+  it("does not relax revoked consumer key policy for unchanged-file reuse", async () => {
+    const f = await fixture(); f.input.trustSet.revokedKeyIds.push("synthetic-key");
+    await expect(readStagedSnapshotComposition(f.input)).rejects.toThrow("SNAPSHOT_ARTIFACT_REVOKED_KEY_ID");
+    expect(f.keys).toEqual([f.manifestKey]);
+  });
+  it("does not expose a composition with private dataset fields", async () => {
+    const f = await fixture((data) => { row(data, "agents").privateNotes = "synthetic forbidden"; });
+    await expect(readStagedSnapshotComposition(f.input)).rejects.toThrow("SNAPSHOT_ARTIFACT_DATASET_SCHEMA_INVALID");
+  });
   it("verifies all thirteen strict public datasets through actual bounded S3 reads only", async () => {
     const f = await fixture(); const before = structuredClone(f.manifest);
     const result = await readStagedSnapshotArtifacts(f.input);

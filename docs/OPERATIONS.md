@@ -181,7 +181,9 @@ Durable request-bound sequence/time/source identity and immutable signed binding
 with a one-time stage marker are implemented in the snapshot-private repository.
 Each mutable step validates the full current accepted lease; valid takeover keeps
 the original reserved identity. These metadata APIs are not an executor or proof
-of external IO. Source archival-key authentication, safe-key restart/staging
+of external IO. Internal bounded artifact reading now retains the authenticated
+compressed bytes for unchanged-file reuse without extra GETs or recompression;
+consumer trust, privacy and limits are unchanged. Source archival-key authentication, safe-key restart/staging
 facade, full-lease atomic current/run/result and registered runtime remain work.
 
 ## Streaming raw artifacts — remediation foundation
