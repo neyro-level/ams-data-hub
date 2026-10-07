@@ -10,6 +10,9 @@ export class PrismaNewbuildingImportRepository implements NewbuildingImportRepos
   constructor(private readonly transaction: DatabaseTransaction) {}
 
   async read(scope: NewbuildingImportScope, payload: NewbuildingStagingPayload): Promise<NewbuildingImportState> {
+    // Source runtime and final publication are global-first. Never hold a
+    // Source row while waiting for their safety lock, including preview.
+    await this.transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`;
     const sources = await this.transaction.$queryRaw<Array<{ id: string }>>`
       SELECT "id" FROM "Source" WHERE "organizationId" = ${scope.organizationId}
       AND "projectId" = ${scope.projectId} AND "id" = ${payload.source.sourceId} FOR UPDATE

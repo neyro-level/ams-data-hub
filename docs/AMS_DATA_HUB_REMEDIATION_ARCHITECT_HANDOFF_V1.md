@@ -10,6 +10,19 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 newbuilding lock-order prerequisite — 2026-10-07
+
+Checkpoint base `09b4f81`. Newbuilding preview/apply's common repository read
+now takes the global safety advisory lock before Source FOR UPDATE, matching
+Source runtime and eliminating the identified opposite-order wait. Final native
+newbuilding regression: 7/7 PASS in 6.00 seconds. The two-connection proof pins
+the actual preview backend PID and database, observes its exact advisory waiter,
+and acquires the Source row NOWAIT before releasing global and joining preview.
+Preview/apply/stale-review/atomic rollback/tenant denial behavior remains covered.
+App/test types, focused lint, units 7/7 and scoped architect review passed.
+This prerequisite does not replace narrow fact-writer serialization, fresh
+admission or registered outbox execution; MP-05.11 remains IN_PROGRESS.
+
 ### MP-05.11 signed binding and staging — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `57327a1`. Real server-owned signed build now binds exact scoped

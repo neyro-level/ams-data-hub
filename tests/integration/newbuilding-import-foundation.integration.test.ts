@@ -1,6 +1,7 @@
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { newbuildingImportCommands, sharedCatalogCommands } from "../../src/modules/shared-catalog/server.ts";
 import { createNewbuildingImportCommands } from "../../src/modules/shared-catalog/application/newbuilding-import-commands.ts";
 import { PrismaNewbuildingImportRepository } from "../../src/modules/shared-catalog/infrastructure/prisma-newbuilding-import-repository.ts";
@@ -51,6 +52,54 @@ async function fixture() {
 }
 
 describe("new-building import database foundation", () => {
+  it("waits for global safety before taking the Source row lock", async () => {
+    const input = await fixture();
+    let previewPid = 0;
+    const commands = createNewbuildingImportCommands({ createRepository: (transaction) => {
+      const repository = new PrismaNewbuildingImportRepository(transaction);
+      const read = repository.read.bind(repository);
+      repository.read = async (...args) => {
+        const rows = await transaction.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        previewPid = rows[0]!.pid;
+        return read(...args); // Actual repository locks and scoped read unchanged.
+      };
+      return repository;
+    } });
+    let preview: Promise<{ value: Awaited<ReturnType<typeof commands.preview>> | null; error: unknown }> | undefined;
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.principal_kind','platform-admin',true)");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations',0))");
+      // Consume either outcome immediately so cleanup owns a failed attempt.
+      preview = commands.preview(admin, input)
+        .then((value) => ({ value, error: null }), (error: unknown) => ({ value: null, error }));
+      let waiting = false;
+      const deadline = Date.now() + 1500;
+      while (Date.now() < deadline) {
+        const locks = await client.query(`SELECT w.pid FROM pg_locks w JOIN pg_locks owner
+          ON w.locktype = owner.locktype AND w.classid = owner.classid
+          AND w.objid = owner.objid AND w.objsubid = owner.objsubid
+          AND w.database = owner.database
+          WHERE owner.pid = pg_backend_pid() AND owner.locktype = 'advisory'
+          AND owner.granted AND NOT w.granted AND w.pid = $1`, [previewPid]);
+        if (locks.rowCount) { waiting = true; break; }
+        await delay(20);
+      }
+      expect(waiting).toBe(true);
+      // The importer is an actual advisory waiter, but has not locked Source.
+      const row = await client.query('SELECT "id" FROM "Source" WHERE "id"=$1 FOR UPDATE NOWAIT',
+        [input.payload.source.sourceId]);
+      expect(row.rows).toEqual([{ id: input.payload.source.sourceId }]);
+    } finally {
+      await client.query("ROLLBACK");
+      if (preview) {
+        const result = await preview;
+        expect(result.error).toBeNull();
+        expect(result.value?.plan.mode).toBe("DRY_RUN");
+      }
+    }
+  });
+
   it("upgrades existing development rows without data loss", async () => {
     const input = await fixture();
     const development = await sharedCatalogCommands.createDevelopment(admin, {

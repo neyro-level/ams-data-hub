@@ -41,6 +41,11 @@ to settle before returning failure, and never uploads its manifest afterward.
 Fresh admission and outbox registration remain
 required before MP-05.11 can be closed.
 
+Newbuilding preview/apply acquires the common global safety advisory lock before
+its explicit Source row lock, matching the Source runtime lock order. An import
+must not retain a Source row while waiting for publication's global lock.
+This ordering prerequisite alone does not implement fresh publication admission.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
