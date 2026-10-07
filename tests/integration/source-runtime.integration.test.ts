@@ -21,6 +21,8 @@ import { PrismaReliabilityRepository } from "../../src/modules/platform-operatio
 import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -75,6 +77,106 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("assembles two policy-approved Sources while broken attempts preserve their own and other GOOD contributions", async () => {
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const initial = await context.read();
+    const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+      tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+    const second = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+      sourceKey: "synthetic-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+      adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+      datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+      safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+    });
+    await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: second.sourceId, version: second.version, enabled: true });
+    await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectCatalogSubscription.create({ data: {
+      ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } },
+    } }));
+    const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    let sourceWorkerCuts = 0;
+    const principalRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => {
+        if (principal.kind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); sourceWorkerCuts++;
+        }
+        return execute(tx);
+      }));
+    let workerCuts = 0;
+    const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((authorization, execute, options) =>
+      original(authorization, async (tx) => {
+        if (authorization.principalKind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); workerCuts++;
+        }
+        return execute(tx);
+      }, options));
+    try {
+      const aOffers = ["one", "two", "three", "four", "grace"];
+      context.provide(feed(...aOffers.map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const secondTarget = { ...scope, sourceId: second.sourceId };
+      context.provide(feed(offer("one")));
+      expect(await context.runtime.run(secondTarget)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const identities = await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        const rows = await tx.inventoryIdentity.findMany({ where: scope, orderBy: { uid: "asc" } });
+        for (const [index, row] of rows.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: row.uid, publicUrlId: `7${String(index).padStart(15, "0")}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: row.uid, reservationId: reservation.id,
+            slug: `synthetic-${index}`, canonicalPath: `/inventory/synthetic-${index}` } });
+        }
+        return rows;
+      });
+      expect(identities).toHaveLength(6);
+      expect(new Set(identities.filter((row) => row.externalOfferId === "one").map((row) => row.uid)).size).toBe(2);
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      const capture = (key: string) => captureSnapshotInput(principal, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+      const lookup = (receipt: Awaited<ReturnType<typeof capture>>) => ({ idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash });
+      const firstReceipt = await capture("two-source-first"); const first = await assemble(principal, lookup(firstReceipt));
+      context.provide(feed(...aOffers.slice(0, 4).map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const beforeBroken = await context.read();
+      const stableReceipt = await capture("two-source-stable-a"); const stable = await assemble(principal, lookup(stableReceipt));
+      for (const [xml, expected] of [["<realty-feed>", "FAILED"], [feed(offer("one")), "SUSPICIOUS"], [feed(), "REJECTED"]] as const) {
+        context.provide(xml); expect((await context.runtime.run(context.target)).state).toBe("FAILED");
+        const unchanged = await context.read();
+        expect(unchanged.revisions.at(-1)!.status).toBe(expected);
+        expect(unchanged.source.lastGoodRevisionId).toBe(beforeBroken.source.lastGoodRevisionId);
+        expect(unchanged.identities).toEqual(beforeBroken.identities); expect(unchanged.events).toEqual(beforeBroken.events);
+      }
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run(secondTarget)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const nextReceipt = await capture("two-source-next"); const next = await assemble(principal, lookup(nextReceipt));
+      const inventory = (result: typeof first) => result.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+      expect(first.datasets).toHaveLength(13); expect(next.datasets).toHaveLength(13); expect(inventory(next)).toHaveLength(6);
+      for (const result of [stable, next]) expect(inventory(result).map((record) => record.key).sort())
+        .toEqual(identities.map((identity) => identity.uid).sort());
+      for (const row of identities.filter((identity) => identity.sourceId === context.target.sourceId)) {
+        expect(inventory(next).find((record) => record.key === row.uid)).toEqual(inventory(stable).find((record) => record.key === row.uid));
+      }
+      const bUid = identities.find((identity) => identity.sourceId === second.sourceId)!.uid;
+      expect(inventory(next).find((record) => record.key === bUid)!.value).toMatchObject({ price: 2000 });
+      const graceUid = identities.find((identity) => identity.externalOfferId === "grace")!.uid;
+      expect(nextReceipt.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload))
+        .toContainEqual(expect.objectContaining({ uid: graceUid, factRevisionSequence: 1, approvedHeadSequence: 2, missingGoodRuns: 1 }));
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.source.updateMany({ where: scope, data: { enabled: false, version: { increment: 1 } } });
+        await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: scope } });
+      });
+      expect(await assemble(principal, lookup(firstReceipt))).toEqual(first);
+      expect(await assemble(principal, lookup(nextReceipt))).toEqual(next);
+      await expect(assemble(createProjectJobPrincipal({ ...scope, projectId: "synthetic-foreign", jobName: "snapshot-input" }),
+        lookup(nextReceipt))).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      expect(head).not.toHaveBeenCalled(); expect(workerCuts).toBeGreaterThan(10); expect(sourceWorkerCuts).toBeGreaterThan(10);
+    } finally { role.mockRestore(); principalRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
+
   it.each([
     ["yrl-realty-2010", "vladis-vt24-v1", feed(offer("one")), "YRL_2010"],
     ["yrl-realty-2010", "joywork-domclick-v1", feed(offer("one")), "DOMCLICK_YRL"],

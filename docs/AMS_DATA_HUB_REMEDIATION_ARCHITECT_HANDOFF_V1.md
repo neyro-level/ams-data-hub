@@ -232,6 +232,37 @@ private input-capture boundary, not 13-dataset projection, signing, publication
 or production capacity. Clean pushed implementation checkpoint and strict
 Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
 
+### Active implementation contract: MP-05.4
+
+Require captured Source membership and exact approved head ID/sequence for every
+ACTIVE inventory pin before object IO; historical fact sequence may be below the
+head, never above it. Reuse the actual ingestion apply SAFE predicate for pinned
+policy, persisted analysis, counts and baseline; capture must emit value-free
+approval provenance rather than trust a GOOD status or mutable current policy.
+No-head source without ACTIVE inventory is an empty contribution. Broken latest
+attempts and producer disable must not remove existing captured GOOD. Verify two
+actual same-project Source pipelines and persisted assembly: A malformed/
+suspicious/rejected attempts preserve its GOOD while B updates; same external IDs
+remain source-scoped, missing grace/replay and foreign denial remain intact.
+No schema rewrite, production, real feeds/PII/secrets, fact-completeness expansion,
+agent binding or signing/publication in this task. Required checks: targeted
+units, types/lint/quick, actual scoped native proof, docs/secrets/diff and exact
+pushed checkpoint ledger. Current first delta adds head-membership preflight and
+shared apply approval predicate. The first native multi-source proof below is
+PASS; capture approval-proof wiring remains unfinished, so MP-05.4 is not complete.
+
+First checkpoint evidence (2026-10-07): actual same-project Source pipelines use
+the NOBYPASS worker, real spool/S3 adapter and synthetic external transport. A's
+malformed, suspicious drop and rejected empty attempts preserve its previous GOOD
+and inventory while B updates. Equal external IDs remain distinct source-scoped
+UIDs; historical missing-grace facts survive. Real persisted capture/13-dataset
+assembly/replay and foreign-scope denial pass. Separate principal/authorized role
+wrappers and exact UID sets prevent false-positive proofs. Native three suites
+44/44 PASS; unchanged 4100/8200 capture limit remains 30 seconds (24.825 seconds).
+Targeted units 26/26, verify:quick, final test types/focused lint, docs/secrets/diff
+PASS. Architect findings in fixture fixed and reviewed with no new findings.
+No real provider/import data, signing, publication, merge or production claim.
+
 ### Active implementation contract: MP-05.3
 
 Select a deterministic public catalog cohort from the immutable captured

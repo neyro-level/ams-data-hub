@@ -224,6 +224,11 @@ remediation program preserves these boundaries while connecting them:
   selected dependencies remain; prices, shared media (before HEAD) and editorial
   follow selected owners. Inventory and persistent URL history are not pruned.
   No live subscription lookup or receipt/hash rewriting occurs.
+  Inventory preflight also requires unique captured Source rows and exact
+  approved-head ID/sequence membership. Historical GOOD facts may be older than
+  the head but never newer; a missing/inconsistent head fails before object IO.
+  The ingestion apply SAFE policy/count/baseline/hash predicate is now a shared
+  application helper; capture approval-proof wiring remains an unfinished gate.
   This is not signing/publication;
   complete fact preservation and confirmed agent linkage remain unfinished steps;
   fresh consent/rights/publication admission is not replaced by captured replay.

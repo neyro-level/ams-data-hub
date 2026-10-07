@@ -12,12 +12,17 @@ function fixture() {
   inventory: [{ uid, sourceId: "synthetic-source", externalOfferId: "synthetic-offer", status: "ACTIVE",
     sourceHash: "a".repeat(64), normalizedHash: "b".repeat(64), factProfileIdentity: "vladis-vt24-v1@1.0.0",
     factProfileKey: "vladis-vt24-v1", factProfileVersion: "1.0.0", factRevisionId: "synthetic-good", factRevisionSequence: 1,
+    approvedHeadId: "synthetic-good", approvedHeadSequence: 1,
     firstSeenAt: date, lastSeenAt: date, sourceCreatedAt: null, sourceUpdatedAt: null, createdAt: date, updatedAt: date }],
   urls: [{ factType: "entry", entityType: "INVENTORY", entityUid: uid, reservation: { publicUrlId: "1234567890123456" } }] };
 }
-function receipt(data: ReturnType<typeof fixture>): SnapshotBuildInputReceipt {
+const capturedSource = () => ({ entityType: "source", sourceId: "synthetic-source",
+  approvedHead: { id: "synthetic-good", status: "GOOD", sequence: 1 } });
+function receipt(data: ReturnType<typeof fixture>, sources: unknown[] = [capturedSource()]): SnapshotBuildInputReceipt {
   const builder = new SnapshotInputPartsBuilder();
-  for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind, JSON.parse(JSON.stringify(data[kind as keyof typeof data] ?? [])) as CanonicalJsonValue[]);
+  for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind, JSON.parse(JSON.stringify([
+    ...(data[kind as keyof typeof data] ?? []), ...(kind === "sources" ? sources : []),
+  ])) as CanonicalJsonValue[]);
   const parts = builder.finish(); const value = { id: "synthetic", organizationId: "synthetic-org", projectId: "synthetic-project",
     idempotencyKeyHash: "a".repeat(64), requestHash: "b".repeat(64), inputSchemaVersion: 1, projectorVersion: "db-v1",
     schemaMinor: 0, publishSequence: 1, projectStateRevision: 1, capturedAt: new Date(date), parts, inputHash: "",
@@ -25,6 +30,27 @@ function receipt(data: ReturnType<typeof fixture>): SnapshotBuildInputReceipt {
   value.inputHash = snapshotBuildInputDigest(value); return value;
 }
 describe("captured inventory preflight", () => {
+  it("requires unique captured sources and exact approved head membership", () => {
+    const missing = fixture(); expect(() => prepareSnapshotInventoryInput(receipt(missing, []))).toThrow("SOURCE_COMPOSITION_INVALID");
+    expect(() => prepareSnapshotInventoryInput(receipt(fixture(), [capturedSource(), capturedSource()]))).toThrow("SOURCE_COMPOSITION_INVALID");
+    expect(() => prepareSnapshotInventoryInput(receipt(fixture(), [{ ...capturedSource(), approvedHead: null }]))).toThrow("SOURCE_COMPOSITION_INVALID");
+    for (const patch of [{ approvedHeadId: "foreign-head" }, { approvedHeadSequence: 2 },
+      { factRevisionSequence: 2 }, { factRevisionId: "other-at-same-sequence" }]) {
+      const data = fixture(); Object.assign(data.inventory[0]!, patch);
+      expect(() => prepareSnapshotInventoryInput(receipt(data))).toThrow("SOURCE_COMPOSITION_INVALID");
+    }
+    const historical = fixture(); const head = capturedSource(); head.approvedHead = { id: "synthetic-new-head", status: "GOOD", sequence: 2 };
+    Object.assign(historical.inventory[0]!, { approvedHeadId: "synthetic-new-head", approvedHeadSequence: 2 });
+    expect(prepareSnapshotInventoryInput(receipt(historical, [head])).rows[0]!.pin.factRevisionId).toBe("synthetic-good");
+    historical.inventory[0]!.factRevisionId = "synthetic-new-head";
+    expect(() => prepareSnapshotInventoryInput(receipt(historical, [head]))).toThrow("SOURCE_COMPOSITION_INVALID");
+  });
+  it("keeps producer-off GOOD and permits an empty source without an approved head", () => {
+    const source = { ...capturedSource(), enabled: false };
+    expect(prepareSnapshotInventoryInput(receipt(fixture(), [source])).rows).toHaveLength(1);
+    const empty = fixture(); empty.inventory = []; empty.urls = [];
+    expect(prepareSnapshotInventoryInput(receipt(empty, [{ ...source, approvedHead: null }])).rows).toEqual([]);
+  });
   it("selects exact GOOD pin, persistent URL and only finite projection settings", () => {
     const input = receipt(fixture()); const before = structuredClone(input); const result = prepareSnapshotInventoryInput(input);
     expect(result.rows[0]).toMatchObject({ pin: { uid, factRevisionId: "synthetic-good", factRevisionSequence: 1 },

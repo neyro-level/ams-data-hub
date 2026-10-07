@@ -110,6 +110,12 @@ ACTIVE and unmerged; subscribed-city anchors and selected geo dependencies remai
 Selected-owner prices, shared media and editorial follow the same cohort; shared
 media filtering precedes HEAD. Inventory and persistent URL/redirect/tombstone/
 lifecycle history remain intact. Selection never changes persisted parts or hashes.
+ACTIVE inventory additionally requires a unique captured Source with matching
+approved-head ID/sequence. A historical fact must precede that head; equal
+sequence requires the same revision ID. Source without a head and without ACTIVE
+inventory contributes no rows. Producer-OFF does not remove captured GOOD.
+This head-membership check is not yet captured policy-approval proof: ingestion's
+shared SAFE approval predicate still requires capture integration.
 This candidate result does not claim fresh rights/consent/cohort
 admission, complete source-fact coverage, inferred agent linkage, signing or
 publication. Later plan steps must supply those proofs.

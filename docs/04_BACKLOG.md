@@ -90,6 +90,15 @@ MP-05.3 scoped native proof от 2026-10-07: 21/21 в двух suites, targeted 
 41/41, verify:quick — PASS; capture 4100/8200 — 16,245 секунды при лимите 30.
 Доказан replay после live edits и непустая URL history; HEAD synthetic, не live
 provider proof. Это implementation checkpoint, не завершение MP-05 delivery.
+MP-05.4 в работе: ACTIVE inventory preflight проверяет unique captured Source и
+exact approved head ID/sequence, допускает исторический GOOD и producer-OFF.
+Apply safety predicate вынесен в общий helper; его подключение к capture и
+value-free policy-approved provenance ещё не закончены.
+Первый MP-05.4 checkpoint от 2026-10-07: native 44/44 в трёх suites подтверждают
+actual two-source runtime → persisted capture → assembly, source-scoped UID,
+broken-run preservation, historical grace и replay под NOBYPASS. Units 26/26,
+quick/types/lint/docs/secrets — PASS. Это не закрывает pending capture approval
+proof и не доказывает live provider или production delivery.
 Полнота source facts, подтверждённый
 agent linkage и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.

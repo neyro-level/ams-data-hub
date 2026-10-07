@@ -25,9 +25,12 @@ const profile = z.object({ identity: z.string().max(257), configuration: configu
 const inventory = z.object({ uid: ulidSchema, sourceId: id, externalOfferId: z.string().min(1).max(240), status: z.literal("ACTIVE"),
   normalizedHash: hash, sourceHash: hash, factProfileIdentity: z.string().min(1).max(257), factProfileKey: id,
   factProfileVersion: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/u), factRevisionId: id, factRevisionSequence: z.number().int().positive(),
+  approvedHeadId: id, approvedHeadSequence: z.number().int().positive(),
   firstSeenAt: date, lastSeenAt: date, sourceCreatedAt: date.nullable(), sourceUpdatedAt: date.nullable(), createdAt: date, updatedAt: date });
 const url = z.object({ factType: z.literal("entry"), entityType: z.literal("INVENTORY"), entityUid: ulidSchema,
   reservation: z.object({ publicUrlId: publicUrlIdSchema }) });
+const source = z.object({ entityType: z.literal("source"), sourceId: id,
+  approvedHead: z.object({ id, status: z.literal("GOOD"), sequence: z.number().int().positive() }).nullable() });
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("SNAPSHOT_INVENTORY_INPUT_INVALID");
   return value as Record<string, unknown>;
@@ -45,9 +48,15 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
   const factProfiles = prepareSnapshotFactProfiles(input);
   const profiles = new Map<string, SnapshotInventoryProfile>();
   const urls = new Map<string, SnapshotInventoryProjectionInput["url"]>();
+  const sources = new Map<string, z.infer<typeof source>>();
   for (const part of parts) for (const raw of part.payload) {
     if (part.kind === "sources") {
       const value = object(raw);
+      if (value.entityType === "source") {
+        const parsed = source.safeParse(value);
+        if (!parsed.success || sources.has(parsed.data.sourceId)) throw new Error("SNAPSHOT_SOURCE_COMPOSITION_INVALID");
+        sources.set(parsed.data.sourceId, parsed.data); continue;
+      }
       if (value.entityType !== "profile" || typeof value.identity !== "string" || !factProfiles.has(value.identity)) continue;
       const parsed = profile.safeParse(value);
       if (!parsed.success || profiles.has(value.identity)) throw new Error("SNAPSHOT_GOOD_PROFILE_INVALID");
@@ -80,8 +89,16 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
       throw new Error("SNAPSHOT_INVENTORY_PIN_INVALID");
     }
     if (!association) throw new Error("SNAPSHOT_INVENTORY_URL_INVALID");
+    const head = sources.get(row.sourceId)?.approvedHead;
+    if (!head || row.approvedHeadId !== head.id || row.approvedHeadSequence !== head.sequence
+      || row.factRevisionSequence > head.sequence
+      || (row.factRevisionSequence === head.sequence && row.factRevisionId !== head.id)
+      || (row.factRevisionSequence < head.sequence && row.factRevisionId === head.id)) {
+      throw new Error("SNAPSHOT_SOURCE_COMPOSITION_INVALID");
+    }
     seen.add(row.uid);
-    const { factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence, ...identity } = row;
+    const { factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence, approvedHeadId, approvedHeadSequence, ...identity } = row;
+    void approvedHeadId; void approvedHeadSequence; // Head pins are private preflight inputs, not DTO identity fields.
     rows.push({ identity, profile: projectionProfile, url: association, pin: { uid: row.uid, sourceId: row.sourceId,
       externalOfferId: row.externalOfferId, normalizedHash: row.normalizedHash,
       factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence } });
