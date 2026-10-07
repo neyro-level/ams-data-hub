@@ -26,6 +26,7 @@ import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import * as mediaFacade from "../../src/modules/media-assets/server.ts";
 import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
+import * as projectStateFacade from "../../src/modules/project-state/server.ts";
 import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 
 // Explicit fixture policy permits the deliberate large historical/head count
@@ -76,6 +77,11 @@ async function captureWithWorkerRole(scope: { organizationId: string; projectId:
       captureShared: (...values) => measure("shared-media", () => reader.captureShared(...values)) };
   }) : null;
   const originalSource = sourceFacade.createSourceSnapshotFactReader;
+  const originalProjectState = projectStateFacade.createProjectStateSnapshotFactReader;
+  const projectStateTrace = profile ? vi.spyOn(projectStateFacade, "createProjectStateSnapshotFactReader").mockImplementation((...args) => {
+    const reader = originalProjectState(...args);
+    return { capture: (...values) => measure("project-state", () => reader.capture(...values)) };
+  }) : null;
   const sourceTrace = profile ? vi.spyOn(sourceFacade, "createSourceSnapshotFactReader").mockImplementation((...args) => {
     const reader = originalSource(...args);
     return { capture: (...values) => measure("source-with-media", () => reader.capture(...values)) };
@@ -99,7 +105,7 @@ async function captureWithWorkerRole(scope: { organizationId: string; projectId:
   try { return await captureSnapshotInput(createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" }),
     { ...scope, idempotencyKey, schemaMinor: 0 }); }
   finally {
-    role.mockRestore(); mediaTrace?.mockRestore(); sourceTrace?.mockRestore(); saveTrace?.mockRestore();
+    role.mockRestore(); mediaTrace?.mockRestore(); sourceTrace?.mockRestore(); projectStateTrace?.mockRestore(); saveTrace?.mockRestore();
     if (profile) process.stdout.write(`snapshot_capture_phases=${JSON.stringify([...metrics].map(([phase, value]) => ({
       phase, calls: value.calls, elapsedMs: Math.round(value.elapsedMs),
     })))}\n`);
@@ -260,7 +266,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         publishedAt: first.capturedAt.toISOString(), catalogRevision: first.catalogRevision,
         sourceRevisions: [...new Set(first.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload)
           .flatMap((row) => row && typeof row === "object" && !Array.isArray(row) && typeof row.factRevisionId === "string" ? [row.factRevisionId] : []))],
-        keyId: "synthetic-unsigned-key", requiresProjectContact: true, datasets });
+        keyId: "synthetic-unsigned-key", requiresProjectContact: assembled.requiresProjectContact, datasets });
       const composition = compose(assembled.datasets);
       expect(composition.files.map((file) => file.manifest.kind)).toEqual(SNAPSHOT_DATASET_KINDS);
       expect(JSON.stringify(assembled.datasets)).not.toMatch(/synthetic-private|storageKey|sourceId|normalizedHash|rawRecord|contactPhones/u);
@@ -363,6 +369,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const buildings = [createUlid(), createUlid(), createUlid()];
     const inventoryUids = [createUlid(), createUlid()];
     const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectPublicContact.create({ data: { ...target, phone: "+70000000077", messengers: [] } });
       const regionUid = (await tx.city.findUniqueOrThrow({ where: { uid: "01M41T6Q04BADHXSERJHZFXKCH" } })).regionUid;
       await tx.city.createMany({ data: [cityA, cityB].map((uid) => ({ uid, regionUid, name: `City ${uid}`, normalizedName: uid.toLowerCase() })) });
       await tx.developer.create({ data: { uid: developerUid, name: "Synthetic selection developer", normalizedName: developerUid.toLowerCase() } });
@@ -503,6 +510,8 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       title: "Synthetic historical public inventory", address: "Synthetic City, house 9", imageUrls: [], contactPhones: [], provenance: {} });
     const hashes = uids.map((_, index) => normalizedContentHash({ draft: { ...draft(`kept-${index}`), provenance: undefined }, fields }));
     const sourceId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        phone: "+70000000077", messengers: [] } });
       await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         mode: "ALL_SHARED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
       const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,

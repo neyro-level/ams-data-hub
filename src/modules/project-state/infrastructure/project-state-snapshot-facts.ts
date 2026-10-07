@@ -103,18 +103,19 @@ export function createProjectStateSnapshotFactReader(transaction: DatabaseTransa
         const bindings = await transaction.$queryRaw<{ inventoryUid: string; sourceId: string;
           sourceRevisionId: string; recordHash: string; agentUid: string }[]>(Prisma.sql`
           SELECT i."uid" AS "inventoryUid", b."sourceId", b."sourceRevisionId", b."recordHash", b."agentUid"
-          FROM "InventoryIdentity" i JOIN "Source" s ON s."id" = i."sourceId"
+          FROM "ListingAgentBinding" b JOIN "InventoryIdentity" i ON i."uid" = b."inventoryUid"
+            AND i."organizationId" = b."organizationId" AND i."projectId" = b."projectId"
+            AND i."sourceId" = b."sourceId" AND i."normalizedHash" = b."recordHash"
+          JOIN "Source" s ON s."id" = i."sourceId"
             AND s."organizationId" = i."organizationId" AND s."projectId" = i."projectId"
           JOIN "SourceRevision" h ON h."id" = s."lastGoodRevisionId" AND h."status" = 'GOOD'
             AND h."organizationId" = i."organizationId" AND h."projectId" = i."projectId" AND h."sourceId" = i."sourceId"
           JOIN LATERAL (SELECT r."revisionId" FROM "SourceRevisionRecord" r JOIN "SourceRevision" v ON v."id" = r."revisionId"
             WHERE r."organizationId" = i."organizationId" AND r."projectId" = i."projectId" AND r."sourceId" = i."sourceId"
-              AND r."inventoryUid" = i."uid" AND r."externalId" = i."externalOfferId" AND r."recordHash" = i."normalizedHash"
+              AND r."inventoryUid" = b."inventoryUid" AND r."externalId" = i."externalOfferId" AND r."recordHash" = b."recordHash"
               AND v."status" = 'GOOD' AND v."sequence" <= h."sequence" ORDER BY v."sequence" DESC LIMIT 1) fact ON true
-          JOIN "ListingAgentBinding" b ON b."organizationId" = i."organizationId" AND b."projectId" = i."projectId"
-            AND b."sourceId" = i."sourceId" AND b."sourceRevisionId" = fact."revisionId"
-            AND b."inventoryUid" = i."uid" AND b."recordHash" = i."normalizedHash"
-          WHERE i."organizationId" = ${scope.organizationId} AND i."projectId" = ${scope.projectId}
+          WHERE b."organizationId" = ${scope.organizationId} AND b."projectId" = ${scope.projectId}
+            AND b."sourceRevisionId" = fact."revisionId"
             AND i."status" = 'ACTIVE' AND i."uid" > ${afterInventory}
           ORDER BY i."uid" LIMIT ${PAGE}
         `);

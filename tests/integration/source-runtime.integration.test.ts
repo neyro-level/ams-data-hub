@@ -39,6 +39,7 @@ import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
 import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { composeSnapshot } from "../../src/modules/snapshot-delivery/index.ts";
 import { feedAgentMatchingCommands } from "../../src/modules/project-state/server.ts";
 import { extractVladisAgentEvidence, type YrlRawOffer } from "../../src/modules/ingestion-core/index.ts";
 
@@ -110,6 +111,9 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
     await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: second.sourceId, version: second.version, enabled: true });
     await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectCatalogSubscription.create({ data: {
       ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } },
+    } }));
+    await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectPublicContact.create({ data: {
+      ...scope, phone: "+70000000077", messengers: [],
     } }));
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
@@ -212,9 +216,9 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
     const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
       originalAuthorized(principal, async (tx) => { if (principal.principalKind === "project-job") await lower(tx); return execute(tx); }, options));
     try {
-      context.provide(feed(offer("one").replace("</offer>",
-        "<sales-agent><name>Синтетический Агент</name><phone>+79590000001</phone></sales-agent></offer>"),
-      ...["z2", "z3", "z4", "z5"].map((externalId) => offer(externalId))));
+      const agentOffer = (externalId: string) => offer(externalId).replace("</offer>",
+        "<sales-agent><name>Синтетический Агент</name><phone>+79590000001</phone></sales-agent></offer>");
+      context.provide(feed(...["one", "z2", "z3", "z4", "z5"].map(agentOffer)));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
       const state = await context.read(); const identity = state.identities[0]!; const revision = state.revisions[0]!;
       const record = state.records.find((row) => row.inventoryUid === identity.uid)!;
@@ -273,7 +277,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       async function build(key: string) {
         const receipt = await captureSnapshotInput(principal, { ...scope, idempotencyKey: key, schemaMinor: 0 });
         const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
-        return { result: await assemble(principal, lookup), lookup };
+        return { result: await assemble(principal, lookup), lookup, receipt };
       }
       function assertOmitted(result: Awaited<ReturnType<typeof assemble>>) {
         expect(result.datasets.find((row) => row.kind === "agents")!.records).toEqual([]);
@@ -288,12 +292,46 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.agent.update({ where: { uid: agentUid },
         data: { showOnSite: true, consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-admin", consentBasis: "synthetic" } }));
       const eligible = await build("agent-eligible");
+      expect(eligible.result.requiresProjectContact).toBe(true); // Four unbound listings still require fallback.
       expect(eligible.result.datasets.find((row) => row.kind === "agents")!.records).toHaveLength(1);
       expect(eligible.result.datasets.find((row) => row.kind === "media")!.records.map((row) => row.key)).toContain(`AGENT/${agentUid}/0`);
       expect(eligible.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid)).toMatchObject({
         value: { uid: identity.uid, agentUid }, references: expect.arrayContaining([{ kind: "agents", key: agentUid }]) });
+      const composeInput = (candidate: Awaited<ReturnType<typeof build>>) => ({ schemaMinor: candidate.receipt.schemaMinor, projectId: scope.projectId,
+        publishSequence: candidate.receipt.publishSequence, generatedAt: candidate.receipt.capturedAt.toISOString(),
+        publishedAt: candidate.receipt.capturedAt.toISOString(), catalogRevision: candidate.receipt.catalogRevision,
+        sourceRevisions: [revision.id], keyId: "synthetic-unsigned-key",
+        requiresProjectContact: candidate.result.requiresProjectContact, datasets: candidate.result.datasets });
+      const compositionInput = composeInput(eligible);
+      expect(composeSnapshot(compositionInput).files).toHaveLength(13);
+      expect(() => composeSnapshot({ ...compositionInput, datasets: eligible.result.datasets.map((dataset) =>
+        dataset.kind === "project/contacts" ? { ...dataset, records: [] } : dataset) })).toThrow("SNAPSHOT_PROJECT_CONTACT_REQUIRED");
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectPublicContact.delete({ where: { organizationId_projectId: scope } });
+        const foreign = await tx.project.create({ data: { organizationId: scope.organizationId,
+          name: "Synthetic foreign fallback", slug: `foreign-fallback-${randomUUID().slice(0, 8)}` } });
+        await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: foreign.id,
+          phone: "+70000000088", messengers: [] } });
+      });
+      const beforeMissingHeads = head.mock.calls.length;
+      await expect(build("required-contact-missing")).rejects.toThrow("SNAPSHOT_PROJECT_CONTACT_REQUIRED");
+      expect(head.mock.calls).toHaveLength(beforeMissingHeads);
+      expect(await assemble(principal, eligible.lookup)).toEqual(eligible.result); // Contact deletion cannot enrich/rewrite old receipt.
+      // All five persisted raw offers carry the same evidence: authoritative full-revision assignment.
+      for (const row of state.records) expect(extractVladisAgentEvidence({ line: 0, column: 0,
+        element: (row.payload as unknown as { rawRecord: YrlRawOffer["element"] }).rawRecord })).toMatchObject(evidence);
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [{ ...evidence, offerExternalIds: state.identities.map((row) => row.externalOfferId) }] });
+      const allBound = await build("all-bound-contact-optional");
+      expect(allBound.result.requiresProjectContact).toBe(false);
+      expect(allBound.result.datasets.find((row) => row.kind === "project/contacts")!.records).toEqual([]);
+      expect(composeSnapshot(composeInput(allBound)).files).toHaveLength(13);
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectPublicContact.create({ data: {
+        ...scope, phone: "+70000000077", messengers: [],
+      } }));
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
       // One missing GOOD run retains the listing and its exact historical assignment.
-      context.provide(feed(...["z2", "z3", "z4", "z5"].map((externalId) => offer(externalId))));
+      context.provide(feed(...["z2", "z3", "z4", "z5"].map(agentOffer)));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
       const grace = await build("agent-historical-grace");
       expect(grace.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid))
@@ -372,6 +410,7 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
         await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED",
           cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
         const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
           subjectUid: identity.uid, publicUrlId: "1234567890123456" } });
         await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: identity.uid,

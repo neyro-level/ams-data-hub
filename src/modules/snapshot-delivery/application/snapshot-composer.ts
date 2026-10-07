@@ -12,6 +12,7 @@ import {
 } from "../contracts.ts";
 import { assertSnapshotPrivacySafe } from "../domain/privacy-scanner.ts";
 import { SnapshotCompositionError } from "../domain/snapshot-error.ts";
+import { assertSnapshotProjectContact } from "./snapshot-project-contact.ts";
 
 function sortRecords(records: readonly SnapshotRecordInput[]): SnapshotRecordInput[] {
   return [...records].sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0);
@@ -89,9 +90,7 @@ export function composeSnapshot(input: ComposeSnapshotInput): SnapshotCompositio
     }
   }
   assertReferences(input.datasets, datasetIndex);
-  if (input.requiresProjectContact && !datasetIndex.has(`project/contacts\0${input.projectId}`)) {
-    throw new SnapshotCompositionError("SNAPSHOT_PROJECT_CONTACT_REQUIRED", input.projectId);
-  }
+  assertSnapshotProjectContact(input.datasets, input.projectId, input.requiresProjectContact);
 
   const byKind = new Map(input.datasets.map((dataset) => [dataset.kind, dataset] as const));
   const files = SNAPSHOT_DATASET_KINDS

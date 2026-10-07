@@ -125,6 +125,16 @@ units 25/25, verify:quick (388 modules/1193 dependencies), final fixture types/l
 и docs/secrets/diff — PASS. Exact pushed closure ledger хранится в Task Manager.
 Automatic ingestion matching,
 mandatory contact flag и fresh publication admission этим checkpoint не заявлены.
+MP-05.7 implementation proof: listing fallback requirement вычисляется из captured
+ACTIVE inventory без eligible Agent relation; exact scoped project/contacts
+обязателен до HEAD. Shared guard повторяется в composer, а candidate возвращает
+вычисленный flag. Empty/all-bound flows остаются optional. Unit/composer/project
+state — 29/29 PASS; final native — 50/50 в двух suites, включая required missing/
+foreign denial до HEAD, actual all-bound optional composition и immutable replay.
+Первая capacity-попытка превысила 30s; forward binding-reader correction сохранил
+точные scope/hash/latest GOOD/RLS условия. Повторный capture4100/8200 — 25,605s,
+project-state phase — 41ms; лимит 30s не изменён. Full quick + final delta types/
+lint/architecture, docs/secrets/diff — PASS. Exact pushed closure ledger — Beads.
 Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay

@@ -134,10 +134,17 @@ infers linkage from phones. Only captured ACTIVE/showOnSite/consent-approved
 agents admit inventory `agentUid` with a declared agents reference. Otherwise
 the listing remains without the personal block/photo; captured project contacts
 remain available. This uses durable project-state assignment, not caller pins.
+The listing fallback flow derives `requiresProjectContact` from the immutable
+input: any ACTIVE listing without an eligible captured agent binding requires
+the exact project's projected contact row. Missing/foreign contacts fail with
+`SNAPSHOT_PROJECT_CONTACT_REQUIRED` before HEAD. Empty inventory or all-bound
+inventory does not require fallback. Candidate assembly returns this computed
+flag; composition must pass it unchanged and repeats the contact check. This is
+not a caller override, live lookup or duplicate contact in project config.
 The trusted server matching command replaces the full assignment set for one
 GOOD revision atomically; it is not an incremental reconciliation API.
 This candidate result does not claim fresh rights/consent/cohort admission,
-automatic ingestion-to-matching orchestration, mandatory contact enforcement,
+automatic ingestion-to-matching orchestration,
 signing or publication. Later plan steps must supply those proofs.
 
 The strict public `media` attachment row is `{entityType, entityUid, media}`,

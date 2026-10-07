@@ -10,6 +10,32 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.7 implementation proof — 2026-10-07
+
+Task base `8c13e69`. Canon §30/§32A defines existing listing fallback flow:
+captured ACTIVE inventory without eligible confirmed agent relation requires
+the exact project's contact. Candidate derives this predicate, admits the
+strict projected contact before HEAD, and returns `requiresProjectContact`.
+Composer reuses the same guard; a directory Agent or foreign contact cannot
+replace the listing relation/project row. Empty/all-bound flows are optional.
+No new configuration, live contact lookup, duplicate phone or public schema is
+introduced. Native fixture exercises actual matching/capture/composer, required
+missing/foreign denial, all-bound optional flow and immutable contact replay.
+Final unit/composer/project-state tests passed 29/29; final native passed 50/50
+in two suites (102.06s), including actual required/optional composition, scoped
+missing/foreign denial before HEAD and immutable contact replay.
+First final native run passed all contact scenarios but failed full capture at
+the unchanged 30s transaction limit (49/50). Scoped forward correction starts
+binding selection from actual assignment rows before the correlated historical
+lookup; exact latest GOOD/hash/scope/RLS predicates remain. The new project-state
+phase timing is diagnostic only. Repeat capacity capture4100/8200 passed in
+25.605s, including project-state 41ms, under the unchanged 30s timeout. Full quick
+and final SQL/test delta types/lint/architecture checks passed (389 modules,
+1197 dependencies); docs/secrets/diff passed. Large binding-history scalability
+is not proved by the empty-binding capacity fixture; exact nonempty/historical
+binding semantics are proved by the separate canonical command/capture tests.
+Exact pushed checkpoint/closure belongs to Beads; epic delivery remains open.
+
 ### MP-05.6 implementation proof — 2026-10-07
 
 Base checkpoint `408a077`; no closure or epic delivery claim. Project-state now

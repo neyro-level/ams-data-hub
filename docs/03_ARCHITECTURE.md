@@ -243,10 +243,21 @@ remediation program preserves these boundaries while connecting them:
   freeze under its mutation lock before the project matching lock. GOOD fact
   membership is checked in pages of 200; database trigger and scoped FKs reject
   foreign or forged pins. Snapshot capture is SELECT-only for these bindings.
+  Binding capture starts from scoped assignment rows before the correlated
+  historical fact lookup; it still requires the latest matching GOOD fact at or
+  before the head. An older binding cannot replace a missing newer assignment.
   Captured exact-fact assignments publish `agentUid` and an agents reference only
   when the captured Agent passes ACTIVE/showOnSite/consent. An unresolved or
   ambiguous claim omits assignment; failed publication gate preserves inventory
   and omits the personal block/photo. Existing project contacts remain available.
+  MP-05.7 computes `requiresProjectContact` from captured ACTIVE inventory: any
+  listing without an eligible captured agent assignment requires the exact
+  project/contacts row. Directory membership alone does not replace a listing
+  relation. Missing/foreign contact fails before media HEAD with the existing
+  fixed contact-required error. Candidate returns the derived flag for the
+  composer, which repeats the same admission. Empty inventory and a wholly bound
+  inventory set do not require fallback. No live contact enrichment or config
+  copy is introduced; current publication admission remains separate.
   This does not automatically wire Source GOOD to matching or enable publication;
   fresh consent/rights/publication admission is not replaced by captured replay.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`

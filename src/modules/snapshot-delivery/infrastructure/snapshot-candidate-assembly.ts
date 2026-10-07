@@ -12,6 +12,7 @@ import { selectSnapshotCatalog } from "../application/snapshot-catalog-selection
 import { assertSnapshotDatasetIntegrity } from "../application/snapshot-composer.ts";
 import { prepareSnapshotInventoryInput } from "../application/snapshot-inventory-input.ts";
 import { prepareSnapshotAgentBindings } from "../application/snapshot-agent-bindings.ts";
+import { assertSnapshotProjectContact, snapshotRequiresProjectContact } from "../application/snapshot-project-contact.ts";
 import { projectSnapshotInventory } from "../application/snapshot-inventory-projector.ts";
 import { projectSnapshotProjectState } from "../application/snapshot-project-state-projector.ts";
 import { PrismaSnapshotInputRepository } from "./prisma-snapshot-input-repository.ts";
@@ -40,6 +41,8 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     const preview = projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before object IO.
     const agents = prepareSnapshotAgentBindings(receipt, captured.rows,
       new Set(preview.find((dataset) => dataset.kind === "agents")!.records.map((record) => record.key)));
+    const requiresProjectContact = snapshotRequiresProjectContact(captured.rows.map((row) => row.pin.uid), agents);
+    assertSnapshotProjectContact(preview, receipt.projectId, requiresProjectContact);
     const media = await projectMedia(receipt, selection); // No transaction remains open here.
     const projectState = projectSnapshotProjectState(receipt, media.agentMedia, selection);
     const budget = new SnapshotAssemblyBudget();
@@ -58,6 +61,6 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     }, options);
     const datasets: SnapshotDatasetInput[] = [...catalog, ...projectState, { kind: "inventory", records }, media.dataset];
     assertSnapshotDatasetIntegrity(datasets);
-    return { receiptId: receipt.id, inputHash: receipt.inputHash, datasets, diagnostics: media.diagnostics };
+    return { receiptId: receipt.id, inputHash: receipt.inputHash, requiresProjectContact, datasets, diagnostics: media.diagnostics };
   };
 }
