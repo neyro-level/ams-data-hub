@@ -10,6 +10,30 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 fact-writer serialization prerequisite — 2026-10-07
+
+Checkpoint base `6351f8c`. A new forward migration installs BEFORE STATEMENT
+global safety advisory locks for INSERT/UPDATE/DELETE on exactly 17 final
+admission fact tables. Existing grants, RLS and immutable GOOD facts remain
+unchanged; MediaAsset retains its append-only runtime boundary. The three shared
+catalog tables cover lifecycle/merged-parent eligibility, not live regeneration
+of aliases, names, geo or prices. Legacy inventory identity commands now acquire
+global before their Source domain key, matching Source runtime lock order.
+Final test types and focused lint passed. Native PostgreSQL proof: 41/41 across
+four files in 46.69 seconds, after applying 44 migrations to the guarded synthetic
+database. Owned backend PID/database advisory waiters prove zero-row DML on all
+17 tables, actual Agent consent mutation, subscription membership INSERT/DELETE,
+and global-before-domain ordering. Agent and subscription row NOWAIT probes
+confirm waiting occurs before row acquisition; rollback releases owned work.
+Other INSERT/DELETE coverage is trigger-definition coverage, not separate
+actual-row mutation proof. Existing inventory, newbuilding and Source runtime
+regressions pass. verify:quick passed (393 modules, 1223 dependencies); scoped
+architect review found no actionable defects. No production migration was run.
+This prerequisite does not implement final fresh admission or registered outbox
+execution; MP-05.11 remains IN_PROGRESS. The final publisher must use plain
+fact SELECTs under global then scoped publication locks, without acquiring
+Source/path domain locks or fact FOR UPDATE locks afterward.
+
 ### MP-05.11 newbuilding lock-order prerequisite — 2026-10-07
 
 Checkpoint base `09b4f81`. Newbuilding preview/apply's common repository read

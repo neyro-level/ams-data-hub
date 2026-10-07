@@ -181,6 +181,18 @@ storage is server-owned infrastructure, not a Source/job payload dependency.
 
 ## Migration Policy
 
+The forward snapshot fact-writer migration acquires the existing global safety
+advisory lock in BEFORE STATEMENT INSERT/UPDATE/DELETE triggers on the seventeen
+publication-gate fact tables, before PostgreSQL target row locks. It changes no
+grants, RLS predicates or field/GOOD immutability guards; MediaAsset stays
+append-only for runtime roles. The table set includes selected catalog
+Developer/Development/Building lifecycle and merged-parent eligibility, not
+live regeneration of names, aliases, geo or prices. Legacy inventory takes global
+before its Source domain advisory key. Rollback disables publication admission
+and uses a forward fix rather than removing protections or rewriting history.
+Only the isolated synthetic database is migrated during this implementation;
+production admission and release remain separate.
+
 `SnapshotPublicationBinding` pins one receipt/sequence to its inputHash, keyId,
 canonical signed manifest text and exact manifest SHA-256 before object upload.
 It has a composite scoped receipt FK, receipt/sequence uniqueness, a 2-MiB text

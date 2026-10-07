@@ -46,6 +46,17 @@ its explicit Source row lock, matching the Source runtime lock order. An import
 must not retain a Source row while waiting for publication's global lock.
 This ordering prerequisite alone does not implement fresh publication admission.
 
+Publication-gate fact DML takes the common global safety advisory lock in
+BEFORE STATEMENT triggers, before target row locks: project/safety, Source and
+its safety policy, inventory cohort, subscription and membership/selection,
+public contact, Agent/assignment, media ownership/rights slots, and selected
+Developer/Development/Building lifecycle/merged-parent eligibility. Existing
+RLS/grants and row-level guards remain in force. Legacy identity commands also
+acquire global before their source-identity domain lock; explicit pre-locks must
+follow this order. Final publication must use plain scoped reads under global
+then its project publication lock, not acquire Source/path locks or regenerate
+historical URL/catalog facts. These writer locks do not themselves publish.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
