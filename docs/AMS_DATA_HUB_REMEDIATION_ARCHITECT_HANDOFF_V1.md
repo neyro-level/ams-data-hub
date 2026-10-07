@@ -10,6 +10,30 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 full combined runtime function — 2026-10-07
+
+Native `snapshot-source-worker.integration.test.ts` calls the actual
+`runSourceWorker` with real local PostgreSQL and pg-boss startup, dispatch,
+fetch, registered snapshot handler and queue completion. Final three-mode matrix
+passes 3/3 (20.29 seconds), with 48 forward migrations and completed cleanup.
+Final full `pnpm verify:quick`, docs canon, secret scan and diff checks pass
+after this runtime fixture (407 modules / 1303 dependencies).
+Enabled registration produces fourteen exact-project immutable SDK PUTs, one
+current/run, PROCESSED intent and one SUCCESS job. Its exact-owner source-worker
+heartbeat is observed while running and absent after the joined stop. Disabled
+registration ignores invalid signing config and leaves the intent PENDING with
+no job or SDK IO; invalid enabled config fails before readiness/queue startup.
+Actual project/system worker cuts use NOBYPASS/non-superuser roles. Only SDK
+transport is replaced here; queue methods delegate to real pg-boss. Fixture-only
+empty GOOD/canonical enqueue uses owner setup, not Source ingestion runtime.
+Architect scoped review found no actionable findings. This proves the permanent
+runtime function, not main.ts CLI, OS SIGTERM, remote-provider or production
+operation. Task Manager owns implementation closure; MP-05 exact-head gate/merge
+and later plan epics remain separate work.
+
+The prerequisite sections below retain as-of checkpoint evidence. Their pending
+items describe those earlier cuts, not the current implementation above.
+
 ### MP-05.11 optional outbox executor — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `dbc9348`. The existing combined source-worker has optional exact
@@ -42,8 +66,9 @@ Final app/test types, focused lint and eight unit suites pass 78/78
 cruise initially found a private cross-module type import. Using the existing
 public type export fixes it: 407 modules / 1303 dependencies, static guards PASS.
 Docs canon, secret scan and diff checks pass. No rule was disabled or widened.
-Complete MP-05.11 closure, exact-head epic gate/merge and later readiness work
-remain required; this is not remote-provider or production shutdown proof.
+The full runtime-function proof is recorded above; implementation closure remains
+Task Manager-owned. Exact-head epic gate/merge and later readiness work remain
+required; this is not remote-provider or production shutdown proof.
 
 ### MP-05.11 final publication facade — 2026-10-07, IN_PROGRESS
 

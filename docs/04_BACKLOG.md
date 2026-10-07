@@ -48,7 +48,19 @@ manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
 MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
 `e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
 84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
-Текущий участок — MP-05 assembly. MP-05.1 закрыт implementation ledger
+Текущий участок — MP-05 assembly/publication: MP-05.1–MP-05.10 закрыты
+implementation ledger. MP-05.11 имеет concrete thirteen-dataset compose/sign,
+immutable binding, повторное Source/Project/Catalog/Media admission после PUT,
+atomic current/DeliveryRun и optional executor существующего Source worker.
+Targeted proof: 78 unit tests, 22 native publication/delivery cases, 3 full
+runtime-function cases с настоящим local pg-boss, enabled/disabled/config rejection
+и observed/cleared own-owner heartbeat. Closure определяется Task Manager;
+epic exact-head SourceCraft RISKY gate/merge пока не выполнены. Main, GitHub mirror
+и production этим implementation proof не обновляются.
+
+Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
+их прежние pending формулировки не описывают текущий контур выше.
+MP-05.1 закрыт implementation ledger
 на pushed checkpoint `a074033`; MP-05.2 — projector DoD подтверждён,
 фактический implementation/delivery статус принадлежит Task Manager:
 полный private DB capture command, immutable input persistence и allocator

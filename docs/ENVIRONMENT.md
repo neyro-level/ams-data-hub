@@ -38,7 +38,8 @@ those values.
 Provider credentials are intentionally absent. Add project-specific credentials only through an approved scope.
 
 Snapshot capability is repository wiring under verification, not a deployed
-worker or production readiness claim. Enabled startup validates the registry
+production worker or production readiness claim. Local native proof exercises
+the actual combined runtime function with real pg-boss. Enabled startup validates the registry
 before queue startup; committed receipt/run inspection precedes actual signing
 key or project storage resolution. Private key values are never part of the
 registry. Missing/invalid project configuration yields finite failure codes for

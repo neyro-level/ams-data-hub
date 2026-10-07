@@ -157,8 +157,13 @@ wiring has targeted local native proof: 22/22 across staging/publication and
 delivery suites, including the enabled capability and actual durable recovery
 queue-drain takeover/completion. The canonical GOOD enqueue uses a synthetic
 empty-feed fixture; queue/SDK transports are replaced, not the handler or database
-publication/settlement. This is not real source-worker process/remote-provider,
-ignoring-abort shutdown or production proof. Full MP-05.11 closure remains open.
+publication/settlement. A separate native 3/3 matrix uses the actual combined
+`runSourceWorker` function with real local pg-boss: enabled publication and durable
+completion, disabled reserved intent/no IO, invalid enabled config before startup.
+It observes the exact-owner heartbeat while active and its absence after joined
+stop. Only SDK transport is replaced in that matrix. This is not main.ts CLI/OS
+signal, remote-provider, ignoring-abort shutdown or production proof. Task Manager
+owns implementation closure; epic provider delivery remains separate.
 
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
