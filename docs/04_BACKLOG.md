@@ -118,8 +118,14 @@ metadata replay не требует capture/config/key/storage и не пере�
 wrong purpose, unbound/binding-only interruption и replay старого run при новом
 current, freeze/SUSPENDED и недоступном private capture. Types/scoped lint и
 architecture guards PASS. Runs в replay fixture созданы test-controlled путём;
-это не полный operational PUBLISH. Fresh captured admission, final trust/lease и
-atomic publication/request result ещё не реализованы; MP-08.1 остаётся открытым.
+это не полный operational PUBLISH. Pure captured-admission preparation добавлен:
+exact manifest/source pins, inventory cohort/URL/agent attribution, canonical
+multiset catalog/project checks и captured media slot/provenance anchors, без
+GOOD/HEAD/sign/PUT. Actual Agent/media native proof дополнен отрицательными
+metadata/project/media cases и допустимой omission без дополнительного IO.
+Nonempty inventory/catalog/history helper coverage ещё требуется. Final fresh
+admission, trust/lease и atomic publication/request result ещё не реализованы;
+MP-08.1 остаётся открытым.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

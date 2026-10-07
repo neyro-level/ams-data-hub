@@ -62,6 +62,7 @@ import { settleTerminalOperationalRequests } from "../../src/modules/operations-
 import { readStagedSnapshotArtifacts } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
 import { inspectSelectedSnapshotStageServer, loadSelectedSnapshotCaptureServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-selected-stage.ts";
 import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-input-repository.ts";
+import { prepareSelectedSnapshotAdmission } from "../../src/modules/snapshot-delivery/application/snapshot-selected-admission.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -163,6 +164,35 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       const result = await readStagedSnapshotArtifacts(selected);
       expect(result.manifest.publishSequence).toBe(stage.publishSequence);
       expect(result.datasets.agents).toHaveLength(1); expect(result.datasets.media).toHaveLength(1);
+      const admission = prepareSelectedSnapshotAdmission(captured.receipt, result);
+      expect(admission.projectAnchors.agents).toHaveLength(1);
+      expect(admission.mediaAnchors.attachments).toHaveLength(1);
+      expect(admission.mediaAnchors.attachments[0]?.asset.id).toBe(setup.mediaId);
+      expect(admission.requiresProjectContact).toBe(false);
+      // Pure preparation negatives alter already decoded values only. These are
+      // attribution tests, not claims that a changed value retains its signature.
+      const alteredSequence = { ...result, manifest: { ...result.manifest, publishSequence: result.manifest.publishSequence + 1 } };
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, alteredSequence)).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        manifest: { ...result.manifest, sourceRevisions: ["uncaptured-revision"] } })).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, agents: [] } })).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      const decodedAgent = result.datasets.agents[0] as { uid: string; media: readonly unknown[] };
+      const decodedMedia = result.datasets.media[0] as { entityType: string; entityUid: string; media: { ref: string; kind: string; position: number } };
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, agents: [{ ...decodedAgent, fullName: "Changed public Agent" }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, media: [{ ...decodedMedia, entityUid: createUlid() }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, media: [{ ...decodedMedia, media: { ...decodedMedia.media, width: 100 } }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, "project/contacts": [{ phone: "Synthetic unbound contact" }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      const omittedMedia = { ...result, datasets: { ...result.datasets, media: [], agents: [{ ...decodedAgent, media: [] }] } };
+      expect(prepareSelectedSnapshotAdmission(captured.receipt, omittedMedia).mediaAnchors.attachments).toEqual([]);
       expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
       expect(wholeBody).not.toHaveBeenCalled(); expect(destroyed).toHaveBeenCalledTimes(14);
       trustSet.revokedKeyIds.push("synthetic-stage-key");

@@ -165,7 +165,7 @@ values remain valid. Private observation/event/redirect-target IDs are absent
 from public values: they are not reconstructed or claimed verified here.
 This reader does not sign, PUT, HEAD, assemble, mutate current/DeliveryRun or
 succeed an operational request. Scoped selected-stage loading is implemented
-separately below; captured admission, final current trust/lease checks and atomic
+separately below; final fresh admission, current trust/lease checks and atomic
 PUBLISH/result remain required;
 artifact verification alone cannot close MP-08.1.
 The internal selected-stage loader requires an explicit scoped buildInputId and
@@ -181,6 +181,20 @@ PASS, including foreign scope, wrong purpose, binding-only interruption and old
 run replay with newer current, freeze/SUSPENDED and unavailable private capture
 capability. Test-controlled run setup proves the loader, not an operational
 PUBLISH executor or its final lease/atomic result.
+Pure selected-admission preparation now binds the authenticated manifest metadata
+and sorted source-revision union to the immutable receipt. It checks the ACTIVE
+inventory cohort, captured publicUrlId and optional agent assignment; existing
+source/catalog/project/media anchor preparers are reused. Captured catalog and
+project-state projections are compared as canonical multisets, preserving equal
+price/event values with distinct private IDs and legitimate relinked reservations.
+Published media must match an unambiguous captured slot and provenance. Missing
+BUILD media remains an allowed subset; uncaptured extra media metadata is rejected.
+This helper does not resolve GOOD facts, HEAD, sign, PUT, read fresh authorization
+or publish. Factual inventory payload remains authenticated by immutable binding
+and signature, not reconstructed from metadata-only pins. Native coverage proves
+actual staged Agent/media attribution and metadata/project/media rejection plus
+valid media omission without extra IO; nonempty inventory/catalog/history helper
+cases remain required before claiming its complete targeted proof.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
