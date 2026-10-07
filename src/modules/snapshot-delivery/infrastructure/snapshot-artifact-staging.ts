@@ -8,6 +8,7 @@ import { PrismaSnapshotPublicationRepository } from "./prisma-snapshot-publicati
 import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
 import { createSnapshotPublicationSourceReader } from "../../ingestion-core/server.ts";
 import { createSnapshotPublicationProjectReader } from "../../project-state/server.ts";
+import { createSnapshotPublicationCatalogReader } from "../../shared-catalog/server.ts";
 import { createSnapshotSignedBuildServer } from "./snapshot-signed-build.ts";
 import type { ObjectStorage } from "../../../platform/storage/object-storage.ts";
 
@@ -24,6 +25,7 @@ export function createSnapshotArtifactStagingServer(bound: Parameters<typeof cre
         await lockSnapshotPublication(tx, scope);
         await createSnapshotPublicationProjectReader(tx)(scope, signed.projectAnchors);
         await createSnapshotPublicationSourceReader(tx)(scope, signed.sourceAnchors);
+        await createSnapshotPublicationCatalogReader(tx)(scope, signed.catalogAnchors);
         return new PrismaSnapshotPublicationRepository(tx).bind({ ...scope, receiptId: signed.receiptId,
           inputHash: signed.inputHash, manifest: signed.manifest });
       },
@@ -35,6 +37,6 @@ export function createSnapshotArtifactStagingServer(bound: Parameters<typeof cre
       throw new Error("SNAPSHOT_PUBLICATION_STORAGE_MISMATCH");
     }
     return { binding, current, manifest: signed.manifest, sourceAnchors: signed.sourceAnchors,
-      projectAnchors: signed.projectAnchors, diagnostics: signed.diagnostics };
+      projectAnchors: signed.projectAnchors, catalogAnchors: signed.catalogAnchors, diagnostics: signed.diagnostics };
   };
 }

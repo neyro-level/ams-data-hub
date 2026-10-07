@@ -6,6 +6,7 @@ import type { ObjectStorage } from "../../../platform/storage/object-storage.ts"
 import { createSnapshotGoodFactResolver } from "../../ingestion-core/server.ts";
 import { prepareSnapshotPublicationSourceAnchors } from "../../ingestion-core/index.ts";
 import { prepareSnapshotPublicationProjectAnchors } from "../../project-state/index.ts";
+import { prepareSnapshotPublicationCatalogAnchors } from "../../shared-catalog/index.ts";
 import type { SnapshotDatasetInput, SnapshotRecordInput } from "../contracts.ts";
 import { SNAPSHOT_INPUT_PAGE_SIZE } from "../application/snapshot-build-input.ts";
 import { SnapshotAssemblyBudget } from "../application/snapshot-assembly-budget.ts";
@@ -44,6 +45,11 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     });
     const selection = selectSnapshotCatalog(receipt);
     const catalog = projectSnapshotCatalog(receipt, selection);
+    const catalogAnchors = prepareSnapshotPublicationCatalogAnchors({ projectId: receipt.projectId,
+      subscriptions: receipt.parts.filter((part) => part.kind === "subscription").flatMap((part) => part.payload),
+      catalog: receipt.parts.filter((part) => part.kind === "catalog").flatMap((part) => part.payload),
+      publishedDevelopers: new Set(catalog.find((dataset) => dataset.kind === "developers")!.records.map((row) => row.key)),
+      publishedDevelopments: selection.developmentUids, publishedBuildings: selection.buildingUids });
     const preview = projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before object IO.
     const agents = prepareSnapshotAgentBindings(receipt, captured.rows,
       new Set(preview.find((dataset) => dataset.kind === "agents")!.records.map((record) => record.key)));
@@ -80,7 +86,7 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     }, options);
     const datasets: SnapshotDatasetInput[] = [...catalog, ...projectState, { kind: "inventory", records }, media.dataset];
     assertSnapshotDatasetIntegrity(datasets);
-    return { receiptId: receipt.id, inputHash: receipt.inputHash, sourceAnchors, projectAnchors, requiresProjectContact, datasets, diagnostics: media.diagnostics,
+    return { receiptId: receipt.id, inputHash: receipt.inputHash, sourceAnchors, projectAnchors, catalogAnchors, requiresProjectContact, datasets, diagnostics: media.diagnostics,
       manifestMetadata: { projectId: receipt.projectId, schemaMinor: receipt.schemaMinor, publishSequence: receipt.publishSequence,
         generatedAt: receipt.capturedAt.toISOString(), catalogRevision: receipt.catalogRevision, sourceRevisions: captured.sourceRevisions } };
   };

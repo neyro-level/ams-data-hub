@@ -83,6 +83,18 @@ Agent, ListingAgentBinding and global DataSafetyState; wildcard/multi-project
 and foreign-scope admission fails before personal reads. This is still only a
 pre-PUT prerequisite, not final post-PUT admission or current publication.
 
+Catalog staging admission owns metadata anchors for the actual selected public
+Developer/Development/Building graph. It compares captured subscription mode and
+version plus complete city/decision sets, including direct child DML without a
+parent version bump. Selected entities must still exist, be ACTIVE/unmerged and
+retain captured parent/city/district relationships. Unrelated additions and
+name/version/value edits do not invalidate the immutable cut; no live selection,
+price/geo projection or URL regeneration is performed. The reader uses only
+selected UID pages of 200 after the exact scope guard. Subscription reads are
+project-scoped; shared catalog rows remain global, with exact-purpose RLS rather
+than a selected-UID row capability. No grants or write permissions are expanded.
+This additional pre-PUT gate does not replace final admission after upload.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

@@ -10,6 +10,7 @@ import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
   projectSnapshotCatalog,
+  selectSnapshotCatalog,
   projectSnapshotProjectState,
   projectSnapshotInventory,
   composeSnapshot, SNAPSHOT_DATASET_KINDS,
@@ -19,7 +20,8 @@ import {
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
-import { createCatalogSnapshotFactReader } from "../../src/modules/shared-catalog/server.ts";
+import { createCatalogSnapshotFactReader, createSnapshotPublicationCatalogReader } from "../../src/modules/shared-catalog/server.ts";
+import { prepareSnapshotPublicationCatalogAnchors } from "../../src/modules/shared-catalog/index.ts";
 import { createSourceSnapshotFactReader, createSnapshotGoodFactResolver, createSnapshotPublicationSourceReader, normalizedContentHash,
   type SnapshotGoodFactPin } from "../../src/modules/ingestion-core/server.ts";
 import { createProjectStateSnapshotFactReader, createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
@@ -750,6 +752,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       publishedAgentUids: new Set(), publishedBindings: new Map(),
       requiresContact: snapshotRequiresProjectContact(identities.map((row) => row.uid), new Map()) });
     expect(projectAnchors).toMatchObject({ requiresContact: true, contactVersion: 1 });
+    const selectedCatalog = selectSnapshotCatalog(receipt); const catalog = projectSnapshotCatalog(receipt, selectedCatalog);
+    const catalogAnchors = prepareSnapshotPublicationCatalogAnchors({ projectId: receipt.projectId,
+      subscriptions: parts.filter((part) => part.kind === "subscription").flatMap((part) => part.payload),
+      catalog: parts.filter((part) => part.kind === "catalog").flatMap((part) => part.payload),
+      publishedDevelopers: new Set(catalog.find((row) => row.kind === "developers")!.records.map((row) => row.key)),
+      publishedDevelopments: selectedCatalog.developmentUids, publishedBuildings: selectedCatalog.buildingUids });
     const freshStarted = performance.now();
     await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "snapshot-publication",
       organizationId: exactScope.organizationId, projectIds: [exactScope.projectId], correlationId: randomUUID() }, async (tx) => {
@@ -759,6 +767,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       await lockSnapshotPublication(tx, exactScope);
       await createSnapshotPublicationProjectReader(tx)(exactScope, projectAnchors);
       await createSnapshotPublicationSourceReader(tx)(exactScope, anchors);
+      await createSnapshotPublicationCatalogReader(tx)(exactScope, catalogAnchors);
     }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
     const freshElapsed = Math.round(performance.now() - freshStarted);
     expect(freshElapsed).toBeLessThan(5000);

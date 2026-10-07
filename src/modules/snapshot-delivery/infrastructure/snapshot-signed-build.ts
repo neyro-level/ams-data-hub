@@ -39,6 +39,7 @@ export function createSnapshotSignedBuildServer(bound: {
     if (!verification.accepted) throw new Error("SNAPSHOT_BUILD_SIGNATURE_INVALID");
     return { receiptId: candidate.receiptId, inputHash: candidate.inputHash, sourceAnchors: candidate.sourceAnchors,
       projectAnchors: candidate.projectAnchors,
+      catalogAnchors: candidate.catalogAnchors,
       composition, manifest, diagnostics: candidate.diagnostics };
   };
 }

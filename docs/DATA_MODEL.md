@@ -225,6 +225,17 @@ values, whole Project.version or live graph enrichment. Optional absent contact
 addition and unrelated new Agents are allowed. This pre-PUT check must be repeated
 by the final post-PUT publisher; no current/run or outbox execution is implied.
 
+The forward publication Catalog-read migration adds exact-purpose SELECT to the
+three subscription tables and three shared catalog entity tables. Subscription
+scope is organization/project; Developer/Development/Building remain global, and
+selected UID restriction is the guarded reader contract, not row-level tenant
+ownership. Restrictive policies exclude broad/legacy publication purposes, while
+existing grants and write denials remain unchanged. Fresh admission compares full
+subscription mode/version/city/decision membership and selected entity lifecycle,
+merge and parent/city/district metadata, not values or whole entity versions.
+Direct membership writes remain protected by the existing global writer triggers.
+No historical migration, catalog data or remote environment is rewritten.
+
 `SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
 `GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
 Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.

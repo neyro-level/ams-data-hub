@@ -1,4 +1,5 @@
 export * from "./contracts.ts";
+export { prepareSnapshotPublicationCatalogAnchors, type SnapshotPublicationCatalogAnchors } from "./application/snapshot-publication-catalog-anchors.ts";
 export {
   assertManualNewbuildingApply,
   newbuildingMediaInputSchema,

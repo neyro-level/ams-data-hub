@@ -10,6 +10,37 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 Catalog admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `c5b069a`. The actual selected catalog supplies copied permission
+anchors before HEAD. Pre-PUT admission compares exact subscription mode/version
+and complete city/decision sets, then only selected Developer/Development/Building
+lifecycle/merge/parent/city/district metadata in pages of 200. Names, versions,
+prices, geography projection and unrelated new eligible rows are not refreshed or
+compared. The forward six-table SELECT extension keeps subscription scope exact
+and shared catalog global; selected UID restriction belongs to the guarded reader,
+not tenant-owned RLS. Existing grants, write denials and global writer triggers
+remain unchanged. Pure anchor units are 11/11 PASS; app/test types and focused
+lint PASS. Native combined admission/capture/staging/delivery is 78/78 PASS in
+six files (124.02 seconds), after 47 synthetic-only forward migrations and
+completed cleanup. Original 4100/8200 capture stays below 30 seconds (21.021
+seconds outer cut); the same Project -> Source -> Catalog RC cut stays below the
+unchanged five-second assertion. It has an empty selected catalog, not a catalog
+maximum proof. Final focused native is 26/26 PASS in two files (21.18 seconds):
+401 actual selected rows per entity use exactly three pages [200,200,1] each,
+within the unchanged five-second admission cut, plus fact-writer regressions.
+Direct city/selection DML without version bump rejects; an owned actual NOBYPASS
+city INSERT waits behind admission, then commits and makes the old cut stale.
+Populated foreign subscription, wildcard/multi/legacy and wrong-actor guards
+deny; selected entity metadata changes reject while value/new-row edits pass.
+These catalog fixture captures use owner login; publication and competing writer
+roles are explicitly NOBYPASS. Full quick check PASS (399 modules / 1245
+dependencies); docs canon, RLS coverage (49 models) and diff check PASS. Architect
+code/tests review found no actionable findings; 5000-per-entity maxima are not
+claimed by these proofs.
+Final post-PUT media/all-owner admission, atomic current/run and actual outbox
+registration remain unfinished; no task closure or production action is claimed.
+
 ### MP-05.11 Project admission prerequisite — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `ffe5893`. The candidate owns value-free project anchors before
