@@ -13,7 +13,8 @@ import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { createCatalogSnapshotFactReader } from "../../src/modules/shared-catalog/server.ts";
-import { createSourceSnapshotFactReader } from "../../src/modules/ingestion-core/server.ts";
+import { createSourceSnapshotFactReader, createSnapshotGoodFactResolver, normalizedContentHash,
+  type SnapshotGoodFactPin } from "../../src/modules/ingestion-core/server.ts";
 import { createProjectStateSnapshotFactReader } from "../../src/modules/project-state/server.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
@@ -911,6 +912,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
   it("pins the historical GOOD fact still backing an ACTIVE grace identity, without raw payload or write rights", async () => {
     const scope = await setup();
     const uid = createUlid();
+    const draft = { externalId: "kept", sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+      title: "Synthetic pinned historical title", contactPhones: ["synthetic-private-only"], imageUrls: [], provenance: {} };
+    const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: 2, attributes: {}, children: {} }] } };
+    const historicalHash = normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields });
     const fixtures = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
       const source = await tx.source.create({ data: {
         organizationId: scope.organizationId, projectId: scope.projectId, sourceKey: "synthetic-input",
@@ -926,7 +931,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         } });
         await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id,
           externalId, orderKey: Buffer.from(externalId).toString("hex"), inventoryUid, recordHash,
-          payload: { schemaVersion: 1, draft: { contactPhones: ["synthetic-private-only"] }, rawRecord: { marker: "private" }, fields: {} },
+          payload: { schemaVersion: 1, draft: { ...draft, externalId }, rawRecord: { marker: "private" }, fields },
         } });
         await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED",
           rawStorageKey: `private-synthetic/${sequence}`, rawArtifactHash: "a".repeat(64), rawByteCount: 1,
@@ -935,11 +940,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
         return revision.id;
       };
-      const historical = await good(1, "kept", uid, "b".repeat(64));
+      const historical = await good(1, "kept", uid, historicalHash);
       const head = await good(2, "new-only", createUlid(), "c".repeat(64));
       await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: head } });
       await tx.inventoryIdentity.create({ data: { ...target, uid, externalOfferId: "kept", status: "ACTIVE",
-        sourceHash: "d".repeat(64), normalizedHash: "b".repeat(64), firstSeenAt: new Date(), lastSeenAt: new Date(),
+        sourceHash: "d".repeat(64), normalizedHash: historicalHash, firstSeenAt: new Date(), lastSeenAt: new Date(),
         missingGoodRuns: 1, missingSince: new Date(),
       } });
       await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version, adapterKey: source.adapterKey,
@@ -966,9 +971,79 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         (_kind, rows) => { foreign.push(...rows); });
       expect(foreign).toEqual([]);
     });
+    const pin: SnapshotGoodFactPin = { uid, sourceId: fixtures.sourceId, externalOfferId: "kept", normalizedHash: historicalHash,
+      factRevisionId: fixtures.historical, factRevisionSequence: 1, factProfileKey: "vladis-vt24-v1", factProfileVersion: "1.0.0" };
+    const profiles = new Map([["vladis-vt24-v1@1.0.0", { identity: "vladis-vt24-v1@1.0.0", caseSensitiveTags: true, fieldMappings: [] }]]);
+    const pinned = await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles));
+    expect(pinned).toEqual([{ inventoryUid: uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+      title: "Synthetic pinned historical title" }, fieldValues: { rooms: [2] } }]);
+    expect(JSON.stringify(pinned)).not.toMatch(/contactPhones|rawRecord|provenance|synthetic-private-only|externalId/u);
+    await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)({ organizationId: scope.organizationId,
+      projectId: scope.foreignProjectId }, [pin], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
+    await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope,
+      [{ ...pin, factRevisionSequence: 2 }], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
+    await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope,
+      [{ ...pin, normalizedHash: "a".repeat(64) }], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
+    await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope,
+      [{ ...pin, factProfileVersion: "foreign" }], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: fixtures.sourceId },
+      data: { enabled: false, profileKey: "joywork-yandex-realty-v1" } }));
+    expect(await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles))).toEqual(pinned);
     await runInPrincipalDatabaseTransaction(admin, (tx) => tx.inventoryIdentity.update({ where: { uid }, data: { normalizedHash: "e".repeat(64) } }));
     await expect(worker(scope, (tx) => createSourceSnapshotFactReader(tx).capture(scope, () => undefined)))
       .rejects.toThrow("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
+  });
+
+  it("rejects malformed GOOD components in SQL without transferring their large siblings", async () => {
+    const scope = await setup();
+    const fixtures = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-malformed", name: "Synthetic malformed", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+        profileKey: "synthetic-captured-only", profileVersion: "1", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const target = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      const pins: SnapshotGoodFactPin[] = [];
+      const goodFields = { text: "", attributes: {}, children: {} };
+      const goodDraft = { externalId: "bad-4", sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE" };
+      const payloads: Prisma.InputJsonObject[] = [
+        { schemaVersion: 1, draft: { description: "x".repeat(200000) } },
+        { schemaVersion: 1, draft: { description: "x".repeat(200000) }, fields: null },
+        { schemaVersion: 1, fields: { text: "x".repeat(200000) } },
+        { schemaVersion: 1, draft: null, fields: { text: "x".repeat(200000) } },
+        { schemaVersion: 1, draft: goodDraft, fields: goodFields },
+        { schemaVersion: 1, draft: { ...goodDraft, externalId: "bad-5" }, fields: goodFields },
+      ];
+      for (const [index, payload] of payloads.entries()) {
+        const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+          adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
+        const uid = createUlid(); const externalId = `bad-${index}`;
+        const recordHash = index === 4 ? normalizedContentHash({ draft: goodDraft, fields: goodFields }) : "a".repeat(64);
+        await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, inventoryUid: uid,
+          externalId, orderKey: Buffer.from(externalId).toString("hex"), recordHash, payload } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: index + 1,
+          rawStorageKey: `synthetic-private/${index}`, rawArtifactHash: "b".repeat(64), rawByteCount: 1,
+          normalizedContentHash: recordHash, completedAt: new Date() } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        pins.push({ uid, sourceId: source.id, externalOfferId: externalId, normalizedHash: recordHash,
+          factRevisionId: revision.id, factRevisionSequence: index + 1, factProfileKey: source.profileKey, factProfileVersion: source.profileVersion });
+      }
+      return pins;
+    });
+    await worker(scope, async (tx) => {
+      expect(await tx.sourceRevisionRecord.count()).toBe(6);
+      const tracing = { $queryRaw: async (query: Prisma.Sql) => {
+        const rows = await tx.$queryRaw<{ found: boolean; draft: unknown; fields: unknown }[]>(query);
+        expect(rows).toHaveLength(4);
+        expect(rows.every((row) => !row.found && row.draft === null && row.fields === null)).toBe(true);
+        return rows;
+      } } as unknown as DatabaseTransaction;
+      await expect(createSnapshotGoodFactResolver(tracing)(scope, fixtures.slice(0, 4), new Map())).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
+      const profiles = new Map([["synthetic-captured-only@1", { identity: "synthetic-captured-only@1", caseSensitiveTags: true, fieldMappings: [] }]]);
+      expect(await createSnapshotGoodFactResolver(tx)(scope, [fixtures[4]!], profiles)).toEqual([{
+        inventoryUid: fixtures[4]!.uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE" }, fieldValues: {},
+      }]);
+      await expect(createSnapshotGoodFactResolver(tx)(scope, [fixtures[5]!], profiles)).rejects.toThrow("SNAPSHOT_GOOD_FACT_HASH_MISMATCH");
+    });
   });
 
   it("fresh admission denies a freeze committed while the outer RR cut waited on the safety lock", async () => {

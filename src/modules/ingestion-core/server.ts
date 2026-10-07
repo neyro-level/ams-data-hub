@@ -1,5 +1,7 @@
 import "server-only";
 export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
+export { createSnapshotGoodFactResolver, type SnapshotGoodFactPin, type SnapshotGoodNormalizedFact,
+  type SnapshotCapturedFactProfile } from "./infrastructure/snapshot-good-fact-resolver.ts";
 export { createSourceSnapshotFactReader, type SourceSnapshotInventoryFact } from "./infrastructure/source-snapshot-facts.ts";
 export { createInventoryPublicProjectionServer } from "./infrastructure/inventory-public-projection-server.ts";
 

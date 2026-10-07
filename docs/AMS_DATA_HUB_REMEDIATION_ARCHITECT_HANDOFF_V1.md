@@ -282,6 +282,26 @@ outer transaction 25.3 seconds, source/media 22.8 seconds, save 2.0 seconds).
 Generated-count fidelity, forgery rejection (SQLSTATE 428C9), late gap/record
 overflow after an immediate header check and full rollback are also verified.
 Stored-column production rewrite/lock rehearsal remains a release prerequisite.
+The next MP-05.2 checkpoint adds a server-only ingestion-owned exact GOOD resolver.
+It accepts at most 200 captured pins and scoped revision/hash/sequence/profile
+identities, rechecks the normalized ingestion hash, and never consults live
+LastGood or the profile registry. SQL guards a 4-MiB projected page before transfer;
+oversized pages split, malformed draft/fields return markers without payload.
+Only allowlisted normalized draft candidates and finite selected scalar fields
+leave the resolver: no raw record, producer media URLs, phones or source IDs.
+These candidates are NOT public DTOs; address/coordinates still require captured
+location policy and inventory schema projection. Captured profile adaptation,
+public inventory/media projectors and unified assembly remain pending.
+Native 18/18 PostgreSQL NOBYPASS tests verify historical missing-grace GOOD
+resolution, foreign scope/wrong hash/sequence/profile rejection, unchanged facts
+after live Source edits, and marker-only refusal of missing/null draft/fields.
+The worker can see those malformed GOOD records, so the marker proof is not an
+RLS-denial false positive. A captured-only profile absent from the runtime registry
+resolves successfully; a matching stored hash whose payload differs is rejected
+by recomputation. Original 4100/8200 capture still passes the unchanged 30-second
+assertion (outer transaction 23.8 seconds). Four targeted resolver unit tests
+cover allowlists, duplicate/bounded pages, split leaves and oversized-leaf refusal;
+mock batching evidence does not substitute for complete public-build capacity.
 No fixture volume or worker limit was reduced/relaxed; full public assembly
 capacity, inventory/media projection and unified orchestration are still unproven.
 

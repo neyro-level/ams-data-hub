@@ -190,6 +190,14 @@ remediation program preserves these boundaries while connecting them:
   contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
   pins, 8200 media positions and the original 30-second worker limit. Production
   table rewrite/lock rehearsal is a separately approved release prerequisite.
+  The ingestion-owned server-only GOOD resolver reads exact captured scoped
+  revision/UID/external/hash/sequence/profile pins in pages of at most 200. It
+  recomputes the ingestion hash without draft provenance; live Source heads and
+  the profile registry do not replace pinned data. A SQL 4-MiB page guard splits
+  oversized pages before transfer, and malformed components return marker-only
+  failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
+  and coordinates still need the captured location policy. Full inventory/media
+  projection and captured-profile orchestration are not yet complete.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

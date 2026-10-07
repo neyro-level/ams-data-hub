@@ -62,8 +62,14 @@ projectors: всего 11/13. Native PostgreSQL suite — 17/17 PASS, replay в�
 устраняют повторный JSON sizing на commit без удаления двух constraint triggers;
 4100/8200 capture — 25,4 секунды при прежнем лимите 30 секунд. Проверены forgery,
 late gap/overflow и rollback; types/lint/architecture, 38 targeted unit tests,
-docs/secrets — PASS. GOOD inventory resolver, captured-media verification и
+docs/secrets — PASS. Интеграция GOOD inventory resolver, captured-media verification и
 общий 13-dataset build остаются работой MP-05.2, не объявляются завершёнными.
+Server-only ingestion resolver реализован отдельно: exact scoped GOOD pins,
+повторный normalized hash, captured profile без live registry/LastGood, SQL
+byte guard и marker-only malformed refusal. Native suite — 18/18 PASS, включая
+исторический grace, replay, scope/pin/hash rejection и профиль вне live registry.
+Его результат — внутренние кандидаты, не public DTO: location policy и полная
+inventory/media assembly ещё требуют реализации.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
