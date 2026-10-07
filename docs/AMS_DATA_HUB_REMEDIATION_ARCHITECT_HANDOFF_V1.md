@@ -132,7 +132,7 @@ coverage; acceptance stays the source's requirement, not a new checklist graph.
 
 ## REQUIRES CHECK
 
-### Active implementation contract: MP-05.1
+### Completed input-capture contract: MP-05.1
 
 WORK on the approved graph: capture a complete, bounded, project-scoped DB
 input in one Repeatable Read transaction, reserve its positive publication
@@ -148,9 +148,9 @@ Verification must exercise the concrete resolver and repository with a scoped
 NOBYPASS worker on the isolated synthetic database: tenant isolation, one-cut
 reads, immutable retry, historical fact matching, positive sequence, bounded
 capture and rollback. Public projection, signing/publication, production and
-real feeds remain outside this checkpoint. MP-05.1 stays IN_PROGRESS until
-the complete resolver and its native proof pass; persistence scaffolding alone
-does not satisfy the task.
+real feeds remain outside this checkpoint. MP-05.1 implementation was closed
+by the strict Task Manager helper at clean pushed checkpoint `a074033` after
+complete resolver/native proof; persistence scaffolding alone was insufficient.
 
 Capture retry constructs a new fact builder inside every transaction attempt.
 Fresh admission uses a second bounded authorized Read Committed transaction
@@ -229,8 +229,25 @@ limit, followed by persisted replay. The 16-test native suite also proves
 immutable replay after live facts change, concurrent same-key requests, atomic
 rollback, foreign-scope denial and fresh freeze admission. This proves the
 private input-capture boundary, not 13-dataset projection, signing, publication
-or production capacity. Strict task closure still requires the clean pushed
-implementation checkpoint and Task Manager evidence.
+or production capacity. Clean pushed implementation checkpoint and strict
+Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
+
+### Active implementation contract: MP-05.2
+
+Compose all 13 public dataset projectors from the immutable captured input and
+its exact scoped GOOD references. Reuse existing domain-owned public DTO/media,
+contact, editorial and URL mappings; never pass raw Prisma rows to the composer.
+Projection must not replace captured facts, rights or profile configuration with
+live values. Immutable GOOD draft loading is scoped, hash/revision checked and
+bounded; producer URLs, raw records, storage coordinates and consent internals
+are not public dataset fields. Public media verification occurs outside capture.
+Catalog selection, agent/contact fallback and persisted URL/lifecycle semantics
+must remain compatible with the subsequent MP-05.3–8 tasks, not be invented by
+generic field spreading. Empty datasets remain explicit; reference/privacy
+validation fails closed. Tests must prove actual 13-dataset composition,
+determinism, privacy and unchanged receipt replay using synthetic fixtures.
+Signing/publication and runtime activation remain later tasks. No deployment,
+real feeds, real PII or new credentials are authorized by this contract.
 
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final

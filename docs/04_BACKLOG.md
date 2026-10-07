@@ -48,12 +48,13 @@ manual dispatch, session fencing, shutdown и qualified readiness; Linux gate
 MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
 `e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
 84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
-Текущий участок — MP-05 assembly. MP-05.1 остаётся IN_PROGRESS:
+Текущий участок — MP-05 assembly. MP-05.1 закрыт implementation ledger
+на pushed checkpoint `a074033`; MP-05.2 — IN_PROGRESS:
 полный private DB capture command, immutable input persistence и allocator
 прошли native NOBYPASS PostgreSQL proof: 18 sections, replay после изменения
 живых фактов, concurrent same-key capture, rollback и 4100 объектов/8200 media
-positions в неизменном 30-second worker limit. Закрытие задачи требует clean
-pushed checkpoint и execution ledger; public projectors/build/sign/publication
+positions в неизменном 30-second worker limit. Clean pushed checkpoint и strict
+execution ledger подтверждены; public projectors/build/sign/publication
 ещё не завершены.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
