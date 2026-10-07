@@ -10,6 +10,19 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05 delivery fixture isolation — 2026-10-07
+
+Manual exact-head gate 284 on `76acfdb` passed 165/166 native cases; the
+durable-handler fixture claimed an older valid intent retained by another suite.
+Only fixture-owned availability and synthetic claim clocks were changed; no
+foreign intent is deleted/settled and no production claim rule is narrowed.
+Local combined Source-runtime/staging/full-worker regression passes 50/50 in
+three suites (56.72 seconds), with 48 migrations and completed cleanup. Test
+types/focused lint and docs/secrets/diff pass. The failed gate did not reach
+build; replacement exact-head provider gate remains required before merge.
+Current PRD/architecture/operations/contract claims were reconciled with the
+implemented MP-03–MP-07 state, preserving explicit undeployed/provider limits.
+
 ### MP-05.11 full combined runtime function — 2026-10-07
 
 Native `snapshot-source-worker.integration.test.ts` calls the actual

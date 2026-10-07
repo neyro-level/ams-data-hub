@@ -44,7 +44,7 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — MP-03/MP-06 delivered, MP-04 foundation / 2026-10-06
+### Remediation runtime state — 2026-10-07
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
@@ -277,9 +277,14 @@ remediation program preserves these boundaries while connecting them:
   enforce active service, unfrozen jobs, captured contact version and published
   Agent consent/version/photo slots and exact bindings without live enrichment
   or personal-value reads. Fact writers take global before target row/domain
-  locks. These pre-PUT prerequisites do not protect the upload window: final
-  post-PUT catalog/media/all-owner admission, atomic current/run publication
-  and actual registered outbox execution remain unfinished.
+  locks. Final publication repeats Source/Project/Catalog/Media admission after
+  settled artifact and manifest PUTs in one short global -> publication cut,
+  then atomically persists current and DeliveryRun. Exact committed replay
+  precedes configuration/fresh capture and never regresses a newer pointer.
+  The combined Source worker optionally registers the strict snapshot topic;
+  active cancellation joins owned SDK work. Local synthetic PostgreSQL/pg-boss
+  evidence is implementation proof, not live-provider or production activation.
+  Implementation is closed in Task Manager; exact-head epic delivery is pending.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
@@ -293,7 +298,8 @@ remediation program preserves these boundaries while connecting them:
   only external transport replaced. This does not enable a browser route or
   a real storage provider. Complete snapshot orchestration,
   historical missing-grace fact selection and consent-gated agent projection
-  remain subsequent gates.
+  are implemented by MP-05; remaining operations/API and readiness proof belong
+  to MP-08–MP-10.
 - MP-07: explicit immutable verifier policy now defines compressed/decompressed
   file, record-count and total-work limits. Factory configuration rejects unsafe
   overrides. Native gunzip has a finite output bound constrained by remaining
@@ -303,8 +309,8 @@ remediation program preserves these boundaries while connecting them:
   scope, sequence, set, lengths and all-copy hashes precede any decompression.
   Private bounded copies prevent hash-to-use mutation. Adversarial regressions
   exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
-  boundaries, key rotation/revocation and last-good; delivery review/gate must
-  still pass before this epic is delivered. Budgets are not callback/RSS limits.
+  boundaries, key rotation/revocation and last-good. MP-07 delivery passed its
+  exact-head gate and is recorded in Task Manager. Budgets are not callback/RSS limits.
 - MP-08: Operations UI records requests; missing executors and HTTP discovery/
   delivery/ACK composition are not represented as completed operations.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,

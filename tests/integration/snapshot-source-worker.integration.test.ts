@@ -64,6 +64,9 @@ async function fixture() {
     const producer = createProjectJobPrincipal({ ...scope, jobName: "source-import", correlationId: randomUUID() });
     if (producer.kind !== "project-job") throw new Error("SYNTHETIC_PRINCIPAL_INVALID");
     const intent = await enqueueSourceGoodSnapshot(tx, producer, target, { revisionId: revision.id, sequence: 1 });
+    // Prior suites may retain their own valid pending intents. Prioritize only
+    // this fixture's event so the enabled runtime stops after its own success.
+    await tx.outboxEvent.update({ where: { id: intent.outboxEventId }, data: { availableAt: new Date("2000-01-01T00:00:00.000Z") } });
     return { admin, scope, intent, suffix };
   });
 }

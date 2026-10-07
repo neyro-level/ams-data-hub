@@ -39,7 +39,7 @@ leaves only orphan artifacts and the binding; no current pointer or DeliveryRun
 is registered by this seam. A failed artifact batch waits for every owned PUT
 to settle before returning failure, and never uploads its manifest afterward.
 Staging alone is not publication. Final fresh admission is owned by the facade
-below; registered outbox verification is still required before MP-05.11 closure.
+below; actual registered outbox verification is recorded in the runtime section.
 
 Newbuilding preview/apply acquires the common global safety advisory lock before
 its explicit Source row lock, matching the Source runtime lock order. An import
@@ -242,7 +242,8 @@ own fresh consent-gated projection. Forward migration
 `20261006163000_media_projection_good_read` enables only scoped GOOD reads for
 the server-owned `media-projection` database purpose; import writes and FORCE
 RLS are unchanged. Historical fact revisions for missing-grace inventory use the
-MP-05 captured path below; full snapshot build/delivery composition remains work.
+MP-05 captured path below; full snapshot build/publication composition is
+implemented. Consumer HTTP delivery and Operations executors remain MP-08 work.
 
 `createSnapshotMediaProjectionServer` accepts only a server-loaded immutable
 SnapshotInput receipt and server-selected project-bound storage. It validates

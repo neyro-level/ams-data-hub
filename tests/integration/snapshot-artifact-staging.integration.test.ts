@@ -108,9 +108,14 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
       const producer = createProjectJobPrincipal({ ...scope, jobName: "source-import", correlationId: randomUUID() });
       if (producer.kind !== "project-job") throw new Error("SYNTHETIC_PRODUCER_PRINCIPAL_INVALID");
-      return enqueueSourceGoodSnapshot(tx, producer, target, { revisionId: revision.id, sequence: 1 });
+      const queued = await enqueueSourceGoodSnapshot(tx, producer, target, { revisionId: revision.id, sequence: 1 });
+      // The shared integration DB also holds earlier fixtures' valid intents.
+      // Give only our event a historical availability and claim with the same
+      // synthetic clock; do not settle/delete another fixture's pending work.
+      await tx.outboxEvent.update({ where: { id: queued.outboxEventId }, data: { availableAt: new Date("2000-01-01T00:00:00.000Z") } });
+      return queued;
     });
-    let now = new Date(Date.now() + 1000);
+    let now = new Date("2000-01-01T00:00:01.000Z");
     const service = () => new ReliabilityService(new PrismaReliabilityRepository(), () => now);
     const first = await service().claim("synthetic-snapshot-worker", 1000, ["snapshot.build.request"]);
     expect(first?.outboxEventId).toBe(intent.outboxEventId); if (!first) throw new Error("SYNTHETIC_CLAIM_MISSING");
