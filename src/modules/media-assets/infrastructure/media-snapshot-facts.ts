@@ -1,4 +1,5 @@
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { createHash } from "node:crypto";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { createMediaKey } from "../../../platform/storage/object-storage.ts";
@@ -151,6 +152,7 @@ export function createMediaSnapshotFactReader(transaction: DatabaseTransaction, 
           const candidate = json({ sourceId: pin.sourceId, inventoryUid: pin.inventoryUid,
           factRevisionId: pin.factRevisionId, approvedHeadId: pin.approvedHeadId, recordHash: pin.normalizedHash,
           relationId: relation.id, relationRevisionId: relation.sourceRevisionId, relationUpdatedAt: relation.updatedAt,
+          relationCanonicalUrlHash: createHash("sha256").update(relation.canonicalSourceUrl).digest("hex"),
           mirrorStatus: relation.status, mirroredAt: relation.mirroredAt,
           asset: assetFact(asset) });
           capturedBytes += canonicalJsonBytes(candidate).byteLength;
@@ -242,6 +244,7 @@ export function createMediaSnapshotFactReader(transaction: DatabaseTransaction, 
             ...(relation?.mirroredAt && rightsEligible && eligibleAsset(scope, asset) ? {
               provenance: "SHARED_OBSERVATION_MIRROR", relationId: relation.id,
               relationRevisionId: relation.sourceRevisionId, relationUpdatedAt: relation.updatedAt,
+              relationCanonicalUrlHash: createHash("sha256").update(relation.canonicalSourceUrl).digest("hex"),
               mirrorStatus: relation.status, mirroredAt: relation.mirroredAt, asset: assetFact(asset),
             } : { omission: "MEDIA_MIRROR_UNAVAILABLE" }) }));
         }

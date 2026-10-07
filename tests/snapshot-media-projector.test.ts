@@ -20,6 +20,7 @@ function receipt(data: Partial<Record<SnapshotInputPartKind, CanonicalJsonValue[
 const pin = { uid, status: "ACTIVE", sourceId: "private-source", normalizedHash: "b".repeat(64), factRevisionId: "historical-good", approvedHeadId: "captured-head" };
 const media = { kind: "LISTING_IMAGE", inventoryUid: uid, sourceId: pin.sourceId, recordHash: pin.normalizedHash,
   factRevisionId: pin.factRevisionId, approvedHeadId: pin.approvedHeadId, relationRevisionId: pin.factRevisionId,
+  relationCanonicalUrlHash: "c".repeat(64),
   relationId: "private-relation", mirroredAt: "2026-10-07T00:00:00.000Z", mirrorStatus: "MIRRORED", position: 0, asset };
 describe("captured snapshot media", () => {
   it("verifies repeated positions with one HEAD and emits only strict opaque attachments and owner refs", async () => {
@@ -38,6 +39,13 @@ describe("captured snapshot media", () => {
     await expect(project({ ...receipt({}), inputHash: "c".repeat(64) })).rejects.toThrow("INPUT_INVALID");
     await expect(project(receipt({ inventory: [pin], media: [{ ...media, recordHash: "c".repeat(64) }] }))).rejects.toThrow("PIN_INVALID");
     expect(storage.head).not.toHaveBeenCalled();
+  });
+  it("fails closed on older media receipts lacking a strong relation hash before HEAD, without rewriting the receipt", async () => {
+    const storage = { head: head() }; const project = createSnapshotMediaProjectionServer({ ...scope, storage });
+    const { relationCanonicalUrlHash: _hash, ...legacy } = media; void _hash;
+    const input = receipt({ inventory: [pin], media: [legacy] }); const before = structuredClone(input);
+    await expect(project(input)).rejects.toThrow("SNAPSHOT_PUBLICATION_MEDIA_ANCHORS_INVALID");
+    expect(input).toEqual(before); expect(storage.head).not.toHaveBeenCalled();
   });
   it.each(["key", "sha256", "contentType", "contentLength"])("omits HEAD mismatch %s without raw diagnostics", async (field) => {
     const storage = { head: vi.fn(async () => ({ key: asset.storageKey, sha256: asset.sha256, contentLength: 10,
@@ -96,9 +104,12 @@ describe("captured snapshot media", () => {
   });
   it("retains shared building association without requiring invented GOOD and omits unsupported kinds", async () => {
     const development = createUlid(); const building = createUlid();
-    const shared = { kind: "DEVELOPMENT_IMAGE", sharedMediaId: "private-observation", developmentUid: development,
-      buildingUid: building, position: 0, asset, mirrorStatus: "MIRRORED", mirroredAt: media.mirroredAt, relationId: "private-relation", relationRevisionId: null, provenance: "SHARED_OBSERVATION_MIRROR" };
-    const input = receipt({ catalog: [{ entityType: "development", uid: development }, { entityType: "building", uid: building, developmentUid: development }], media: [shared] });
+    const shared = { kind: "DEVELOPMENT_IMAGE", sharedMediaId: "private-observation", sourceId: pin.sourceId, developmentUid: development,
+      buildingUid: building, position: 0, asset, mirrorStatus: "MIRRORED", mirroredAt: media.mirroredAt, relationId: "private-relation",
+      relationRevisionId: "manual-approved-observation", relationCanonicalUrlHash: "c".repeat(64), provenance: "SHARED_OBSERVATION_MIRROR" };
+    const input = receipt({ catalog: [{ entityType: "development", uid: development }, { entityType: "building", uid: building, developmentUid: development }], media: [shared],
+      "shared-media": [{ id: shared.sharedMediaId, sourceId: shared.sourceId, developmentUid: development, buildingUid: building,
+        kind: "DEVELOPMENT_IMAGE", position: 0, canonicalUrlHash: "c".repeat(64), rightsBasis: "OWNED", hasLicense: false, hasAttribution: false }] });
     const project = createSnapshotMediaProjectionServer({ ...scope, storage: { head: head() } });
     expect((await project(input)).dataset.records[0]!.key).toBe(`BUILDING/${building}/0`);
     expect((await project(receipt({ catalog: input.parts.find((part) => part.kind === "catalog")!.payload,

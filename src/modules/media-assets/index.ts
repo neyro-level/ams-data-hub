@@ -1,3 +1,4 @@
+export { prepareSnapshotPublicationMediaPins, selectSnapshotPublicationMediaAnchors, type SnapshotPublicationMediaAnchors } from "./application/snapshot-publication-media-anchors.ts";
 export {
   MAX_MEDIA_BYTES,
   MEDIA_CONTENT_TYPES,

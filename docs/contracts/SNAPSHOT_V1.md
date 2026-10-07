@@ -95,6 +95,27 @@ project-scoped; shared catalog rows remain global, with exact-purpose RLS rather
 than a selected-UID row capability. No grants or write permissions are expanded.
 This additional pre-PUT gate does not replace final admission after upload.
 
+Media staging prepares copied server-only provenance pins before HEAD using the
+same captured candidate and manual Agent slot choice. Only actual verified public
+owner/position/ref attachments retain pins afterward; omissions, unsupported kinds,
+ambiguous positions and failed HEAD do not become fresh publication anchors.
+The gate compares scoped immutable asset identity/hash/key/type/bytes/rights and
+license trim-presence, captured relation owner/source/revision/asset and canonical
+URL hash with eligible MIRRORED/WARNING status and nonnull mirror time, plus shared
+observation ownership/position/rights and attribution/license trim-presence.
+No URLs, license/attribution values, filenames or producer payloads are returned
+by fresh reads. SQL presence markers use the exact ECMAScript trim character set.
+Inventory attachment positions remain those of immutable GOOD image lists, not
+MediaSource.position; repeated producer positions may share one relation. Shared
+position comes from the observation; Agent position is zero. Shared/manual relation
+revision is an opaque identity, never invented GOOD/current-head provenance.
+New private captures include relationCanonicalUrlHash. Older media receipts without
+the required strong pin fail before HEAD and require a fresh capture identity;
+persisted receipt bytes/hashes are never rewritten. Timestamp-only protection is
+not substituted for the hash. The three scoped SELECT extensions keep existing
+grants and fact-write denial. Pre-PUT checks still require post-PUT repetition;
+current/run/outbox publication remains unfinished.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

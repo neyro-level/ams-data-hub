@@ -10,6 +10,42 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 Media admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `c66eda2`. The actual candidate preparation owns copied asset,
+relation and shared observation metadata before HEAD; only exact HEAD-verified
+owner/position/ref attachments receive publication anchors. Manual Agent photo
+priority and producer positions remain unchanged, including repeated positions
+sharing a URL-unique mirror relation. Pre-PUT checks compare selected immutable
+asset metadata/rights, eligible relation association and canonical URL hash,
+and shared parent/position/rights plus ECMAScript-trim license/attribution presence.
+Opaque shared manual revision identity is not forced to equal a GOOD revision.
+Raw manual spelling and canonical relation hashes are pinned independently.
+Metadata queries return no URLs, filenames, license/attribution values or payloads;
+IDs are deduplicated and paged by 200. A three-table forward SELECT extension
+keeps exact publication-purpose scope, existing grants and mutation denials.
+Older mirrored receipts without strong relation hashes fail before HEAD and
+require a fresh capture identity; persisted bytes/hashes/timestamps are not rewritten.
+Targeted units pass 26/26 across two files. Native media/staging/delivery passes
+22/22 across three files (23.17 seconds), after 48 synthetic-only migrations and
+completed cleanup. The initial native run exposed an unavailable `digest`
+function; the reader now uses the existing built-in SHA-256 UTF-8 contract.
+Architect read-only review found no actionable findings. Combined native admission,
+capture, staging and delivery passed 95/96 cases across seven files (124.96 seconds):
+the original 4100/8200 capture stays below 30 seconds and actual HEAD-selected 8200
+anchors pass Project -> Source -> Catalog -> Media in one unchanged five-second
+RC cut. The remaining owned writer fixture initially updated zero rows because
+its admin principal had no job-only write policy. After setting the actual scoped
+media job context, focused native media plus writer regressions pass 22/22 across
+two files (17.90 seconds), with unchanged grants, roles, RLS and lock deadlines.
+The owned NOBYPASS writer waits on the admission lock, then commits its URL change
+without touching updatedAt; old hashes reject. Fixture setup/capture uses owner
+login; publication and competing writer roles are explicitly NOBYPASS. Final post-PUT recheck,
+current/run orchestration and registered outbox execution remain unfinished.
+Final quick check PASS (401 modules / 1256 dependencies); docs canon, RLS coverage
+(49 models) and diff check PASS. No task closure, release gate, merge, mirror or
+production action is claimed.
+
 ### MP-05.11 Catalog admission prerequisite — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `c5b069a`. The actual selected catalog supplies copied permission

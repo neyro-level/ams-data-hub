@@ -17,8 +17,11 @@ function object(value: CanonicalJsonValue | undefined): Record<string, Canonical
   return value;
 }
 
-/** Receipt-only provenance admission. This is not authorization of arbitrary request JSON. */
-export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection): CapturedMediaCandidate[] {
+export interface PreparedSnapshotMediaCandidate { candidate: CapturedMediaCandidate; captured: Record<string, CanonicalJsonValue> }
+/** Same receipt-only slot/provenance choice for object verification and private publication pins. */
+export function prepareSnapshotMediaProjectionInput(input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection): {
+  candidates: PreparedSnapshotMediaCandidate[]; sharedFacts: Record<string, CanonicalJsonValue>[];
+} {
   const parts = validateSnapshotInput(input);
   const rows = (kind: SnapshotInputPartKind) => parts.filter((part) => part.kind === kind).flatMap((part) => part.payload).map(object);
   const index = (values: Record<string, CanonicalJsonValue>[], key: string) => {
@@ -30,14 +33,14 @@ export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt,
   const inventory = index(rows("inventory"), "uid"); const agents = index(rows("agents"), "uid");
   const catalog = index(rows("catalog"), "uid");
   const agentSlots = new Map<string, Map<string, Record<string, CanonicalJsonValue>>>();
-  const candidates: CapturedMediaCandidate[] = [];
+  const candidates: PreparedSnapshotMediaCandidate[] = [];
   const add = (entityType: CapturedMediaCandidate["entityType"], uid: unknown, position: unknown, row: Record<string, CanonicalJsonValue>, unsupported = false) => {
     const asset = unsupported || row.asset === undefined ? null : object(row.asset);
-    candidates.push({ entityType, entityUid: ulidSchema.parse(uid), position: z.number().int().min(0).max(10_000).parse(position),
+    candidates.push({ captured: row, candidate: { entityType, entityUid: ulidSchema.parse(uid), position: z.number().int().min(0).max(10_000).parse(position),
       asset: asset ? { sha256: asset.sha256, storageKey: asset.storageKey, byteSize: asset.byteSize,
         contentType: asset.contentType, rightsBasis: asset.rightsBasis, hasLicense: asset.hasLicense } : null,
       ...(unsupported ? { warning: "MEDIA_KIND_UNSUPPORTED" as const } : row.omission ? { warning: z.enum(["MEDIA_MIRROR_UNAVAILABLE", "MEDIA_ASSET_UNAVAILABLE"]).parse(row.omission) }
-        : row.mirrorStatus === "WARNING" ? { warning: "MEDIA_MIRROR_WARNING" as const } : {}) });
+        : row.mirrorStatus === "WARNING" ? { warning: "MEDIA_MIRROR_WARNING" as const } : {}) } });
   };
   for (const row of rows("media")) {
     if (selection && row.sharedMediaId !== undefined && (!selection.developmentUids.has(ulidSchema.parse(row.developmentUid))
@@ -79,7 +82,12 @@ export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt,
     if (!selected) throw new Error("SNAPSHOT_MEDIA_PIN_INVALID");
     add("AGENT", uid, 0, selected);
   }
-  return candidates;
+  return { candidates, sharedFacts: rows("shared-media") };
+}
+
+/** Public projection compatibility seam; never carries private provenance into attachments. */
+export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection): CapturedMediaCandidate[] {
+  return prepareSnapshotMediaProjectionInput(input, selection).candidates.map((row) => row.candidate);
 }
 
 /** Strict public attachment projection; private provenance has already been verified and discarded. */

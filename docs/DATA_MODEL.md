@@ -236,6 +236,20 @@ merge and parent/city/district metadata, not values or whole entity versions.
 Direct membership writes remain protected by the existing global writer triggers.
 No historical migration, catalog data or remote environment is rewritten.
 
+The forward publication Media-read migration adds exact scoped SELECT and
+restrictive scope policies to MediaAsset, MediaSource and SharedMediaAsset, without
+new grants or write permissions. Media anchors contain only actual HEAD-verified
+attachment identity and copied asset/relation/shared permission metadata. Fresh
+SQL returns hashes and trim-presence booleans rather than URL/license/attribution
+values. Asset/relation/observation IDs are deduplicated for reads in pages of 200;
+owner-position attachments stay independent. Current MIRRORED/WARNING eligibility
+does not require exact attempt timestamps or relation revision equal to GOOD head.
+Inventory/shared private capture now adds relationCanonicalUrlHash; old receipts
+lacking a required pin fail closed before HEAD, requiring a new capture identity,
+not a historical hash/timestamp rewrite. Raw SQL reassociation with unchanged
+updatedAt is detected through the canonical hash. Full post-PUT admission and
+atomic publication remain separate; no remote migration or release is implied.
+
 `SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
 `GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
 Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.

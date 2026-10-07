@@ -1,4 +1,5 @@
 import "server-only";
+export { createSnapshotPublicationMediaReader } from "./infrastructure/snapshot-publication-media-reader.ts";
 export { createCapturedMediaVerifier, type CapturedMediaCandidate, type CapturedMediaVerificationResult,
   type VerifiedCapturedMediaAttachment } from "./application/captured-media-verifier.ts";
 export { createMediaSnapshotFactReader, type InventorySnapshotMediaPin } from "./infrastructure/media-snapshot-facts.ts";

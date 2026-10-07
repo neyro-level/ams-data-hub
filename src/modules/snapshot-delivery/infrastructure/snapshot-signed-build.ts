@@ -40,6 +40,7 @@ export function createSnapshotSignedBuildServer(bound: {
     return { receiptId: candidate.receiptId, inputHash: candidate.inputHash, sourceAnchors: candidate.sourceAnchors,
       projectAnchors: candidate.projectAnchors,
       catalogAnchors: candidate.catalogAnchors,
+      mediaAnchors: candidate.mediaAnchors,
       composition, manifest, diagnostics: candidate.diagnostics };
   };
 }

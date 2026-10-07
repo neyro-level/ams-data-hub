@@ -29,7 +29,7 @@ import { prepareSnapshotPublicationProjectAnchors } from "../../src/modules/proj
 import { snapshotRequiresProjectContact } from "../../src/modules/snapshot-delivery/application/snapshot-project-contact.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
-import { createMediaSnapshotFactReader } from "../../src/modules/media-assets/server.ts";
+import { createMediaSnapshotFactReader, createSnapshotPublicationMediaReader } from "../../src/modules/media-assets/server.ts";
 import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import * as mediaFacade from "../../src/modules/media-assets/server.ts";
@@ -758,6 +758,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       catalog: parts.filter((part) => part.kind === "catalog").flatMap((part) => part.payload),
       publishedDevelopers: new Set(catalog.find((row) => row.kind === "developers")!.records.map((row) => row.key)),
       publishedDevelopments: selectedCatalog.developmentUids, publishedBuildings: selectedCatalog.buildingUids });
+    // Actual receipt-selected attachments and synthetic HEAD run outside the DB cut.
+    const head = vi.fn(async (key: string) => ({ key, sha256: "a".repeat(64), contentLength: 100,
+      contentType: "image/jpeg", etag: null, lastModifiedAt: new Date(0) }));
+    const media = await createSnapshotMediaProjectionServer({ ...exactScope, storage: { head } })(receipt, selectedCatalog);
+    expect(media.mediaAnchors.attachments).toHaveLength(8200);
+    expect(head).toHaveBeenCalledOnce();
     const freshStarted = performance.now();
     await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "snapshot-publication",
       organizationId: exactScope.organizationId, projectIds: [exactScope.projectId], correlationId: randomUUID() }, async (tx) => {
@@ -768,10 +774,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       await createSnapshotPublicationProjectReader(tx)(exactScope, projectAnchors);
       await createSnapshotPublicationSourceReader(tx)(exactScope, anchors);
       await createSnapshotPublicationCatalogReader(tx)(exactScope, catalogAnchors);
+      await createSnapshotPublicationMediaReader(tx)(exactScope, media.mediaAnchors);
     }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
     const freshElapsed = Math.round(performance.now() - freshStarted);
     expect(freshElapsed).toBeLessThan(5000);
-    console.info(`snapshot_source_fresh_capacity=PASS inventories=4100 page_size=200 elapsed_ms=${freshElapsed}`);
+    console.info(`snapshot_all_owner_fresh_capacity=PASS inventories=4100 attachments=8200 page_size=200 elapsed_ms=${freshElapsed}`);
   }, 120_000);
 
   it("pins scoped shared observation mirrors without requiring an XML revision for manual imports", async () => {
