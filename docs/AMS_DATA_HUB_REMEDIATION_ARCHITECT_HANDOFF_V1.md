@@ -351,6 +351,17 @@ periods, zero/false, pin mismatches, media-reference closure and rich-HTML code
 removal across inline markup/NBSP/br/block boundaries. Architect-found attachment
 and HTML-boundary P2 issues were fixed and rereviewed with no new targeted findings.
 
+Active MP-05.2 captured-profile extension uses the existing orchestration Task
+Contract: adapt only receipt-owned GOOD resolver identity, case semantics and
+finite field mappings, with no live registry lookup. Configuration-only YRL
+uses the explicit versioned case-sensitive parser baseline; format-owned
+profiles retain their captured flag (CIAN is case-insensitive). The selection
+omits office contacts, pattern strings and other unused private configuration;
+Only ACTIVE inventory fact profiles are required: unrelated legacy default
+sources do not block the build, while required unsupported/missing profiles,
+duplicate identities/targets and incompatible families reject. This is
+not the full configuration projection or unified 13-dataset assembly proof.
+
 Active MP-05.2 media Task Contract: verify receipt-owned inventory GOOD
 pins, captured agent consent/assignment and shared observation associations before
 any IO; reuse immutable asset/key/rights/HEAD matching; sequential project-bound
