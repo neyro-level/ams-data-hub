@@ -913,8 +913,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const scope = await setup();
     const uid = createUlid();
     const draft = { externalId: "kept", sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
-      title: "Synthetic pinned historical title", contactPhones: ["synthetic-private-only"], imageUrls: [], provenance: {} };
-    const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: 2, attributes: {}, children: {} }] } };
+      title: "Synthetic pinned historical title", address: "Synthetic City, house 9, 42",
+      contactPhones: ["synthetic-private-only"], imageUrls: [], provenance: {} };
+    const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: 2, attributes: {}, children: {} }],
+      "|location": [{ text: "", attributes: {}, children: { "|apartment": [{ text: "42", attributes: {}, children: {} }] } }] } };
     const historicalHash = normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields });
     const fixtures = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
       const source = await tx.source.create({ data: {
@@ -976,7 +978,9 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const profiles = new Map([["vladis-vt24-v1@1.0.0", { identity: "vladis-vt24-v1@1.0.0", caseSensitiveTags: true, fieldMappings: [] }]]);
     const pinned = await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles));
     expect(pinned).toEqual([{ inventoryUid: uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
-      title: "Synthetic pinned historical title" }, fieldValues: { rooms: [2] } }]);
+      title: "Synthetic pinned historical title" }, fieldValues: { rooms: [2] }, addressPublic: "Synthetic City, house 9" }]);
+    expect(pinned[0]!.draft).not.toHaveProperty("address");
+    expect(pinned[0]!.fieldValues).not.toHaveProperty("location/apartment");
     expect(JSON.stringify(pinned)).not.toMatch(/contactPhones|rawRecord|provenance|synthetic-private-only|externalId/u);
     await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)({ organizationId: scope.organizationId,
       projectId: scope.foreignProjectId }, [pin], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
@@ -1011,13 +1015,21 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         { schemaVersion: 1, draft: null, fields: { text: "x".repeat(200000) } },
         { schemaVersion: 1, draft: goodDraft, fields: goodFields },
         { schemaVersion: 1, draft: { ...goodDraft, externalId: "bad-5" }, fields: goodFields },
+        { schemaVersion: 1, draft: { ...goodDraft, externalId: "bad-6", address: "City user＠example.invalid" }, fields: goodFields },
+        { schemaVersion: 1, draft: { ...goodDraft, externalId: "bad-7", address: "City, house 9, apt. 42 / 43" },
+          fields: { ...goodFields, children: { "|location": [{ ...goodFields,
+            children: { "|apartment": [{ ...goodFields, text: "42/43" }] } }] } } },
+        { schemaVersion: 1, draft: { ...goodDraft, externalId: "bad-8", address: "City, house 9, aptA12 / B13" },
+          fields: { ...goodFields, children: { "|location": [{ ...goodFields,
+            children: { "|apartment": [{ ...goodFields, text: "A12/B13" }] } }] } } },
       ];
       for (const [index, payload] of payloads.entries()) {
         const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
           adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
           profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
         const uid = createUlid(); const externalId = `bad-${index}`;
-        const recordHash = index === 4 ? normalizedContentHash({ draft: goodDraft, fields: goodFields }) : "a".repeat(64);
+        const recordHash = index === 4 || index >= 6
+          ? normalizedContentHash({ draft: payload.draft, fields: payload.fields }) : "a".repeat(64);
         await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, inventoryUid: uid,
           externalId, orderKey: Buffer.from(externalId).toString("hex"), recordHash, payload } });
         await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: index + 1,
@@ -1030,7 +1042,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       return pins;
     });
     await worker(scope, async (tx) => {
-      expect(await tx.sourceRevisionRecord.count()).toBe(6);
+      expect(await tx.sourceRevisionRecord.count()).toBe(9);
       const tracing = { $queryRaw: async (query: Prisma.Sql) => {
         const rows = await tx.$queryRaw<{ found: boolean; draft: unknown; fields: unknown }[]>(query);
         expect(rows).toHaveLength(4);
@@ -1043,6 +1055,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         inventoryUid: fixtures[4]!.uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE" }, fieldValues: {},
       }]);
       await expect(createSnapshotGoodFactResolver(tx)(scope, [fixtures[5]!], profiles)).rejects.toThrow("SNAPSHOT_GOOD_FACT_HASH_MISMATCH");
+      await expect(createSnapshotGoodFactResolver(tx)(scope, [fixtures[6]!], profiles)).rejects.toThrow("SNAPSHOT_PUBLIC_ADDRESS_INVALID");
+      const compound = await createSnapshotGoodFactResolver(tx)(scope, [fixtures[7]!], profiles);
+      expect(compound[0]!.addressPublic).toBe("City, house 9");
+      expect(compound[0]!.draft).not.toHaveProperty("address");
+      expect(compound[0]!.fieldValues).not.toHaveProperty("location/apartment");
+      expect((await createSnapshotGoodFactResolver(tx)(scope, [fixtures[8]!], profiles))[0]!.addressPublic).toBe("City, house 9");
     });
   });
 

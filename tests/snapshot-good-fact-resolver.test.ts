@@ -15,7 +15,7 @@ function fixture() {
     factRevisionId: "historical-good", factRevisionSequence: 1, factProfileKey: "captured", factProfileVersion: "1" };
   const profiles = new Map([["captured@1", { identity: "captured@1", caseSensitiveTags: true,
     fieldMappings: [{ sourcePath: "rooms-type", targetField: "facts.roomsType" },
-      { sourcePath: "sales-agent", targetField: "address.apartmentNumberPrivate" }] }]]);
+      { sourcePath: "location/apartment", targetField: "address.apartmentNumberPrivate" }] }]]);
   const row = { index: 0, found: true, oversized: false, draft, fields };
   const query = vi.fn().mockResolvedValue([row]);
   const tx = { $queryRaw: query } as unknown as DatabaseTransaction;
@@ -56,5 +56,21 @@ describe("exact GOOD normalized fact resolver", () => {
     expect(data.query).not.toHaveBeenCalled();
     await expect(data.resolve(scope, Array.from({ length: 201 }, () => data.pin), data.profiles)).rejects.toThrow();
     expect(data.query).not.toHaveBeenCalled();
+  });
+  it("redacts the address using private captured fields without returning either raw component", async () => {
+    const data = fixture();
+    const draft = { ...data.draft, address: "Synthetic City, house 9, 42" };
+    const fields = { ...data.fields, children: { ...data.fields.children,
+      "|location": [{ ...node(""), children: { "|apartment": [node("42")] } }] } };
+    data.query.mockResolvedValue([{ ...data.row, draft, fields }]);
+    const pin = { ...data.pin, normalizedHash: normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields }) };
+    const facts = await data.resolve(scope, [pin], data.profiles);
+    expect(facts[0]!.addressPublic).toBe("Synthetic City, house 9");
+    expect(facts[0]!.draft).not.toHaveProperty("address");
+    expect(facts[0]!.fieldValues).not.toHaveProperty("location/apartment");
+    const ambiguous = { ...draft, address: "Synthetic City Test Street 9 42" };
+    data.query.mockResolvedValue([{ ...data.row, draft: ambiguous, fields }]);
+    await expect(data.resolve(scope, [{ ...pin, normalizedHash: normalizedContentHash({ draft: { ...ambiguous, provenance: undefined }, fields }) }], data.profiles))
+      .rejects.toThrow("SNAPSHOT_PUBLIC_ADDRESS_INVALID");
   });
 });

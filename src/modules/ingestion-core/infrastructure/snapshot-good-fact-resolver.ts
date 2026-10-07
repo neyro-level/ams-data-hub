@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { normalizedContentHash } from "../application/import-pipeline.ts";
+import { normalizeSnapshotPublicAddress } from "../domain/snapshot-public-address.ts";
 import type { SourceSnapshotFactScope } from "./source-snapshot-facts.ts";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -21,10 +22,12 @@ const draftSchema = z.object({ sourceFormat: z.enum(["YRL_2010", "DOMCLICK_YRL",
   latitude: z.number().min(-90).max(90).optional(), longitude: z.number().min(-180).max(180).optional() });
 
 /** Internal normalized candidates, NOT a public DTO. Address and coordinates
- * still require the captured location policy before public projection. */
+ * still require the captured location policy before public projection. Raw
+ * address is excluded; addressPublic has passed the unit-redaction boundary. */
 export interface SnapshotGoodNormalizedFact {
   inventoryUid: string;
-  draft: z.infer<typeof draftSchema>;
+  draft: Omit<z.infer<typeof draftSchema>, "address">;
+  addressPublic?: string;
   fieldValues: Readonly<Record<string, readonly (string | number)[]>>;
 }
 export interface SnapshotCapturedFactProfile {
@@ -126,7 +129,15 @@ export function createSnapshotGoodFactResolver(transaction: DatabaseTransaction)
           const values = fieldValues(fields, path, profile.caseSensitiveTags);
           if (values.length) safeFields[path] = values;
         }
-        return { inventoryUid: pin.uid, draft: draftSchema.parse(draft), fieldValues: safeFields };
+        const { address, ...normalized } = draftSchema.parse(draft);
+        const privatePaths = new Set(["location/apartment", "FlatNumber", "ApartmentNumber", "Apartment"]);
+        const configuredPrivatePaths = profile.fieldMappings.filter((mapping) => mapping.targetField === "address.apartmentNumberPrivate");
+        if (configuredPrivatePaths.some((mapping) => !privatePaths.has(mapping.sourcePath))) throw new Error("SNAPSHOT_GOOD_PROFILE_INVALID");
+        const privateValues = [...new Set([...privatePaths].flatMap((path) => fieldValues(fields, path, profile.caseSensitiveTags))
+          .map(String).map((value) => value.trim()).filter(Boolean))];
+        if (privateValues.length > 1) throw new Error("SNAPSHOT_PUBLIC_ADDRESS_INVALID");
+        return { inventoryUid: pin.uid, draft: normalized, fieldValues: safeFields,
+          ...(address === undefined ? {} : { addressPublic: normalizeSnapshotPublicAddress(address, privateValues[0]) }) };
       });
     }
     return page(pins);

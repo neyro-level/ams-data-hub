@@ -302,6 +302,22 @@ by recomputation. Original 4100/8200 capture still passes the unchanged 30-secon
 assertion (outer transaction 23.8 seconds). Four targeted resolver unit tests
 cover allowlists, duplicate/bounded pages, split leaves and oversized-leaf refusal;
 mock batching evidence does not substitute for complete public-build capacity.
+The next address boundary consumes finite captured private apartment paths
+internally and excludes raw address/private markers from resolver output.
+Optional `addressPublic` is bounded and normalized with NFKC-aware forbidden
+content checks before/after normalization. Explicit unit components, compound
+numbers and attached exact captured markers are removed; ambiguous values fail
+closed instead of using the raw address. Final captured location precision and
+public InventoryEntity/DTO assembly remain pending. No arbitrary public-address
+fallback or profile-registry lookup is introduced.
+Address verification: native 18/18 NOBYPASS suite passes historical GOOD address
+redaction/replay, Unicode-created forbidden content rejection, spaced compound
+and attached alphabetic compound unit removal. Original 4100/8200 capture still
+passes the unchanged 30-second limit (final outer transaction 23.7 seconds).
+Targeted units are 63/63 across eight files, including 150 composed address
+label/separator/private-marker combinations. Architect-found Unicode/partial
+compound/attached-marker bypasses were fixed and rereviewed; no complete public
+inventory or thirteen-dataset assembly proof is claimed by this checkpoint.
 No fixture volume or worker limit was reduced/relaxed; full public assembly
 capacity, inventory/media projection and unified orchestration are still unproven.
 

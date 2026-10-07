@@ -198,6 +198,11 @@ remediation program preserves these boundaries while connecting them:
   failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
   and coordinates still need the captured location policy. Full inventory/media
   projection and captured-profile orchestration are not yet complete.
+  GOOD resolution now excludes raw `draft.address` and private apartment fields
+  from its result. Optional `addressPublic` passes bounded NFKC-aware unit
+  redaction: explicit RU/EN unit components and exact captured apartment markers
+  are removed; ambiguous surviving markers or forbidden normalized content fail
+  closed. This is an address-unit boundary, not final location-policy/DTO proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

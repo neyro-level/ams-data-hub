@@ -70,6 +70,11 @@ byte guard и marker-only malformed refusal. Native suite — 18/18 PASS, вкл
 исторический grace, replay, scope/pin/hash rejection и профиль вне live registry.
 Его результат — внутренние кандидаты, не public DTO: location policy и полная
 inventory/media assembly ещё требуют реализации.
+Адресная граница GOOD resolver теперь исключает raw address/private apartment
+из результата и выдаёт только проверенный unit-redacted addressPublic либо
+отказ при неоднозначности. Native 18/18 и 63 targeted unit tests — PASS,
+включая Unicode, составные и слитные private marker regressions; 150 комбинаций
+проверены. Полный public inventory mapper и location policy остаются в работе.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
