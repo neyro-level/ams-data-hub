@@ -316,7 +316,11 @@ remediation program preserves these boundaries while connecting them:
   request survives settled-intent retention; mutable SUSPICIOUS admission never
   prevents replay of an already accepted request. Worker reads are exact-purpose,
   single-project and currently SELECT-only. Unsupported consumers reserve/defer
-  all six topics. No operational executor is registered by this foundation;
+  all six topics. A platform-owned transaction-bound lease fence validates the
+  complete persisted event/job tuple and expected scoped payload, locking event
+  then job until caller commit. Caller order is global safety → domain locks →
+  lease fence → request; external IO stays outside that cut. Existing outbox/job
+  privileges are reused, not widened. No operational executor is registered;
   execution and HTTP discovery/delivery/ACK remain unfinished MP-08 work.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.

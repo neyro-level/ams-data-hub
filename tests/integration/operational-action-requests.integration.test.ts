@@ -20,7 +20,9 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
 });
 import { requestOperationalAction } from "../../src/modules/operations-control/server.ts";
 import { OPERATIONAL_ACTION_TOPICS, type OperationalAction } from "../../src/modules/operations-control/index.ts";
-import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
+import { lockOperationalOutboxLease, PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
+import { ReliabilityService } from "../../src/modules/platform-operations/index.ts";
+import { createOutboxDrainDependencies, drainOutboxWithDependencies, getPgBoss, publishClaimedEvent, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
 import { runReliabilityRetention } from "../../src/modules/platform-operations/infrastructure/retention-runtime.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -40,6 +42,124 @@ function input(scope: { organizationId: string; projectId: string }, key: string
 }
 
 describe("actual admin durable operational requests under NOBYPASS", () => {
+  it("fences the full persisted operation lease across same-attempt takeover and expired-attempt reclaim", async () => {
+    const { admin, scope, suffix } = await fixture();
+    const request = await requestOperationalAction(admin, input(scope, `synthetic-fence-${suffix}`));
+    const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: request.requestId } });
+      if (!row.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+      await tx.outboxEvent.update({ where: { id: row.outboxEventId }, data: { availableAt: new Date("1999-01-01T00:00:00.000Z") } });
+      return row.outboxEventId;
+    });
+    let now = new Date("2000-01-01T00:00:01.000Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    const lease = await reliability.claim(`operation-fence-${suffix}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+    if (!lease || lease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+    const expected = { ...scope, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD,
+      payload: { schemaVersion: 1, ...scope, requestId: request.requestId, action: "SNAPSHOT_BUILD" } };
+    const context = { principalKind: "project-job" as const, actorId: "operations-executor", ...scope,
+      projectIds: [scope.projectId], correlationId: randomUUID() };
+    const fence = (value: typeof lease, authorization = context, binding = expected) =>
+      runInAuthorizedDatabaseTransaction(authorization, async (tx) => {
+        await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text");
+        return lockOperationalOutboxLease(tx, value, binding);
+      });
+    await expect(fence(lease)).resolves.toBeUndefined();
+    for (const forged of [
+      { ...lease, attempt: lease.attempt + 1 }, { ...lease, workerId: "synthetic-forged-worker" },
+      { ...lease, jobRunId: "synthetic-forged-job" },
+      { ...lease, correlationId: randomUUID() },
+      { ...lease, payload: { ...lease.payload, requestId: "synthetic-forged-request" } },
+      { ...lease, leaseAcquiredAt: new Date(now.getTime() + 1).toISOString() },
+    ]) await expect(fence(forged)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    for (const denied of [
+      { ...context, actorId: "snapshot-input" }, { ...context, projectIds: [] },
+      { ...context, organizationId: "synthetic-other-org" },
+      { ...context, projectIds: [scope.projectId, "synthetic-other-project"] },
+      { ...context, projectIds: ["synthetic-other-project"] },
+    ]) await expect(fence(lease, denied)).rejects.toThrow("OUTBOX_OPERATION_SCOPE_DENIED");
+    await expect(fence(lease, context, { ...expected, payload: { ...expected.payload, projectId: "synthetic-other-project" } }))
+      .rejects.toThrow("OUTBOX_OPERATION_LEASE_INVALID");
+    await expect(fence(lease, context, { ...expected, payload: { ...expected.payload, requestId: "synthetic-other-request" } }))
+      .rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    now = new Date("2000-01-01T00:00:02.000Z");
+    const taken = await reliability.takeOver(lease, lease.workerId);
+    if (!taken) throw new Error("SYNTHETIC_TAKEOVER_MISSING");
+    expect(taken.attempt).toBe(lease.attempt); expect(taken.jobRunId).toBe(lease.jobRunId);
+    await expect(fence(lease)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    await expect(fence(taken)).resolves.toBeUndefined();
+    // Observe an actual PostgreSQL waiter, not a timing-only Promise assertion.
+    let releaseFence!: () => void;
+    let markHeld!: (pid: number) => void;
+    const release = new Promise<void>((resolve) => { releaseFence = resolve; });
+    const held = new Promise<number>((resolve) => { markHeld = resolve; });
+    const holding = runInAuthorizedDatabaseTransaction(context, async (tx) => {
+      await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text");
+      await lockOperationalOutboxLease(tx, taken, expected);
+      const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+      markHeld(backend!.pid);
+      await release;
+    });
+    const blockerPid = await Promise.race([held, holding.then(() => { throw new Error("SYNTHETIC_FENCE_NOT_HELD"); })]);
+    now = new Date("2000-01-01T00:00:03.000Z");
+    let takeoverSettled = false;
+    const transferring = reliability.takeOver(taken, taken.workerId).finally(() => { takeoverSettled = true; });
+    let transferred: Awaited<ReturnType<typeof reliability.takeOver>> = null;
+    try {
+      let blocked = false;
+      const deadline = Date.now() + 1500;
+      while (!blocked && Date.now() < deadline) {
+        blocked = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          const [row] = await tx.$queryRawUnsafe<{ blocked: boolean }[]>(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND $1::integer = ANY(pg_blocking_pids(pid))) AS blocked", blockerPid);
+          return row!.blocked;
+        });
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true); expect(takeoverSettled).toBe(false);
+    } finally { releaseFence(); await holding; transferred = await transferring; }
+    if (!transferred) throw new Error("SYNTHETIC_TRANSFER_MISSING");
+    await expect(fence(taken)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    await expect(fence(transferred)).resolves.toBeUndefined();
+    now = new Date("2000-01-01T00:10:02.000Z");
+    const reclaimed = await reliability.claim(`operation-reclaim-${suffix}`, 300_000, [expected.topic]);
+    if (!reclaimed || reclaimed.outboxEventId !== eventId) throw new Error("SYNTHETIC_RECLAIM_MISSING");
+    expect(reclaimed.attempt).toBe(2); expect(reclaimed.jobRunId).not.toBe(lease.jobRunId);
+    await expect(fence(transferred)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    await expect(fence(reclaimed)).resolves.toBeUndefined();
+    await reliability.complete(reclaimed);
+    await expect(fence(reclaimed)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+    await runInPrincipalDatabaseTransaction(admin, async (tx) =>
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: request.requestId } })).toMatchObject({ status: "REQUESTED" }));
+  });
+  it("defers a real queued operational intent without settling its durable request", async () => {
+    const { admin, scope, suffix } = await fixture();
+    const request = await requestOperationalAction(admin, input(scope, `synthetic-reserved-${suffix}`));
+    const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: request.requestId } });
+      if (!row.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+      await tx.outboxEvent.update({ where: { id: row.outboxEventId }, data: { availableAt: new Date("2000-01-01T00:00:00.000Z") } });
+      return row.outboxEventId;
+    });
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => new Date("2000-01-01T00:00:01.000Z"));
+    const lease = await reliability.claim(`reserved-publisher-${suffix}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+    expect(lease?.outboxEventId).toBe(eventId);
+    if (!lease) throw new Error("SYNTHETIC_LEASE_MISSING");
+    try {
+      const boss = await getPgBoss();
+      await publishClaimedEvent(boss, lease);
+      await expect(drainOutboxWithDependencies({ workerId: `reserved-worker-${suffix}`, maxEvents: 1 }, createOutboxDrainDependencies(boss)))
+        .resolves.toEqual({ claimed: 1, completed: 0, failed: 0 });
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        expect(await tx.outboxEvent.findUniqueOrThrow({ where: { id: eventId } }))
+          .toMatchObject({ status: "PENDING", deferredAttempts: 1, lockedBy: null, lastErrorCode: "OUTBOX_EXECUTOR_RESERVED" });
+        expect(await tx.jobRun.findUniqueOrThrow({ where: { id: lease.jobRunId } }))
+          .toMatchObject({ status: "DEFERRED", safeErrorCode: "OUTBOX_EXECUTOR_RESERVED" });
+        expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: request.requestId } }))
+          .toMatchObject({ status: "REQUESTED" });
+      });
+    } finally { await stopPgBoss(); }
+  });
   it.each(["foreign-org", "foreign-project", "wrong-topic", "extra-private-field", "missing-intent", "premature-running"])(
     "rolls back a directly forged %s request/intent binding at the database boundary", async (mode) => {
       const own = await fixture(); const foreign = await fixture();

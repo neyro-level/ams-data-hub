@@ -48,6 +48,13 @@ New INSERT still requires an exact existing intent. Existing idempotency expiry
 policy remains unchanged; no consumer, credential provisioning or production
 operation is activated by this foundation.
 
+The platform-owned `lockOperationalOutboxLease` API uses existing worker
+outbox/job privileges to lock and verify the full event/attempt/worker/time/job
+tuple under an exact `operations-executor` single-project context. It does not
+grant request UPDATE or settle business state. Caller-owned ReadCommitted cuts
+must acquire global safety and domain locks before this fence; never hold it
+over external IO. Lifecycle persistence and concrete adapters remain unfinished.
+
 ## Confirmed listing-agent assignments
 
 `ListingAgentBinding` is owned by project-state. It binds scoped Source/GOOD
