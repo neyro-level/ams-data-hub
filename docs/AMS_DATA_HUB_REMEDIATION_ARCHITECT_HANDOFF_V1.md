@@ -10,6 +10,30 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.9 implementation proof — 2026-10-07
+
+Task base `b29dec8`. Different-key concurrent first captures exposed a real
+`ProjectSnapshotSequence_pkey` violation: empty-update Prisma upsert can use
+SELECT/INSERT against a RepeatableRead cut established before advisory waiting.
+The forward correction uses atomic INSERT ON CONFLICT then the same scoped
+counter read/CAS; existing locks, monotonic trigger, unique receipt and bounded
+whole-transaction retry are preserved. Actual adapter-pg error is P2010 with
+`meta.driverAdapterError.cause.originalCode=40001` and
+`kind=TransactionWriteConflict`; the narrow classifier now admits it, alongside
+existing P2034/meta.code=40001, without blanket unique/error-message retry.
+Coverage includes actual command rollback, replay, separate project counters,
+publication/delivery floor and INT_MAX exhaustion. Native focused proof: 2/2
+PASS; a fixture-only barrier establishes both RR cuts before advisory waiting
+and asserts a real third transaction attempt, not just lucky Promise.all.
+Final native capture/URL regression: 24/24 in two suites, 103.54s; unchanged
+4100 inventory/8200 media capture: 14.233s under the original 30s limit. Units:
+15/15; full verify:quick (389 modules, 1197 dependencies), final delta app/test
+types and focused lint, docs/secrets/diff passed. Initial P2002 and then nested
+40001 failures are retained in Task Manager alongside the corrections, not
+discarded as environment failures. Exact pushed checkpoint/closure ledger is
+recorded in Task Manager. This does not claim independent projects make parallel progress while the
+exclusive global data-safety lock is held, or completed signed publication.
+
 ### MP-05.8 implementation proof — 2026-10-07
 
 Task base `b0c4346`; existing persistent-state transfer is reused, not redesigned.

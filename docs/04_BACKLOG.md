@@ -144,6 +144,15 @@ consumer SEO fields не публикуются; assembler отвергает SE
 baseline — 31/31 в трёх suites; final URL fixture после последнего assertion —
 1/1; project-state/composer units — 24/24; full verify:quick и final fixture
 types/lint — PASS. Consumer HTTP/SEO и signed publication этим не заявлены.
+MP-05.9 implementation proof: native first-counter INSERT ON CONFLICT устраняет
+Prisma empty-update upsert race; actual adapter-pg 40001 envelope повторяет весь
+RR capture, без blanket P2002 retry. Детерминированные concurrent cuts дают
+1/2 и доказанный retry; replay/same-key не расходуют лишний sequence. Проверены
+actual-command rollback, независимые project counters, manifest/delivery floor
+и INT_MAX fail-closed. Final native — 24/24 в двух suites, capture4100/8200 —
+14,233s при неизменных 30s; units — 15/15; full quick + final delta types/lint,
+docs/secrets/diff — PASS. Exact checkpoint/closure ledger — Beads. Global
+safety lock по-прежнему сериализует проекты; signed publication ещё не завершена.
 Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay

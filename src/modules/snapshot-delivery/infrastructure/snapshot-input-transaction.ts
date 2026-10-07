@@ -6,9 +6,17 @@ import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction,
 import { PrismaSnapshotInputRepository } from "./prisma-snapshot-input-repository.ts";
 
 function retryable(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError
-    && (error.code === "P2034" || (error.code === "P2010" && error.meta?.code === "40001"))
-    || error instanceof Error && error.message === "SNAPSHOT_SEQUENCE_CONFLICT";
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2034") return true;
+    if (error.code !== "P2010") return false;
+    if (error.meta?.code === "40001") return true;
+    const adapter = error.meta?.driverAdapterError;
+    if (!adapter || typeof adapter !== "object" || !("cause" in adapter)) return false;
+    const cause = adapter.cause;
+    return Boolean(cause && typeof cause === "object" && "originalCode" in cause
+      && cause.originalCode === "40001" && "kind" in cause && cause.kind === "TransactionWriteConflict");
+  }
+  return error instanceof Error && error.message === "SNAPSHOT_SEQUENCE_CONFLICT";
 }
 
 /** Command runner for DB-only capture. No IO or publication inside execute. */

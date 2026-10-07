@@ -107,8 +107,8 @@ remediation program preserves these boundaries while connecting them:
   execution remains MP-05/MP-08; scheduled source execution is implemented;
   service unit tests are not production composition proof.
 - MP-05: `composeSnapshot` exists as a composer, not a completed DB-state
-  application pipeline. Real 13-dataset projectors, input resolution and
-  build/sign/publication orchestration are pending.
+  application pipeline. Real 13-dataset projectors and pinned input resolution
+  are implemented; full build/sign/publication orchestration remains pending.
   MP-05.1 implementation is closed at pushed checkpoint `a074033`; epic delivery
   remains pending. Forward-only input receipt/parts and project sequence
   persistence now exist. Receipts require all 18 private fact sections,

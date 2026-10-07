@@ -64,8 +64,17 @@ export class PrismaSnapshotInputRepository {
     ]);
     const floor = Math.max(current?.publishSequence ?? 0, deliveries._max.publishSequence ?? 0,
       captures._max.publishSequence ?? 0);
-    const counter = await this.transaction.projectSnapshotSequence.upsert({
-      where: { organizationId_projectId: scope }, create: { ...scope, lastReservedSequence: floor }, update: {},
+    // An empty-update Prisma upsert can become SELECT then INSERT. The RR cut
+    // may predate waiting for the advisory lock, so first concurrent captures
+    // would then raise a non-retryable unique violation. Native ON CONFLICT
+    // keeps this atomic and lets PostgreSQL report the serialization conflict
+    // to the existing whole-transaction retry; no unique errors are swallowed.
+    await this.transaction.$executeRaw(Prisma.sql`
+      INSERT INTO "ProjectSnapshotSequence" ("organizationId", "projectId", "lastReservedSequence")
+      VALUES (${organizationId}, ${projectId}, ${floor})
+      ON CONFLICT ("organizationId", "projectId") DO NOTHING`);
+    const counter = await this.transaction.projectSnapshotSequence.findUniqueOrThrow({
+      where: { organizationId_projectId: scope },
       select: { lastReservedSequence: true },
     });
     const previous = counter.lastReservedSequence;

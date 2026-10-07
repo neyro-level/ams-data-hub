@@ -9,6 +9,12 @@ prunes URL history; replay never recalculates paths from slug/templates or live
 state. Templates/reserved namespaces and robots/indexability/sitemap/title/host
 policy are excluded. Consumer HTTP redirect/410 and SEO behavior are separate.
 
+Capture reserves sequence inside its transaction under global-safety then
+project advisory locks. The scoped counter floors persisted captures, current
+manifest and DeliveryRun; replay does not allocate. First counter creation uses
+atomic INSERT ON CONFLICT, and serialization conflicts retry the entire bounded
+RepeatableRead cut. Counter/header/parts roll back together; INT_MAX fails closed.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
