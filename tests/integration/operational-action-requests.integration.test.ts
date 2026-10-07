@@ -221,7 +221,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     await expect(requestOperationalAction(admin, input(scope, `synthetic-${suffix}`))).resolves.toMatchObject({ duplicate: false });
   });
 
-  it("allows only an exact single-project executor to read and gives no premature runtime write grant", async () => {
+  it("allows exact single-project reads and only lifecycle column writes, never a table-wide mutation grant", async () => {
     const { admin, scope, suffix } = await fixture();
     const request = await requestOperationalAction(admin, input(scope, `synthetic-${suffix}`));
     const context = { principalKind: "project-job" as const, actorId: "operations-executor", organizationId: scope.organizationId,
@@ -230,6 +230,8 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
       expect(await tx.operationalActionRequest.count({ where: { id: request.requestId } })).toBe(1);
       expect(await tx.$queryRawUnsafe("SELECT has_table_privilege(current_user, 'public.\"OperationalActionRequest\"', 'UPDATE') AS allowed"))
         .toEqual([{ allowed: false }]);
+      expect(await tx.$queryRawUnsafe("SELECT has_column_privilege(current_user, 'public.\"OperationalActionRequest\"', 'status', 'UPDATE') AS lifecycle, has_column_privilege(current_user, 'public.\"OperationalActionRequest\"', 'outboxEventId', 'UPDATE') AS binding"))
+        .toEqual([{ lifecycle: true, binding: false }]);
       expect(await tx.$queryRawUnsafe("SELECT has_table_privilege('ams_data_hub_backup', 'public.\"OperationalActionRequest\"', 'SELECT') AS readable, has_table_privilege('ams_data_hub_backup', 'public.\"OperationalActionRequest\"', 'UPDATE') AS mutable"))
         .toEqual([{ readable: true, mutable: false }]);
     });

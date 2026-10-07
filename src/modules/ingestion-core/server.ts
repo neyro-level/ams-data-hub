@@ -31,6 +31,7 @@ export const inventoryIdentityCommands = createInventoryIdentityCommands({
 
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { adapterProfileRegistry } from "./domain/adapter-profile-registry.ts";
+export { prepareSuspiciousRevisionRejection } from "./infrastructure/suspicious-revision-rejection.ts";
 export {
   normalizedContentHash,
   runIndependentSourceImports,

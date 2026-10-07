@@ -1134,6 +1134,13 @@ model OperationalActionRequest {
   requestHash           String @db.Char(64)
   requestedBy           String
   outboxEventId         String? @unique
+  leaseJobRunId         String?
+  leaseAttempt          Int?
+  leaseWorkerId         String?
+  leaseAcquiredAt       DateTime? @db.Timestamptz(3)
+  startedAt             DateTime? @db.Timestamptz(3)
+  finishedAt            DateTime? @db.Timestamptz(3)
+  result                Json?
   createdAt             DateTime @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime @updatedAt @db.Timestamptz(3)
   project               Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction, map: "OperationalActionRequest_project_fkey")

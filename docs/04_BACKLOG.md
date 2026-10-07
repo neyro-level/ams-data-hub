@@ -60,6 +60,10 @@ runtime-function cases с настоящим local pg-boss, enabled/disabled/con
 Task Manager; production не обновлялся. Текущий участок — MP-08.1:
 durable operational requests/outbox и шесть реальных исполнителей.
 Foundation checkpoint не закрывает этот task и не означает исполнение запросов.
+Текущий следующий delta — fenced lifecycle и concrete SUSPICIOUS_REJECT:
+review/audit/request success в одной транзакции, immutable replay и Last GOOD
+unchanged. Shared queue registration, terminal FAILED и остальные пять
+исполнителей ещё не завершены; task не закрыт.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

@@ -39,8 +39,9 @@ stays in request/audit, never the queue payload. New requests are REQUESTED;
 declared lifecycle states alone are not executor completion.
 
 The web role creates requests only through the admin purpose. The worker can
-read with the exact single-project `operations-executor` purpose; there is no
-runtime UPDATE/DELETE grant until fenced execution exists. The ordinary outbox
+read with the exact single-project `operations-executor` purpose and update only
+lifecycle columns, not immutable identity, subject or intent binding. A SQL
+guard validates the full active lease and forbids manufactured results. The ordinary outbox
 consumer defers all six reserved operational topics instead of failing them.
 Existing 14/30-day settled-intent retention detaches the optional outbox FK
 without deleting the durable request or changing its stable idempotency result.
@@ -53,7 +54,13 @@ outbox/job privileges to lock and verify the full event/attempt/worker/time/job
 tuple under an exact `operations-executor` single-project context. It does not
 grant request UPDATE or settle business state. Caller-owned ReadCommitted cuts
 must acquire global safety and domain locks before this fence; never hold it
-over external IO. Lifecycle persistence and concrete adapters remain unfinished.
+over external IO. Lifecycle now persists RUNNING owner identity and immutable
+SUCCEEDED results for the concrete suspicious-rejection adapter. Its domain
+review, audit and request completion share one transaction; rejection never
+changes inventory or Last GOOD. Replay of an already committed result precedes
+mutable freeze/project/revision admission. Policy/analysis JSON is SQL-bounded
+before transfer. Terminal FAILED reconciliation and the other five adapters
+remain unfinished; none is registered as a placeholder consumer.
 
 ## Confirmed listing-agent assignments
 

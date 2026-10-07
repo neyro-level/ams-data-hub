@@ -6,6 +6,7 @@ import { sourceRegistryCommands } from "../ingestion-core/server.ts";
 import { requestOperationalActionInputSchema, type RequestOperationalActionInput } from "./contracts.ts";
 import { createOperationsActions } from "./application/operations-actions.ts";
 import { PrismaOperationsActionRepository } from "./infrastructure/prisma-operations-action-repository.ts";
+export { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
 
 const operationsActions = createOperationsActions({
   createRepository: (transaction) => new PrismaOperationsActionRepository(transaction),
