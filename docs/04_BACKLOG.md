@@ -56,6 +56,14 @@ MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
 positions в неизменном 30-second worker limit. Clean pushed checkpoint и strict
 execution ledger подтверждены; public projectors/build/sign/publication
 ещё не завершены.
+Checkpoint `000329f` добавляет шесть project-state projectors к пяти catalog
+projectors: всего 11/13. Native PostgreSQL suite — 17/17 PASS, replay всех
+одиннадцати проекций после live mutations проверен. Generated stored sizes
+устраняют повторный JSON sizing на commit без удаления двух constraint triggers;
+4100/8200 capture — 25,4 секунды при прежнем лимите 30 секунд. Проверены forgery,
+late gap/overflow и rollback; types/lint/architecture, 38 targeted unit tests,
+docs/secrets — PASS. GOOD inventory resolver, captured-media verification и
+общий 13-dataset build остаются работой MP-05.2, не объявляются завершёнными.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
