@@ -203,6 +203,13 @@ remediation program preserves these boundaries while connecting them:
   redaction: explicit RU/EN unit components and exact captured apartment markers
   are removed; ambiguous surviving markers or forbidden normalized content fail
   closed. This is an address-unit boundary, not final location-policy/DTO proof.
+  The inventory candidate projector checks exact verified identity/profile pins,
+  normalizes property-specific sparse facts under captured unit/period rules,
+  applies deterministic STREET coordinates and uses the persisted captured URL.
+  Public DTOs omit private pins/invalid raw values and declare URL/media attachment
+  references. Safe-HTML text-token cleanup removes the leading internal source
+  code while retaining rich markup. Receipt orchestration, captured media HEAD
+  verification and confirmed agent linkage remain separate unfinished steps.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

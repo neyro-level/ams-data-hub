@@ -26,6 +26,10 @@ const draftSchema = z.object({ sourceFormat: z.enum(["YRL_2010", "DOMCLICK_YRL",
  * address is excluded; addressPublic has passed the unit-redaction boundary. */
 export interface SnapshotGoodNormalizedFact {
   inventoryUid: string;
+  sourceId: string;
+  externalOfferId: string;
+  normalizedHash: string;
+  factProfileIdentity: string;
   draft: Omit<z.infer<typeof draftSchema>, "address">;
   addressPublic?: string;
   fieldValues: Readonly<Record<string, readonly (string | number)[]>>;
@@ -136,7 +140,8 @@ export function createSnapshotGoodFactResolver(transaction: DatabaseTransaction)
         const privateValues = [...new Set([...privatePaths].flatMap((path) => fieldValues(fields, path, profile.caseSensitiveTags))
           .map(String).map((value) => value.trim()).filter(Boolean))];
         if (privateValues.length > 1) throw new Error("SNAPSHOT_PUBLIC_ADDRESS_INVALID");
-        return { inventoryUid: pin.uid, draft: normalized, fieldValues: safeFields,
+        return { inventoryUid: pin.uid, sourceId: pin.sourceId, externalOfferId: pin.externalOfferId,
+          normalizedHash: pin.normalizedHash, factProfileIdentity: identity, draft: normalized, fieldValues: safeFields,
           ...(address === undefined ? {} : { addressPublic: normalizeSnapshotPublicAddress(address, privateValues[0]) }) };
       });
     }

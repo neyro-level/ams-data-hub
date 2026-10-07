@@ -8,6 +8,8 @@ import {
   snapshotInputRequestHashes, snapshotInputRequestSchema,
   projectSnapshotCatalog,
   projectSnapshotProjectState,
+  projectSnapshotInventory,
+  type SnapshotInventoryProjectionInput,
 } from "../../src/modules/snapshot-delivery/index.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -949,12 +951,16 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         sourceHash: "d".repeat(64), normalizedHash: historicalHash, firstSeenAt: new Date(), lastSeenAt: new Date(),
         missingGoodRuns: 1, missingSince: new Date(),
       } });
+      const reservation = await tx.publicUrlIdReservation.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, subjectType: "INVENTORY", subjectUid: uid, publicUrlId: "1234567890123456" } });
+      await tx.projectUrlEntry.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        entityType: "INVENTORY", entityUid: uid, reservationId: reservation.id, slug: "synthetic-kept", canonicalPath: "/inventory/synthetic-kept" } });
       await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version, adapterKey: source.adapterKey,
         adapterVersion: source.adapterVersion, profileKey: source.profileKey, profileVersion: source.profileVersion, safetyPolicy: {},
       } });
       return { sourceId: source.id, historical, head };
     });
-    await worker(scope, async (tx) => {
+    const captured = await worker(scope, async (tx) => {
       const inventory: CanonicalJsonValue[] = [];
       const sources: CanonicalJsonValue[] = [];
       await createSourceSnapshotFactReader(tx).capture(scope, (kind, rows) => {
@@ -972,15 +978,26 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       await createSourceSnapshotFactReader(tx).capture({ organizationId: scope.organizationId, projectId: scope.foreignProjectId },
         (_kind, rows) => { foreign.push(...rows); });
       expect(foreign).toEqual([]);
+      const profile = sources.find((value) => value !== null && typeof value === "object" && !Array.isArray(value) && value.entityType === "profile");
+      const entry = await tx.projectUrlEntry.findFirstOrThrow({ where: { organizationId: scope.organizationId, projectId: scope.projectId,
+        entityType: "INVENTORY", entityUid: uid }, select: { entityType: true, entityUid: true, reservation: { select: { publicUrlId: true } } } });
+      return { identity: inventory[0] as unknown as SnapshotInventoryProjectionInput["identity"],
+        profile: profile as unknown as SnapshotInventoryProjectionInput["profile"],
+        url: { entityType: "INVENTORY" as const, entityUid: entry.entityUid, publicUrlId: entry.reservation.publicUrlId } };
     });
     const pin: SnapshotGoodFactPin = { uid, sourceId: fixtures.sourceId, externalOfferId: "kept", normalizedHash: historicalHash,
       factRevisionId: fixtures.historical, factRevisionSequence: 1, factProfileKey: "vladis-vt24-v1", factProfileVersion: "1.0.0" };
     const profiles = new Map([["vladis-vt24-v1@1.0.0", { identity: "vladis-vt24-v1@1.0.0", caseSensitiveTags: true, fieldMappings: [] }]]);
     const pinned = await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles));
-    expect(pinned).toEqual([{ inventoryUid: uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+    expect(pinned).toEqual([{ inventoryUid: uid, sourceId: fixtures.sourceId, externalOfferId: "kept", normalizedHash: historicalHash,
+      factProfileIdentity: "vladis-vt24-v1@1.0.0", draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
       title: "Synthetic pinned historical title" }, fieldValues: { rooms: [2] }, addressPublic: "Synthetic City, house 9" }]);
     expect(pinned[0]!.draft).not.toHaveProperty("address");
     expect(pinned[0]!.fieldValues).not.toHaveProperty("location/apartment");
+    const projectedInventory = projectSnapshotInventory(scope, [{ ...captured, fact: pinned[0]!, media: [] }]);
+    expect(projectedInventory.records[0]!.value).toMatchObject({ uid, publicUrlId: "1234567890123456",
+      address: { addressPublic: "Synthetic City, house 9" }, facts: { rooms: { state: "VALUE", value: 2 } }, locationPrecision: "STREET" });
+    expect(JSON.stringify(projectedInventory)).not.toMatch(/synthetic-private-only|externalOfferId|normalizedHash|sourceId/u);
     expect(JSON.stringify(pinned)).not.toMatch(/contactPhones|rawRecord|provenance|synthetic-private-only|externalId/u);
     await expect(worker(scope, (tx) => createSnapshotGoodFactResolver(tx)({ organizationId: scope.organizationId,
       projectId: scope.foreignProjectId }, [pin], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
@@ -992,7 +1009,9 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       [{ ...pin, factProfileVersion: "foreign" }], profiles))).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
     await runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: fixtures.sourceId },
       data: { enabled: false, profileKey: "joywork-yandex-realty-v1" } }));
-    expect(await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles))).toEqual(pinned);
+    const replayedFacts = await worker(scope, (tx) => createSnapshotGoodFactResolver(tx)(scope, [pin], profiles));
+    expect(replayedFacts).toEqual(pinned);
+    expect(projectSnapshotInventory(scope, [{ ...captured, fact: replayedFacts[0]!, media: [] }])).toEqual(projectedInventory);
     await runInPrincipalDatabaseTransaction(admin, (tx) => tx.inventoryIdentity.update({ where: { uid }, data: { normalizedHash: "e".repeat(64) } }));
     await expect(worker(scope, (tx) => createSourceSnapshotFactReader(tx).capture(scope, () => undefined)))
       .rejects.toThrow("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
@@ -1052,7 +1071,9 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       await expect(createSnapshotGoodFactResolver(tracing)(scope, fixtures.slice(0, 4), new Map())).rejects.toThrow("SNAPSHOT_GOOD_FACT_MISSING");
       const profiles = new Map([["synthetic-captured-only@1", { identity: "synthetic-captured-only@1", caseSensitiveTags: true, fieldMappings: [] }]]);
       expect(await createSnapshotGoodFactResolver(tx)(scope, [fixtures[4]!], profiles)).toEqual([{
-        inventoryUid: fixtures[4]!.uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE" }, fieldValues: {},
+        inventoryUid: fixtures[4]!.uid, sourceId: fixtures[4]!.sourceId, externalOfferId: fixtures[4]!.externalOfferId,
+        normalizedHash: fixtures[4]!.normalizedHash, factProfileIdentity: "synthetic-captured-only@1",
+        draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE" }, fieldValues: {},
       }]);
       await expect(createSnapshotGoodFactResolver(tx)(scope, [fixtures[5]!], profiles)).rejects.toThrow("SNAPSHOT_GOOD_FACT_HASH_MISMATCH");
       await expect(createSnapshotGoodFactResolver(tx)(scope, [fixtures[6]!], profiles)).rejects.toThrow("SNAPSHOT_PUBLIC_ADDRESS_INVALID");

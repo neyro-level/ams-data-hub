@@ -287,11 +287,14 @@ It accepts at most 200 captured pins and scoped revision/hash/sequence/profile
 identities, rechecks the normalized ingestion hash, and never consults live
 LastGood or the profile registry. SQL guards a 4-MiB projected page before transfer;
 oversized pages split, malformed draft/fields return markers without payload.
-Only allowlisted normalized draft candidates and finite selected scalar fields
-leave the resolver: no raw record, producer media URLs, phones or source IDs.
+Only allowlisted normalized draft candidates, finite selected scalar fields and
+exact internal identity pins leave the resolver. The pins include source/external
+identity, normalized hash and captured profile identity; they are never public
+DTO fields. No raw record, producer media URLs or phones leave the resolver.
 These candidates are NOT public DTOs; address/coordinates still require captured
-location policy and inventory schema projection. Captured profile adaptation,
-public inventory/media projectors and unified assembly remain pending.
+location policy and inventory schema projection. The subsequent inventory
+candidate projector applies captured profile policy;
+media HEAD verification and unified receipt assembly remain pending.
 Native 18/18 PostgreSQL NOBYPASS tests verify historical missing-grace GOOD
 resolution, foreign scope/wrong hash/sequence/profile rejection, unchanged facts
 after live Source edits, and marker-only refusal of missing/null draft/fields.
@@ -307,8 +310,8 @@ internally and excludes raw address/private markers from resolver output.
 Optional `addressPublic` is bounded and normalized with NFKC-aware forbidden
 content checks before/after normalization. Explicit unit components, compound
 numbers and attached exact captured markers are removed; ambiguous values fail
-closed instead of using the raw address. Final captured location precision and
-public InventoryEntity/DTO assembly remain pending. No arbitrary public-address
+closed instead of using the raw address. The subsequent candidate projector
+applies captured STREET precision and InventoryEntity/DTO assembly. No arbitrary public-address
 fallback or profile-registry lookup is introduced.
 Address verification: native 18/18 NOBYPASS suite passes historical GOOD address
 redaction/replay, Unicode-created forbidden content rejection, spaced compound
@@ -319,7 +322,32 @@ label/separator/private-marker combinations. Architect-found Unicode/partial
 compound/attached-marker bypasses were fixed and rereviewed; no complete public
 inventory or thirteen-dataset assembly proof is claimed by this checkpoint.
 No fixture volume or worker limit was reduced/relaxed; full public assembly
-capacity, inventory/media projection and unified orchestration are still unproven.
+capacity, captured media verification and unified orchestration are still unproven.
+
+The inventory candidate projector now normalizes actual verified GOOD candidates,
+not caller-provided InventoryEntity objects. It checks exact source/external/hash/
+profile pins, constructs each property's full sparse variant, uses captured unit
+and rent-period aliases, preserves false/zero, and emits finite INVALID reasons
+without producer raw values. Format-only profiles use an explicit versioned
+family baseline; missing address/URL, unknown rent period and partial coordinates
+reject readiness, with no invented currency, identifiers or period. Persistent
+captured URL entries supply publicUrlId; references include URL and owner/position
+media attachments. Coordinates pass deterministic STREET policy before the DTO.
+Private source codes are removed through bounded safe-HTML text-token passes,
+including split markup/NBSP, without flattening rich HTML. Unrecognized leading
+codes reject. Unitless heights remain INVALID pending captured unit semantics;
+unselected variant facts remain ABSENT, not inferred facts. Private externalId
+accepts the ingestion identity bound of 240 characters; it is omitted publicly.
+This pure candidate seam is not complete receipt orchestration, media HEAD proof,
+confirmed agent linkage or thirteen-dataset closure. Native PostgreSQL NOBYPASS
+suite is 18/18 PASS, including real captured identity/profile/persisted URL → GOOD
+candidate → public inventory and identical replay after Source disable/profile
+change. Original 4100/8200 capture passes the unchanged 30-second assertion
+(outer transaction 13.9 seconds in this run). Targeted units are 31/31 across
+three files, including format-only profiles, property variants, unknown units/
+periods, zero/false, pin mismatches, media-reference closure and rich-HTML code
+removal across inline markup/NBSP/br/block boundaries. Architect-found attachment
+and HTML-boundary P2 issues were fixed and rereviewed with no new targeted findings.
 
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final

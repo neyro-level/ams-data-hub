@@ -74,7 +74,15 @@ inventory/media assembly ещё требуют реализации.
 из результата и выдаёт только проверенный unit-redacted addressPublic либо
 отказ при неоднозначности. Native 18/18 и 63 targeted unit tests — PASS,
 включая Unicode, составные и слитные private marker regressions; 150 комбинаций
-проверены. Полный public inventory mapper и location policy остаются в работе.
+проверены. Следующий candidate projector преобразует verified GOOD facts в
+InventoryEntity/public DTO: exact identity/profile pins, variant sparse facts,
+captured unit/period policy, STREET coordinates, persistent URL и media references,
+safe-HTML source-code cleanup. Receipt orchestration, captured media HEAD proof,
+подтверждённый agent linkage и полный 13-dataset build ещё остаются в работе;
+unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
+Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
+после Source disable/profile change; targeted units — 31/31. Capture 4100/8200
+сохраняет лимит 30 секунд (13,9 секунды в последнем прогоне).
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 

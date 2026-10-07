@@ -22,12 +22,16 @@ function fixture() {
   return { draft, fields, pin, profiles, row, query, resolve: createSnapshotGoodFactResolver(tx) };
 }
 describe("exact GOOD normalized fact resolver", () => {
-  it("allowlists normalized candidates and fields, preserving no raw/producer/private identifiers", async () => {
+  it("allowlists normalized candidates and fields while retaining explicit internal identity pins", async () => {
     const data = fixture(); const before = structuredClone(data.row);
     const facts = await data.resolve(scope, [data.pin], data.profiles);
-    expect(facts).toEqual([{ inventoryUid: data.pin.uid, draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT",
+    expect(facts).toEqual([{ inventoryUid: data.pin.uid, sourceId: data.pin.sourceId, externalOfferId: data.pin.externalOfferId,
+      normalizedHash: data.pin.normalizedHash, factProfileIdentity: `${data.pin.factProfileKey}@${data.pin.factProfileVersion}`,
+      draft: { sourceFormat: "YRL_2010", propertyType: "APARTMENT",
       transactionType: "SALE", title: "Synthetic public title" }, fieldValues: { rooms: [3], "rooms-type": ["separate"] } }]);
-    expect(JSON.stringify(facts)).not.toMatch(/private|externalId|contactPhones|imageUrls|provenance/u);
+    // Exact private identity pins stay internal; normalized public candidates do not retain raw producer fields.
+    expect(JSON.stringify(facts.map(({ draft, fieldValues, addressPublic }) => ({ draft, fieldValues, addressPublic }))))
+      .not.toMatch(/private|externalId|contactPhones|imageUrls|provenance/u);
     expect(data.row).toEqual(before);
   });
   it("rejects missing, mismatched, duplicate and unpinned-profile facts", async () => {

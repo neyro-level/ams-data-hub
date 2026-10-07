@@ -188,7 +188,7 @@ const inventoryBaseSchema = z.object({
   organizationId: identifierSchema,
   projectId: identifierSchema,
   sourceId: identifierSchema,
-  externalId: identifierSchema,
+  externalId: z.string().trim().min(1).max(240),
   transactionType: inventoryTransactionTypeSchema,
   dealKind: z.string().trim().min(1).max(64).optional(),
   status: inventoryStatusSchema,
