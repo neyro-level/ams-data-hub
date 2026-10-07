@@ -175,9 +175,21 @@ remediation program preserves these boundaries while connecting them:
   captured catalog digest before projection. Catalog coordinates retain their
   persisted seven-place precision; developer/development names and aliases
   accept persisted 200-character values. Observation source/external IDs and
-  private catalog metadata are not copied into public values. These are five
-  projectors, not all 13 datasets; subscription filtering, inventory GOOD
-  resolution, remaining projectors and unified build proof remain pending.
+  private catalog metadata are not copied into public values. Six additional
+  pure project-state projectors emit contacts, captured-gated agents, editorial,
+  persisted URLs, redirects and lifecycle. They reuse the existing editorial
+  mapper/captured media-order policy and omit closed agents/personal editorial.
+  Reservation IDs survive legitimate relinks; URL history/tombstones reference
+  reserved IDs, not mandatory active entity rows. Lifecycle retains inactive
+  state and events. Verified agent media is a server-owned input, not proof of
+  HEAD or fresh consent. These are 11 projectors, not a complete 13-dataset
+  pipeline; subscription filtering, inventory GOOD resolution, media verification,
+  fresh publication gates and unified build proof remain pending.
+  Generated stored payload byte/record counts avoid repeated JSON sizing in
+  deferred commit checks without removing either header/part constraint trigger,
+  contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
+  pins, 8200 media positions and the original 30-second worker limit. Production
+  table rewrite/lock rehearsal is a separately approved release prerequisite.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

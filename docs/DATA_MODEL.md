@@ -157,6 +157,14 @@ storage is server-owned infrastructure, not a Source/job payload dependency.
 
 ## Migration Policy
 
+`SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
+`GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
+Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.
+The forward-only `20261007093000_snapshot_input_generated_sizes` migration uses
+these exact values in aggregate budget checks, avoiding repeated JSON serialization
+at commit. Both deferred header/part triggers, all 18 sections, contiguous indices,
+part/record/byte limits, immutable guards and RLS remain unchanged.
+
 Applied migrations are immutable. Schema changes use additive, reviewed forward
 migrations; database rollback requires the isolated recovery contract in
 `OPERATIONS.md`. Production migration is a separately authorized release step.

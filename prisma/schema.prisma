@@ -510,6 +510,8 @@ model SnapshotBuildInputPart {
   partIndex      Int
   payloadHash    String @db.Char(64)
   payload        Json
+  payloadByteCount Int @default(dbgenerated())
+  payloadRecordCount Int @default(dbgenerated())
   buildInput     SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([buildInputId, kind, partIndex])

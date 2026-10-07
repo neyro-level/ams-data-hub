@@ -200,6 +200,13 @@ credentials never enter application containers.
 
 ### Database role bootstrap and migration
 
+The forward migration `20261007093000_snapshot_input_generated_sizes` adds stored
+generated columns to `SnapshotBuildInputPart`. PostgreSQL may rewrite the existing
+table and take an exclusive schema lock. Before a separately approved production
+release, assess receipt-table size, rehearse on a representative restored copy,
+and schedule the migration lock/window with bounded lock acquisition. Local native
+integration proof is not evidence of production lock duration or release approval.
+
 Role bootstrap is a controlled one-shot step before the first migration against
 a new PostgreSQL cluster and whenever a runtime password is rotated. It creates
 or normalizes only `ams_data_hub_web`, `ams_data_hub_worker` and

@@ -7,6 +7,7 @@ import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
   projectSnapshotCatalog,
+  projectSnapshotProjectState,
 } from "../../src/modules/snapshot-delivery/index.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -19,6 +20,8 @@ import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { createMediaSnapshotFactReader } from "../../src/modules/media-assets/server.ts";
 import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import * as mediaFacade from "../../src/modules/media-assets/server.ts";
+import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
 
 const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-input-admin", correlationId: "synthetic-input" };
 async function setup() {
@@ -42,20 +45,51 @@ function worker<T>(scope: { organizationId: string; projectId: string }, execute
     return execute(tx);
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 }
-async function captureWithWorkerRole(scope: { organizationId: string; projectId: string }, idempotencyKey: string) {
+async function captureWithWorkerRole(scope: { organizationId: string; projectId: string }, idempotencyKey: string, profile = false) {
+  const metrics = new Map<string, { calls: number; elapsedMs: number }>();
+  async function measure<T>(label: string, execute: () => Promise<T>): Promise<T> {
+    const start = performance.now();
+    try { return await execute(); } finally {
+      const previous = metrics.get(label) ?? { calls: 0, elapsedMs: 0 };
+      metrics.set(label, { calls: previous.calls + 1, elapsedMs: previous.elapsedMs + performance.now() - start });
+    }
+  }
+  const originalMedia = mediaFacade.createMediaSnapshotFactReader;
+  const mediaTrace = profile ? vi.spyOn(mediaFacade, "createMediaSnapshotFactReader").mockImplementation((...args) => {
+    const reader = originalMedia(...args);
+    return { ...reader, captureInventoryPage: (...values) => measure("inventory-media", () => reader.captureInventoryPage(...values)),
+      captureAgents: (...values) => measure("agent-media", () => reader.captureAgents(...values)),
+      captureShared: (...values) => measure("shared-media", () => reader.captureShared(...values)) };
+  }) : null;
+  const originalSource = sourceFacade.createSourceSnapshotFactReader;
+  const sourceTrace = profile ? vi.spyOn(sourceFacade, "createSourceSnapshotFactReader").mockImplementation((...args) => {
+    const reader = originalSource(...args);
+    return { capture: (...values) => measure("source-with-media", () => reader.capture(...values)) };
+  }) : null;
+  const originalSave = PrismaSnapshotInputRepository.prototype.save;
+  const saveTrace = profile ? vi.spyOn(PrismaSnapshotInputRepository.prototype, "save").mockImplementation(
+    function (this: PrismaSnapshotInputRepository, value) { return measure("save", () => originalSave.call(this, value)); }) : null;
   const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
   const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
-    async (context, execute, options) => original(context, async (tx) => {
+    async (context, execute, options) => {
+      const invoke = () => original(context, async (tx) => {
       if (context.actorId === "snapshot-input") {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
           .toEqual([{ rolbypassrls: false, rolsuper: false }]);
       }
       return execute(tx);
-    }, options));
+      }, options);
+      return profile ? measure(options?.isolationLevel === "RepeatableRead" ? "outer-transaction" : "admission", invoke) : invoke();
+    });
   try { return await captureSnapshotInput(createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" }),
     { ...scope, idempotencyKey, schemaMinor: 0 }); }
-  finally { role.mockRestore(); }
+  finally {
+    role.mockRestore(); mediaTrace?.mockRestore(); sourceTrace?.mockRestore(); saveTrace?.mockRestore();
+    if (profile) process.stdout.write(`snapshot_capture_phases=${JSON.stringify([...metrics].map(([phase, value]) => ({
+      phase, calls: value.calls, elapsedMs: Math.round(value.elapsedMs),
+    })))}\n`);
+  }
 }
 function parts() {
   const builder = new SnapshotInputPartsBuilder();
@@ -104,6 +138,25 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         kind: "LISTING_IMAGE", position: 999, sourceUrl: image, canonicalSourceUrl: image, status: "MIRRORED", assetId: asset.id,
         firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
       await tx.priceObservation.create({ data: { ...where, developmentUid, externalId: "synthetic-price", observedAt: new Date(), amount: "12345.67", currency: "RUB", basis: "TOTAL" } });
+      const projectScope = { organizationId: scope.organizationId, projectId: scope.projectId };
+      const reservation = await tx.publicUrlIdReservation.create({ data: { ...projectScope,
+        subjectType: "AGENT", subjectUid: agentUid, publicUrlId: "1234567890123456" } });
+      const entry = await tx.projectUrlEntry.create({ data: { ...projectScope, entityType: "AGENT", entityUid: agentUid,
+        reservationId: reservation.id, slug: "synthetic-capture-agent", canonicalPath: "/agents/synthetic-capture-agent",
+        publishedAt: new Date() } });
+      await tx.projectRedirect.create({ data: { ...projectScope, urlEntryId: entry.id, fromPath: "/agents/old",
+        toPath: "/agents/synthetic-capture-agent", code: 301, reason: "SLUG_CHANGE" } });
+      await tx.projectUrlTombstone.create({ data: { ...projectScope, reservationId: reservation.id,
+        entityType: "AGENT", entityUid: agentUid, canonicalPath: "/agents/retired", reason: "RETIRE" } });
+      await tx.entityEditorial.create({ data: { ...projectScope, entityType: "AGENT", entityUid: agentUid,
+        shortDescription: "Synthetic public editorial", description: "Captured public copy", faq: [],
+        presentationNotes: "synthetic-private-notes", mediaOrder: [] } });
+      await tx.entityMediaOrderPolicy.create({ data: { ...projectScope, entityType: "AGENT", entityUid: agentUid,
+        sourceMediaOrder: [], isImageOrderChangeAllowed: false } });
+      await tx.inventoryLifecycleEvent.createMany({ data: [
+        { ...projectScope, inventoryUid, type: "INACTIVATED", occurredAt: new Date("2026-01-01T00:00:00.000Z") },
+        { ...projectScope, inventoryUid, type: "REACTIVATED", occurredAt: new Date("2026-02-01T00:00:00.000Z") },
+      ] });
       return { assetId: asset.id, inventoryUid };
     });
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
@@ -124,6 +177,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const first = await captureSnapshotInput(principal, request);
       const pinned = structuredClone(first);
       const publicCatalog = projectSnapshotCatalog(first);
+      const publicProjectState = projectSnapshotProjectState(first);
+      expect(publicProjectState.map((dataset) => dataset.records.length)).toEqual([1, 1, 1, 2, 1, 4]);
+      expect(publicProjectState[0]!.records[0]!.value).toMatchObject({ uid: agentUid, fullName: "Synthetic consented agent", media: [] });
+      expect(publicProjectState[1]!.records[0]!.value).toMatchObject({ phone: "+70000000001" });
+      expect(publicProjectState[2]!.records[0]!.value).toMatchObject({ description: "Captured public copy" });
+      expect(publicProjectState[4]!.records[0]!.references).toEqual([{ kind: "urls", key: "entry:1234567890123456" }]);
+      expect(JSON.stringify(publicProjectState)).not.toMatch(/synthetic-private|"consent[^"]*":|photoMediaId|feedPhotoMediaId|presentationNotes|rawRecord/u);
       expect(publicCatalog.find((dataset) => dataset.kind === "developers")!.records)
         .toContainEqual(expect.objectContaining({ value: expect.objectContaining({ uid: developerUid,
           name: "D".repeat(200), aliases: ["A".repeat(200)] }) }));
@@ -147,6 +207,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           projectId: scope.projectId } }, data: { phone: "+70000000002", version: { increment: 1 } } });
         await tx.agent.update({ where: { uid: agentUid }, data: { consentConfirmedAt: null, version: { increment: 1 } } });
         await tx.mediaAsset.update({ where: { id: fixture.assetId }, data: { storageKey: "synthetic-wrong-object-key" } });
+        await tx.entityEditorial.updateMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId },
+          data: { description: "Changed live editorial", version: { increment: 1 } } });
+        await tx.projectUrlEntry.updateMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId },
+          data: { slug: "changed", canonicalPath: "/agents/changed", version: { increment: 1 } } });
         await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: { organizationId: scope.organizationId, projectId: scope.projectId } } });
       });
       // Caller mutation cannot change the persisted parts returned by replay.
@@ -154,6 +218,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const replay = await captureSnapshotInput(principal, request);
       expect(replay).toEqual(pinned);
       expect(projectSnapshotCatalog(replay)).toEqual(publicCatalog);
+      expect(projectSnapshotProjectState(replay)).toEqual(publicProjectState);
       await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
       await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
       await worker(scope, async (tx) => {
@@ -169,6 +234,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(values("agents", second)).toEqual([]);
       expect(values("contacts", second)).toContainEqual(expect.objectContaining({ phone: "+70000000002", version: 2 }));
       expect(second.inputHash).not.toBe(pinned.inputHash);
+      const nextProjectState = projectSnapshotProjectState(second);
+      expect(nextProjectState[0]!.records).toEqual([]);
+      expect(nextProjectState[2]!.records).toEqual([]);
+      expect(nextProjectState[1]!.records[0]!.value).toMatchObject({ phone: "+70000000002" });
       await expect(captureSnapshotInput(principal, { ...request, projectId: scope.foreignProjectId })).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
       await runInPrincipalDatabaseTransaction(admin, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
       await expect(captureSnapshotInput(principal, request)).rejects.toThrow("SNAPSHOT_INPUT_JOBS_FROZEN");
@@ -283,7 +352,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     }, { timeout: 30_000 });
     const exactScope = { organizationId: scope.organizationId, projectId: scope.projectId };
     const startedAt = performance.now();
-    const receipt = await captureWithWorkerRole(exactScope, "synthetic-full-capacity");
+    const receipt = await captureWithWorkerRole(exactScope, "synthetic-full-capacity", true);
     expect(performance.now() - startedAt).toBeLessThan(30_000);
     expect(receipt.publishSequence).toBe(1);
     expect(receipt.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload)).toHaveLength(4100);
@@ -574,6 +643,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     await worker(scope, async (tx) => {
       const repository = new PrismaSnapshotInputRepository(tx);
       expect(await repository.find(scope.organizationId, scope.projectId, hashes.idempotencyKeyHash, hashes.requestHash)).toEqual(receipt);
+      const sizeChecks = await tx.$queryRaw<{ valid: boolean }[]>`
+        SELECT bool_and("payloadByteCount" = octet_length("payload"::text)
+          AND "payloadRecordCount" = jsonb_array_length("payload")) AS valid
+        FROM "SnapshotBuildInputPart" WHERE "buildInputId" = ${receipt.id}`;
+      expect(sizeChecks).toEqual([{ valid: true }]);
       expect(await repository.find(scope.organizationId, scope.foreignProjectId, hashes.idempotencyKeyHash, hashes.requestHash)).toBeNull();
     });
     await expect(worker(scope, (tx) => new PrismaSnapshotInputRepository(tx).find(scope.organizationId,
@@ -647,6 +721,39 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(await tx.snapshotBuildInput.count()).toBe(0);
       expect(await tx.projectSnapshotSequence.count()).toBe(0);
     });
+  });
+
+  it("rejects forged generated sizes and late record overflow after an immediate header check", async () => {
+    const scope = await setup();
+    for (const attempt of ["forge", "overflow"] as const) {
+      await expect(worker(scope, async (tx) => {
+        const repository = new PrismaSnapshotInputRepository(tx);
+        const publishSequence = await repository.reserveSequence(scope.organizationId, scope.projectId);
+        const receipt = await repository.save({ organizationId: scope.organizationId, projectId: scope.projectId,
+          idempotencyKeyHash: "a".repeat(64), requestHash: "b".repeat(64), inputSchemaVersion: 1,
+          projectorVersion: "db-v1", schemaMinor: 0, publishSequence, projectStateRevision: 1,
+          catalogRevision: "c".repeat(64), capturedAt: new Date(), parts: parts() });
+        await tx.$executeRawUnsafe('SET CONSTRAINTS "SnapshotBuildInput_complete" IMMEDIATE');
+        if (attempt === "forge") {
+          await tx.snapshotBuildInputPart.create({ data: {
+            organizationId: scope.organizationId, projectId: scope.projectId, buildInputId: receipt.id,
+            kind: "catalog", partIndex: 1, payload: [], payloadHash: snapshotInputHash([]),
+            payloadByteCount: 0, payloadRecordCount: 0,
+          } });
+        } else {
+          const payload = Array.from({ length: 50001 }, () => null);
+          await tx.snapshotBuildInputPart.create({ data: {
+            organizationId: scope.organizationId, projectId: scope.projectId, buildInputId: receipt.id,
+            kind: "catalog", partIndex: 1, payload, payloadHash: snapshotInputHash(payload),
+          } });
+        }
+      })).rejects.toThrow(attempt === "forge" ? /428C9/ : "SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      await worker(scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count()).toBe(0);
+        expect(await tx.snapshotBuildInputPart.count()).toBe(0);
+        expect(await tx.projectSnapshotSequence.count()).toBe(0);
+      });
+    }
   });
 
   it("reads a bounded catalog closure in the caller's single cut, not another tenant subscription", async () => {

@@ -13,8 +13,9 @@ function isPermutation(candidate: string[], source: string[]): boolean {
 }
 
 export function mapProjectEditorialPublic(
-  editorial: StoredEntityEditorial,
-  policy: StoredEntityMediaOrderPolicy | null,
+  editorial: Pick<StoredEntityEditorial, "entityType" | "entityUid" | "shortDescription" | "description"
+    | "faq" | "mediaOrder" | "mediaOrderPolicyVersion">,
+  policy: Pick<StoredEntityMediaOrderPolicy, "sourceMediaOrder" | "isImageOrderChangeAllowed" | "version"> | null,
 ): ProjectEditorialPublicDto {
   const sourceMediaOrder = policy?.sourceMediaOrder ?? [];
   const manualOrderIsValid = Boolean(

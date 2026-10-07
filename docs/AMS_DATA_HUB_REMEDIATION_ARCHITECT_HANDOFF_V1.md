@@ -256,20 +256,34 @@ parts and their order/hashes plus the header/input/catalog digests. Prices retai
 exact decimal strings; no observation source/external IDs or private metadata
 are spread into public rows. Persisted seven-place coordinates and 200-character
 developer/development names/aliases remain supported. This does not yet apply
-subscription filtering or produce the eight remaining public datasets. Actual
-GOOD inventory resolution, persistent URL readiness, public media verification,
-agent/contact/editorial/URL/lifecycle projection and complete-build proof remain
-required before MP-05.2 closure.
+subscription filtering. The next checkpoint adds six pure project-state
+projectors: official contacts, captured-gated agents, editorial, persisted URLs,
+redirects and lifecycle. Existing editorial/media-order mapping is reused without
+private notes; closed personal publication gates omit agents and their editorial.
+Verified agent media is a trusted server-owned input, not HEAD/fresh consent proof.
+URL reservations keep their assigned IDs even after relinks; redirects/tombstones
+reference those persisted rows. Historical state/events do not require an active
+inventory row. Actual GOOD inventory resolution, imported inventory URL readiness,
+public media verification and complete-build proof remain required before
+MP-05.2 closure; 11 pure projectors are not a complete 13-dataset pipeline.
 
-Native PostgreSQL proof now projects the actual captured candidate closure,
-including persisted seven-place Decimal coordinates and 200-character names
-and aliases; persisted replay produces the same five public datasets after live
-catalog changes. A capacity rerun exposed a 36.8-second complete-capture result
-against the unchanged 30-second limit. The additive exact identity/hash lookup
-index now has a natural NOBYPASS EXPLAIN-plan regression, and the final native
-16-test suite passes the original 4100-identity/8200-media capacity assertion.
+Native PostgreSQL proof projects the actual captured catalog and project-state
+candidate closure, including persisted seven-place Decimal coordinates and
+200-character names/aliases. Persisted replay preserves all eleven datasets
+after live catalog/contact/editorial/URL changes and agent consent revocation;
+this is replay proof, not permission to publish revoked personal data.
+Capacity reruns exposed complete-capture results over the unchanged 30-second
+limit. The additive identity/hash lookup index has a natural NOBYPASS EXPLAIN
+regression. Phase instrumentation additionally exposed repeated JSON sizing in
+deferred commit checks; forward-only generated stored sizes preserve both
+triggers and all integrity limits. The final native 17-test suite passes the
+original 4100-identity/8200-media assertion (25.4 seconds including admission;
+outer transaction 25.3 seconds, source/media 22.8 seconds, save 2.0 seconds).
+Generated-count fidelity, forgery rejection (SQLSTATE 428C9), late gap/record
+overflow after an immediate header check and full rollback are also verified.
+Stored-column production rewrite/lock rehearsal remains a release prerequisite.
 No fixture volume or worker limit was reduced/relaxed; full public assembly
-capacity and the remaining eight projectors are still unproven.
+capacity, inventory/media projection and unified orchestration are still unproven.
 
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final

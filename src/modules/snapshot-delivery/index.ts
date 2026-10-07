@@ -2,6 +2,7 @@ export * from "./contracts.ts";
 export * from "./application/snapshot-build-input.ts";
 export * from "./application/snapshot-input-validation.ts";
 export * from "./application/snapshot-catalog-projector.ts";
+export * from "./application/snapshot-project-state-projector.ts";
 export * from "./application/snapshot-composer.ts";
 export * from "./application/snapshot-signing.ts";
 export * from "./application/snapshot-delivery.ts";
