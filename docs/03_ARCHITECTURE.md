@@ -208,8 +208,12 @@ remediation program preserves these boundaries while connecting them:
   applies deterministic STREET coordinates and uses the persisted captured URL.
   Public DTOs omit private pins/invalid raw values and declare URL/media attachment
   references. Safe-HTML text-token cleanup removes the leading internal source
-  code while retaining rich markup. Receipt orchestration, captured media HEAD
-  verification and confirmed agent linkage remain separate unfinished steps.
+  code while retaining rich markup. Captured media admission now verifies
+  inventory pins, agent assignment/consent and shared ownership before sequential
+  project-bound HEAD outside DB. A build-local metadata-conflict-safe cache
+  retains repeated positions; strict opaque attachments reference their owners.
+  Receipt orchestration and confirmed agent linkage remain unfinished steps;
+  fresh consent/rights/publication admission is not replaced by captured replay.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

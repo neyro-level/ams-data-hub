@@ -76,8 +76,29 @@ This query is limited to INVENTORY/LISTING_IMAGE. Agent photos require their
 own fresh consent-gated projection. Forward migration
 `20261006163000_media_projection_good_read` enables only scoped GOOD reads for
 the server-owned `media-projection` database purpose; import writes and FORCE
-RLS are unchanged. Historical fact revisions for missing-grace
-inventory and full snapshot build/delivery composition remain MP-05 work.
+RLS are unchanged. Historical fact revisions for missing-grace inventory use the
+MP-05 captured path below; full snapshot build/delivery composition remains work.
+
+`createSnapshotMediaProjectionServer` accepts only a server-loaded immutable
+SnapshotInput receipt and server-selected project-bound storage. It validates
+all receipt parts/hashes, checks captured inventory GOOD identity/revision/hash
+pins, agent consent/version/asset assignment, and shared observation ownership
+before HEAD. It never substitutes live Source/MediaSource/profile state during
+replay. HEAD is sequential outside DB, cached only for one build; conflicting
+metadata for one object key rejects before IO. Repeated positions remain intact.
+Manual agent photo assignment wins over feed assignment; a missing manual object
+is omitted rather than overridden. `ASSIGNED_ASSET_ONLY` is not GOOD provenance.
+Shared manual observations retain their BUILDING/DEVELOPMENT association without
+invented GOOD pins. Unsupported shared kinds are explicit finite omissions.
+Missing/invalid objects produce value-free diagnostics, never producer fallbacks.
+Fresh consent/rights/publication admission remains a separate pre-publication gate.
+
+The strict public `media` attachment row is `{entityType, entityUid, media}`,
+where `media` is `MediaPublicV1` and entityType is INVENTORY, AGENT, DEVELOPMENT or
+BUILDING. Record keys are `ENTITY_TYPE/uid/position`; AGENT uses position 0.
+Each attachment declares its owner reference; inventory/agent DTOs declare the
+matching media reference. Private asset/relation IDs, keys, URLs and license
+text never enter attachment rows. This does not add a delivery capability.
 
 `ingestion-core.createInventoryPublicProjectionServer(storage)` composes the
 scoped media query with the existing public inventory mapper. It accepts only

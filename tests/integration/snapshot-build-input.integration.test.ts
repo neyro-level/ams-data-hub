@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
-import { captureSnapshotInput, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotMediaProjectionServer, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
 import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
@@ -140,6 +140,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       await tx.mediaSource.create({ data: { ...where, sourceRevisionId: revision.id, entityType: "INVENTORY", entityUid: inventoryUid,
         kind: "LISTING_IMAGE", position: 999, sourceUrl: image, canonicalSourceUrl: image, status: "MIRRORED", assetId: asset.id,
         firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
+      const sharedImage = "https://private.example.invalid/shared.jpg";
+      await tx.sharedMediaAsset.create({ data: { ...where, developmentUid, kind: "DEVELOPMENT_IMAGE", position: 0,
+        externalId: "synthetic-shared", sourceUrl: sharedImage, canonicalSourceUrl: sharedImage, rightsBasis: "OWNED", observedAt: new Date() } });
+      await tx.mediaSource.create({ data: { ...where, sourceRevisionId: revision.id, entityType: "DEVELOPMENT", entityUid: developmentUid,
+        kind: "DEVELOPMENT_IMAGE", position: 0, sourceUrl: sharedImage, canonicalSourceUrl: sharedImage, status: "MIRRORED", assetId: asset.id,
+        firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
       await tx.priceObservation.create({ data: { ...where, developmentUid, externalId: "synthetic-price", observedAt: new Date(), amount: "12345.67", currency: "RUB", basis: "TOTAL" } });
       const projectScope = { organizationId: scope.organizationId, projectId: scope.projectId };
       const reservation = await tx.publicUrlIdReservation.create({ data: { ...projectScope,
@@ -164,6 +170,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     });
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     let workerTransactions = 0;
+    let transactionOpen = false;
     const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
       async (context, execute, options) => original(context, async (tx) => {
         if (context.actorId === "snapshot-input") {
@@ -172,7 +179,8 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
             .toEqual([{ rolbypassrls: false, rolsuper: false }]);
           workerTransactions++;
         }
-        return execute(tx);
+        transactionOpen = true;
+        try { return await execute(tx); } finally { transactionOpen = false; }
       }, options));
     const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
     const request = { organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-complete", schemaMinor: 0 };
@@ -181,6 +189,20 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const pinned = structuredClone(first);
       const publicCatalog = projectSnapshotCatalog(first);
       const publicProjectState = projectSnapshotProjectState(first);
+      const head = vi.fn(async (key: string) => {
+        expect(transactionOpen).toBe(false);
+        return { key, sha256: "a".repeat(64), contentType: "image/jpeg", contentLength: 100, etag: null, lastModifiedAt: new Date(0) };
+      });
+      const projectMedia = createSnapshotMediaProjectionServer({ organizationId: scope.organizationId, projectId: scope.projectId, storage: { head } });
+      const publicMedia = await projectMedia(first);
+      expect(head).toHaveBeenCalledOnce();
+      expect(publicMedia.dataset.records.map((record) => record.key).sort()).toEqual([
+        `AGENT/${agentUid}/0`, `DEVELOPMENT/${developmentUid}/0`, `INVENTORY/${fixture.inventoryUid}/0`, `INVENTORY/${fixture.inventoryUid}/1`,
+      ].sort());
+      expect(publicMedia.diagnostics).toEqual([]);
+      expect(projectSnapshotProjectState(first, publicMedia.agentMedia)[0]!.records[0]!.value).toMatchObject({
+        uid: agentUid, media: [{ ref: "a".repeat(64), kind: "IMAGE", position: 0 }] });
+      expect(JSON.stringify(publicMedia.dataset)).not.toMatch(/private|storageKey|sourceId|relationId|assetId/u);
       expect(publicProjectState.map((dataset) => dataset.records.length)).toEqual([1, 1, 1, 2, 1, 4]);
       expect(publicProjectState[0]!.records[0]!.value).toMatchObject({ uid: agentUid, fullName: "Synthetic consented agent", media: [] });
       expect(publicProjectState[1]!.records[0]!.value).toMatchObject({ phone: "+70000000001" });
@@ -222,6 +244,8 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(replay).toEqual(pinned);
       expect(projectSnapshotCatalog(replay)).toEqual(publicCatalog);
       expect(projectSnapshotProjectState(replay)).toEqual(publicProjectState);
+      expect(await projectMedia(replay)).toEqual(publicMedia);
+      expect(head).toHaveBeenCalledTimes(2);
       await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
       await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
       await worker(scope, async (tx) => {

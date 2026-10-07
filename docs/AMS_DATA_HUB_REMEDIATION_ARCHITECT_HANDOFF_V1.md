@@ -294,7 +294,8 @@ DTO fields. No raw record, producer media URLs or phones leave the resolver.
 These candidates are NOT public DTOs; address/coordinates still require captured
 location policy and inventory schema projection. The subsequent inventory
 candidate projector applies captured profile policy;
-media HEAD verification and unified receipt assembly remain pending.
+the subsequent media checkpoint supplies receipt-owned HEAD verification;
+unified receipt assembly remains pending.
 Native 18/18 PostgreSQL NOBYPASS tests verify historical missing-grace GOOD
 resolution, foreign scope/wrong hash/sequence/profile rejection, unchanged facts
 after live Source edits, and marker-only refusal of missing/null draft/fields.
@@ -322,7 +323,8 @@ label/separator/private-marker combinations. Architect-found Unicode/partial
 compound/attached-marker bypasses were fixed and rereviewed; no complete public
 inventory or thirteen-dataset assembly proof is claimed by this checkpoint.
 No fixture volume or worker limit was reduced/relaxed; full public assembly
-capacity, captured media verification and unified orchestration are still unproven.
+capacity and unified orchestration are still unproven; the subsequent checkpoint
+implements captured media verification separately.
 
 The inventory candidate projector now normalizes actual verified GOOD candidates,
 not caller-provided InventoryEntity objects. It checks exact source/external/hash/
@@ -338,7 +340,7 @@ including split markup/NBSP, without flattening rich HTML. Unrecognized leading
 codes reject. Unitless heights remain INVALID pending captured unit semantics;
 unselected variant facts remain ABSENT, not inferred facts. Private externalId
 accepts the ingestion identity bound of 240 characters; it is omitted publicly.
-This pure candidate seam is not complete receipt orchestration, media HEAD proof,
+This pure candidate seam is not complete receipt orchestration or media HEAD proof,
 confirmed agent linkage or thirteen-dataset closure. Native PostgreSQL NOBYPASS
 suite is 18/18 PASS, including real captured identity/profile/persisted URL → GOOD
 candidate → public inventory and identical replay after Source disable/profile
@@ -349,6 +351,34 @@ periods, zero/false, pin mismatches, media-reference closure and rich-HTML code
 removal across inline markup/NBSP/br/block boundaries. Architect-found attachment
 and HTML-boundary P2 issues were fixed and rereviewed with no new targeted findings.
 
+Active MP-05.2 media Task Contract: verify receipt-owned inventory GOOD
+pins, captured agent consent/assignment and shared observation associations before
+any IO; reuse immutable asset/key/rights/HEAD matching; sequential project-bound
+HEAD outside DB with a bounded build-lifetime cache; emit strict owner-position
+opaque attachments and finite diagnostics, never producer URLs/private metadata.
+Manual agent photo assignment has deterministic priority over feed assignment;
+HEAD failure omits it rather than silently overriding the owner's selection.
+Required proof: targeted eligibility/HEAD/privacy/reference/replay regressions,
+native captured-fact composition, types/lint/architecture/docs/secrets. No production,
+new credentials, migrations, real feeds or fresh-publication gate changes.
+Media checkpoint implementation: `createSnapshotMediaProjectionServer` composes
+receipt admission, media-owned captured verification and the strict media dataset.
+It owns candidate/HEAD metadata copies, pins the server-selected HEAD port, and
+uses build-local cache/conflict checks. Explicit omissions cannot publish a
+supplied asset; malformed digest/key/type/size/rights are finite invalid-asset
+diagnostics without IO. Mirrored WARNING can retain a verified immutable object;
+duplicate owner positions are explicitly ambiguous omissions. Public rows contain
+only owner and MediaPublicV1, with reciprocal owner/attachment references.
+Native proof is 19/19 across snapshot-build-input and media-projection suites:
+actual PostgreSQL NOBYPASS capture of inventory/agent/shared media → HEAD outside
+traced transactions → public media/agent maps → identical replay after live asset
+key/consent edits. The capture proof uses a synthetic HEAD port; the separate
+existing media suite uses the real S3 adapter with only SDK transport replaced,
+validating immutable keys/hash/actual synthetic image bytes and producer-off read.
+Original 4100/8200 capture passes the unchanged 30-second limit (outer transaction
+13.9 seconds). No live-provider, fresh-publication or unified thirteen-dataset
+composition proof is claimed. Architect targeted review and latest closure found
+no actionable findings; final unit/static evidence is recorded in Task Manager.
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

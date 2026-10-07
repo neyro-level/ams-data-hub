@@ -77,12 +77,22 @@ inventory/media assembly ещё требуют реализации.
 проверены. Следующий candidate projector преобразует verified GOOD facts в
 InventoryEntity/public DTO: exact identity/profile pins, variant sparse facts,
 captured unit/period policy, STREET coordinates, persistent URL и media references,
-safe-HTML source-code cleanup. Receipt orchestration, captured media HEAD proof,
+safe-HTML source-code cleanup. Receipt orchestration,
 подтверждённый agent linkage и полный 13-dataset build ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
 после Source disable/profile change; targeted units — 31/31. Capture 4100/8200
 сохраняет лимит 30 секунд (13,9 секунды в последнем прогоне).
+Медиа-контур теперь включает receipt-only pin/consent/assignment admission,
+server-owned project-bound HEAD вне DB, build-local cache и strict opaque
+owner/position attachments с взаимными references. Missing/invalid mirrors
+дают конечные diagnostics; producer URL fallback отсутствует. Manual agent
+assignment приоритетен, shared observation не выдаётся за GOOD provenance.
+Native media/capture regression — 19/19 в двух suites: actual captured inventory/
+agent/shared → HEAD вне DB → public attachments и неизменный replay после live
+asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
+подтверждает hash/bytes и producer-off media read. Capture 4100/8200 — 13,9 секунды
+при прежнем лимите 30. Общий 13-dataset build и live provider proof этим не доказаны.
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 

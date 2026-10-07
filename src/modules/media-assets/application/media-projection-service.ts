@@ -2,11 +2,12 @@ import { mediaPublicV1Schema } from "@ams-data-hub/realty-contracts";
 import type { PrincipalContext } from "../../../platform/authorization/principal.ts";
 import { createProjectJobPrincipal } from "../../../platform/authorization/principal-factories.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
-import { createMediaKey, type ObjectStorage, type ObjectStorageObject } from "../../../platform/storage/object-storage.ts";
-import { inventoryMediaProjectionInputSchema, MAX_MEDIA_BYTES, MEDIA_CONTENT_TYPES,
+import { type ObjectStorage, type ObjectStorageObject } from "../../../platform/storage/object-storage.ts";
+import { inventoryMediaProjectionInputSchema,
   type InventoryMediaProjectionInput, type InventoryMediaProjectionResult } from "../contracts.ts";
 import { canonicalizeMediaSourceUrl } from "../domain/media-source.ts";
 import type { MediaProjectionRepository } from "./ports/media-projection-repository.ts";
+import { capturedMediaAssetSchema, matchesMediaObject } from "./media-object-verification.ts";
 
 export interface MediaProjectionDependencies {
   storage: Pick<ObjectStorage, "head">;
@@ -52,17 +53,16 @@ export function createInventoryMediaProjectionService(dependencies: MediaProject
       if (relation.status === "WARNING") warnings.push("MEDIA_MIRROR_WARNING");
       const asset = relation.asset;
       if (relation.status === "WARNING" && !asset) continue;
+      const captured = asset ? capturedMediaAssetSchema.safeParse({ sha256: asset.sha256, storageKey: asset.storageKey,
+        contentType: asset.contentType, byteSize: asset.byteSize, rightsBasis: asset.rightsBasis, hasLicense: Boolean(asset.license?.trim()) }) : null;
       if (!asset || !relation.mirroredAt || asset.organizationId !== input.organizationId || asset.projectId !== input.projectId
-        || !/^[a-f0-9]{64}$/u.test(asset.sha256) || asset.storageKey !== createMediaKey(asset.sha256)
-        || !MEDIA_CONTENT_TYPES.some((type) => type === asset.contentType) || asset.byteSize <= 0 || asset.byteSize > MAX_MEDIA_BYTES
-        || (asset.rightsBasis === "LICENSED" && !asset.license)) {
+        || !captured?.success) {
         warnings.push("MEDIA_ASSET_INVALID"); continue;
       }
       try {
         if (!objects.has(asset.storageKey)) objects.set(asset.storageKey, await dependencies.storage.head(asset.storageKey));
         const object = objects.get(asset.storageKey);
-        if (!object || object.key !== asset.storageKey || object.sha256 !== asset.sha256
-          || object.contentLength !== asset.byteSize || object.contentType !== asset.contentType) {
+        if (!matchesMediaObject(captured.data, object)) {
           warnings.push("MEDIA_OBJECT_UNAVAILABLE"); continue;
         }
         media.push(mediaPublicV1Schema.parse({ ref: asset.sha256, kind: "IMAGE", position: image.position }));

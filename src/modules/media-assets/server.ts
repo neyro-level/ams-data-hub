@@ -1,4 +1,6 @@
 import "server-only";
+export { createCapturedMediaVerifier, type CapturedMediaCandidate, type CapturedMediaVerificationResult,
+  type VerifiedCapturedMediaAttachment } from "./application/captured-media-verifier.ts";
 export { createMediaSnapshotFactReader, type InventorySnapshotMediaPin } from "./infrastructure/media-snapshot-facts.ts";
 
 import { runInPrincipalDatabaseTransaction } from "../../platform/database/transaction.ts";
