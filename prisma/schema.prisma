@@ -496,6 +496,7 @@ model SnapshotBuildInput {
   captureTransactionId BigInt @default(dbgenerated("txid_current()"))
   project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   parts                SnapshotBuildInputPart[]
+  publicationBinding   SnapshotPublicationBinding?
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, idempotencyKeyHash])
@@ -515,6 +516,22 @@ model SnapshotBuildInputPart {
   buildInput     SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([buildInputId, kind, partIndex])
+}
+
+model SnapshotPublicationBinding {
+  organizationId    String
+  projectId         String
+  buildInputId      String
+  inputHash         String @db.Char(64)
+  publishSequence   Int
+  keyId             String @db.VarChar(240)
+  manifestSha256    String @db.Char(64)
+  manifestCanonical String @db.Text
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  buildInput        SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, buildInputId])
+  @@unique([organizationId, projectId, publishSequence])
 }
 
 model ProjectCurrentSnapshotManifest {

@@ -1,5 +1,5 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
-import { Prisma } from "../../../generated/prisma/client.ts";
+import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
 import type { CurrentSnapshotManifest, DeliveryRun, DeliveryRunStatus } from "../contracts.ts";
 import { assertDeliveryTransition } from "../domain/delivery-run.ts";
 import type {
@@ -51,9 +51,7 @@ export class PrismaSnapshotDeliveryRepository implements SnapshotDeliveryReposit
   async publishCurrentAndCreateRun(input: CreateDeliveryRunInput): Promise<DeliveryRun> {
     // Caller owns a short ReadCommitted transaction. Serialize the pointer and
     // run together; a retry of committed publication never rewrites current.
-    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
-    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(
-      hashtextextended(${JSON.stringify(["snapshot-publication", input.organizationId, input.projectId])}, 0))::text`);
+    await lockSnapshotPublication(this.transaction, input);
     const existing = await this.getRun(input.organizationId, input.projectId, input.publishSequence);
     if (existing) {
       if (existing.manifestKey !== input.manifestKey || existing.manifestSha256 !== input.manifestSha256

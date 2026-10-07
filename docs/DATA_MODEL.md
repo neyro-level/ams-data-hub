@@ -5,6 +5,16 @@ runtime source of truth; this file is their neutral model map.
 
 Prisma schema is the runtime source of truth.
 
+Prisma PostgreSQL pools pin each connection to `TimeZone=UTC` through connection
+startup options, for both URL and component configuration. The installed
+`adapter-pg` serializes Date values without a timezone offset and expects UTC
+timestamp results; a non-UTC session can therefore shift persisted instants.
+Signed snapshot timestamps must equal the receipt instant in PostgreSQL, not
+only the value returned by the ORM. This connection setting does not change
+server defaults or rewrite existing rows. Before a release against an existing
+non-UTC-written database, historical timestamps and immutable receipt digests
+require a scoped compatibility check; silently shifting old data is forbidden.
+
 ## Identity and transfer contracts
 
 - Project-owned persistence IDs use Prisma `cuid()`; Better Auth tables retain
@@ -170,6 +180,17 @@ storage is server-owned infrastructure, not a Source/job payload dependency.
 - notification categories: `SYSTEM`, `PROJECT`, `ACCESS`, `QUEUE`.
 
 ## Migration Policy
+
+`SnapshotPublicationBinding` pins one receipt/sequence to its inputHash, keyId,
+canonical signed manifest text and exact manifest SHA-256 before object upload.
+It has a composite scoped receipt FK, receipt/sequence uniqueness, a 2-MiB text
+limit, exact-byte SHA check and immutable/header-correlation trigger. Only the
+single-project snapshot-publication worker purpose can SELECT/INSERT; UPDATE
+and DELETE are not granted. This purpose gains SELECT-only receipt/part access
+and restrictive fact-write denial; snapshot-input permissions are unchanged.
+The forward binding migration also corrects ListingAgentBinding's read-policy
+name to the canonical `_rls` convention with identical predicates and grants.
+Binding/artifact staging is not current publication or fresh consent admission.
 
 `SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
 `GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.

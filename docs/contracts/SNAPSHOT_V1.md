@@ -26,6 +26,21 @@ Factory-pinned signing configuration does not establish cross-process/rotation
 publication idempotency. Durable binding and fresh publication admission must
 precede exposing a current pointer; successful signing alone does not publish.
 
+Artifact staging binds the exact canonical signed manifest before any PUT.
+`SnapshotPublicationBinding` is scoped to one immutable receipt and sequence;
+its inputHash, keyId, canonical manifest and SHA-256 cannot be replaced by a
+retry or key rotation. Canonical manifest work is capped at 2 MiB. Database
+checks bind headers/timestamps/hash to the receipt and exact stored manifest
+bytes. Only the scoped snapshot-publication purpose can read/insert bindings;
+it cannot mutate captured facts or receipts. The staging server invokes the
+actual signed build, binds identity in a short ReadCommitted cut, then invokes
+existing project content-addressed storage outside DB. Partial PUT failure
+leaves only orphan artifacts and the binding; no current pointer or DeliveryRun
+is registered by this seam. A failed artifact batch waits for every owned PUT
+to settle before returning failure, and never uploads its manifest afterward.
+Fresh admission and outbox registration remain
+required before MP-05.11 can be closed.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

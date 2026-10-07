@@ -1,6 +1,8 @@
 import "server-only";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";
 export { createSnapshotSignedBuildServer } from "./infrastructure/snapshot-signed-build.ts";
+export { createSnapshotArtifactStagingServer } from "./infrastructure/snapshot-artifact-staging.ts";
+export { PrismaSnapshotPublicationRepository } from "./infrastructure/prisma-snapshot-publication-repository.ts";
 export { createSnapshotMediaProjectionServer } from "./infrastructure/snapshot-media-projection.ts";
 
 export { createEd25519SecretRefSigner } from "./infrastructure/ed25519-secret-ref-signer.ts";

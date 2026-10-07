@@ -10,6 +10,34 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 signed binding and staging — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `57327a1`. Real server-owned signed build now binds exact scoped
+receipt/inputHash/sequence/keyId/canonical manifest SHA-256 before object IO.
+Database checks preserve receipt headers and timestamps, immutable grants and
+single-project publication-purpose RLS; captured facts remain read-only. The
+actual S3 adapter is exercised through a synthetic SDK transport, with no
+provider network or credentials. Partial uploads do not create current/run;
+restart retains binding and key rotation conflicts before PUT. Failed batches
+settle all owned PUTs before returning. Final native binding/foundation/capture/
+URL lifecycle regression passed 29/29 in 86.91 seconds; original capture limit
+remains 30 seconds, with the large fixture cut at 15.781 seconds. SQL epoch
+equality proves a known `.789Z` Date independently of the adapter roundtrip;
+a signed timestamp changed by one millisecond is rejected. Final test types and
+focused lint passed; verify:quick passed (393 modules, 1223 dependencies),
+targeted units 38/7 files passed, and RLS coverage confirmed 49 models. Scoped
+architect review found no actionable checkpoint defects.
+
+Native diagnostics found a three-hour timestamp shift from a non-UTC session
+and the installed adapter's offset-free Date conversion. Pool sessions now pin
+UTC through connection startup options; strict binding validation is unchanged.
+This does not rewrite existing rows or alter a database server. Historical
+non-UTC-written timestamp/receipt compatibility requires a separate scoped
+check before release; never rewrite immutable receipt hashes to mask drift.
+Module-owned fresh admission, serialized fact writers and registered outbox
+handling remain required for full MP-05.11 completion. No delivery gate, merge,
+GitHub mirror or production action is claimed by this partial checkpoint.
+
 ### MP-05.11 repository foundation — 2026-10-07, IN_PROGRESS
 
 Task base `327f210`. Current/DeliveryRun repository takes global safety then
