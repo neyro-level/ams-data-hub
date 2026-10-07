@@ -214,6 +214,17 @@ Its caller owns global then scoped publication locks in ReadCommitted; no fact
 row/domain locks are acquired. Pre-PUT staging admission is not final publication
 admission across object upload; no production migration or release is implied.
 
+The forward publication Project-read migration adds scoped SELECT policies for
+Project, ProjectPublicContact, Agent and ListingAgentBinding, plus global safety
+state for the exact single-project publication purpose. Restrictive policies
+prevent broad legacy project-job reads; grants and fact-write denial stay intact.
+Project admission compares active service status, unfrozen jobs, captured contact
+version, published Agent consent/version/photo slots and exact captured binding
+tuples. It uses value-free receipt anchors and bounded metadata reads, not personal
+values, whole Project.version or live graph enrichment. Optional absent contact
+addition and unrelated new Agents are allowed. This pre-PUT check must be repeated
+by the final post-PUT publisher; no current/run or outbox execution is implied.
+
 `SnapshotBuildInputPart.payloadByteCount` and `payloadRecordCount` are PostgreSQL
 `GENERATED ALWAYS ... STORED` values computed from the immutable JSON payload.
 Runtime inserts omit them; explicit forged values are rejected by PostgreSQL.

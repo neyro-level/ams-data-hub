@@ -1,4 +1,5 @@
 import "server-only";
+export { createSnapshotPublicationProjectReader } from "./infrastructure/snapshot-publication-project-reader.ts";
 export { createProjectStateSnapshotFactReader } from "./infrastructure/project-state-snapshot-facts.ts";
 
 import { createProjectPublicContactCommands } from "./application/project-public-contact-commands.ts";

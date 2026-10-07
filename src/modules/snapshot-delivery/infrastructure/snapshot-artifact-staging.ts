@@ -7,6 +7,7 @@ import { stageSnapshotArtifacts } from "../application/snapshot-delivery.ts";
 import { PrismaSnapshotPublicationRepository } from "./prisma-snapshot-publication-repository.ts";
 import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
 import { createSnapshotPublicationSourceReader } from "../../ingestion-core/server.ts";
+import { createSnapshotPublicationProjectReader } from "../../project-state/server.ts";
 import { createSnapshotSignedBuildServer } from "./snapshot-signed-build.ts";
 import type { ObjectStorage } from "../../../platform/storage/object-storage.ts";
 
@@ -21,6 +22,7 @@ export function createSnapshotArtifactStagingServer(bound: Parameters<typeof cre
     const binding = await runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(publication),
       async (tx) => {
         await lockSnapshotPublication(tx, scope);
+        await createSnapshotPublicationProjectReader(tx)(scope, signed.projectAnchors);
         await createSnapshotPublicationSourceReader(tx)(scope, signed.sourceAnchors);
         return new PrismaSnapshotPublicationRepository(tx).bind({ ...scope, receiptId: signed.receiptId,
           inputHash: signed.inputHash, manifest: signed.manifest });
@@ -32,6 +34,7 @@ export function createSnapshotArtifactStagingServer(bound: Parameters<typeof cre
       || current.manifestKey !== createProjectSnapshotKey(scope.projectId, binding.manifestSha256)) {
       throw new Error("SNAPSHOT_PUBLICATION_STORAGE_MISMATCH");
     }
-    return { binding, current, manifest: signed.manifest, sourceAnchors: signed.sourceAnchors, diagnostics: signed.diagnostics };
+    return { binding, current, manifest: signed.manifest, sourceAnchors: signed.sourceAnchors,
+      projectAnchors: signed.projectAnchors, diagnostics: signed.diagnostics };
   };
 }

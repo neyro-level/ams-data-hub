@@ -5,6 +5,7 @@ import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction 
 import type { ObjectStorage } from "../../../platform/storage/object-storage.ts";
 import { createSnapshotGoodFactResolver } from "../../ingestion-core/server.ts";
 import { prepareSnapshotPublicationSourceAnchors } from "../../ingestion-core/index.ts";
+import { prepareSnapshotPublicationProjectAnchors } from "../../project-state/index.ts";
 import type { SnapshotDatasetInput, SnapshotRecordInput } from "../contracts.ts";
 import { SNAPSHOT_INPUT_PAGE_SIZE } from "../application/snapshot-build-input.ts";
 import { SnapshotAssemblyBudget } from "../application/snapshot-assembly-budget.ts";
@@ -48,8 +49,21 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
       new Set(preview.find((dataset) => dataset.kind === "agents")!.records.map((record) => record.key)));
     const requiresProjectContact = snapshotRequiresProjectContact(captured.rows.map((row) => row.pin.uid), agents);
     assertSnapshotProjectContact(preview, receipt.projectId, requiresProjectContact);
+    const projectAnchors = prepareSnapshotPublicationProjectAnchors({
+      project: receipt.parts.filter((part) => part.kind === "project").flatMap((part) => part.payload),
+      contacts: receipt.parts.filter((part) => part.kind === "contacts").flatMap((part) => part.payload),
+      agents: receipt.parts.filter((part) => part.kind === "agents").flatMap((part) => part.payload),
+      links: receipt.parts.filter((part) => part.kind === "listing-links").flatMap((part) => part.payload),
+      publishedAgentUids: new Set(preview.find((dataset) => dataset.kind === "agents")!.records.map((record) => record.key)),
+      publishedBindings: agents, requiresContact: requiresProjectContact,
+    });
     const media = await projectMedia(receipt, selection); // No transaction remains open here.
     const projectState = projectSnapshotProjectState(receipt, media.agentMedia, selection);
+    const publicAgents = projectState.find((dataset) => dataset.kind === "agents")!.records;
+    const anchoredAgents = new Set(projectAnchors.agents.map((row) => row.uid));
+    if (publicAgents.length !== anchoredAgents.size || publicAgents.some((row) => !anchoredAgents.has(row.key))) {
+      throw new Error("SNAPSHOT_PUBLICATION_PROJECT_ANCHORS_INVALID");
+    }
     const budget = new SnapshotAssemblyBudget();
     for (const dataset of [...catalog, ...projectState, media.dataset]) budget.add(dataset.kind, dataset.records);
     const records = await runInAuthorizedDatabaseTransaction(context, async (tx) => {
@@ -66,7 +80,7 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     }, options);
     const datasets: SnapshotDatasetInput[] = [...catalog, ...projectState, { kind: "inventory", records }, media.dataset];
     assertSnapshotDatasetIntegrity(datasets);
-    return { receiptId: receipt.id, inputHash: receipt.inputHash, sourceAnchors, requiresProjectContact, datasets, diagnostics: media.diagnostics,
+    return { receiptId: receipt.id, inputHash: receipt.inputHash, sourceAnchors, projectAnchors, requiresProjectContact, datasets, diagnostics: media.diagnostics,
       manifestMetadata: { projectId: receipt.projectId, schemaMinor: receipt.schemaMinor, publishSequence: receipt.publishSequence,
         generatedAt: receipt.capturedAt.toISOString(), catalogRevision: receipt.catalogRevision, sourceRevisions: captured.sourceRevisions } };
   };

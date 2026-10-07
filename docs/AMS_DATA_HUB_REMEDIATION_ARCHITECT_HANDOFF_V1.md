@@ -10,6 +10,36 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 Project admission prerequisite — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `ffe5893`. The candidate owns value-free project anchors before
+HEAD, from the validated receipt and actual published Agent/binding graph. The
+staging pre-PUT cut checks unfrozen jobs, active project/service, captured contact
+version and exact published Agent consent/version/photo slots and binding tuples.
+It does not compare whole Project.version or enrich old snapshots with new Agents
+or optional contacts. Project-owned metadata reads use pages of 200 and no row or
+domain locks; a forward SELECT-only five-table RLS extension restricts the exact
+single-project publication purpose without new grants or relaxed write policies.
+Pure anchor units are 9/9 PASS; final test types and focused lint PASS. Native
+publication/capture/staging/delivery regression is 47/47 PASS across four files
+(88.68 seconds), after 46 forward migrations on the isolated synthetic database;
+cleanup completed. Actual NOBYPASS publication reads prove consent/contact/binding
+changes, metadata-only selects, wildcard/empty/multi-project/populated foreign
+scope and legacy-purpose/wrong-actor denial. An owned actual web consent writer
+waits behind the admission cut, then commits and makes old anchors stale. The
+original 4100/8200 capture stays below 30 seconds (outer cut 14.725 seconds);
+combined Project plus Source admission stays below the unchanged five-second RC
+assertion. The capacity fixture now has an actual required fallback contact,
+not a forged optional-contact flag; it is not full media/catalog admission.
+Project-reader fixture capture/setup use the owner login, not a NOBYPASS capture
+claim. Separate full-capture regressions exercise the worker role. Architect
+production-delta and test review found no actionable findings. Full quick check
+PASS (397 modules / 1238 dependencies); docs canon, RLS coverage (49 models) and
+diff check PASS for this delta.
+Final post-PUT all-owner admission, current/run atomic publication and registered
+outbox execution remain required; MP-05.11 stays IN_PROGRESS. No production,
+provider migration, release gate, merge or GitHub mirror is claimed.
+
 ### MP-05.11 Source admission prerequisite — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `a01099f`. The actual candidate/signed/staging pipeline owns

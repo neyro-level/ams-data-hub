@@ -69,6 +69,20 @@ policies reject wildcard/multi-project/legacy publication readers and fact write
 This pre-PUT Source check does not protect the later upload window. Final post-PUT
 all-owner admission, atomic current/run and registered outbox remain required.
 
+Staging also prepares value-free project anchors from the validated receipt and
+the server-computed published Agent/assignment graph before HEAD. The pre-PUT
+cut rejects frozen jobs, disabled/suspended projects, changed or missing captured
+contact, and changed published Agent consent/version/photo slots or exact binding
+tuples. Required fallback contact cannot be absent; adding an uncaptured optional
+contact or a new unrelated Agent does not enrich or invalidate the old snapshot.
+Project names and whole Project.version are not freshness anchors. The reader
+selects only permission/identity metadata, in pages of 200, under the same locks;
+it does not fetch personal contact values or regenerate captured datasets.
+Exact-purpose restrictive SELECT policies cover Project, ProjectPublicContact,
+Agent, ListingAgentBinding and global DataSafetyState; wildcard/multi-project
+and foreign-scope admission fails before personal reads. This is still only a
+pre-PUT prerequisite, not final post-PUT admission or current publication.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

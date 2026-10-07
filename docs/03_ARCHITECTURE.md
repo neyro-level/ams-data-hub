@@ -271,6 +271,15 @@ remediation program preserves these boundaries while connecting them:
   key configuration is not cross-process publication idempotency: MP-05.11 must
   bind the signed identity durably before upload and enforce fresh admission.
   Signing alone does not upload artifacts, update current or register outbox work.
+  MP-05.11 staging now binds immutable signed identity before PUT and checks
+  receipt-owned Source/cohort anchors and project permission anchors in a short
+  ReadCommitted cut under global then project-publication locks. Project checks
+  enforce active service, unfrozen jobs, captured contact version and published
+  Agent consent/version/photo slots and exact bindings without live enrichment
+  or personal-value reads. Fact writers take global before target row/domain
+  locks. These pre-PUT prerequisites do not protect the upload window: final
+  post-PUT catalog/media/all-owner admission, atomic current/run publication
+  and actual registered outbox execution remain unfinished.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

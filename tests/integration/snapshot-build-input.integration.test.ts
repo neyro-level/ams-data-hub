@@ -22,7 +22,9 @@ import type { PlatformAdminPrincipal } from "../../src/platform/authorization/pr
 import { createCatalogSnapshotFactReader } from "../../src/modules/shared-catalog/server.ts";
 import { createSourceSnapshotFactReader, createSnapshotGoodFactResolver, createSnapshotPublicationSourceReader, normalizedContentHash,
   type SnapshotGoodFactPin } from "../../src/modules/ingestion-core/server.ts";
-import { createProjectStateSnapshotFactReader } from "../../src/modules/project-state/server.ts";
+import { createProjectStateSnapshotFactReader, createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
+import { prepareSnapshotPublicationProjectAnchors } from "../../src/modules/project-state/index.ts";
+import { snapshotRequiresProjectContact } from "../../src/modules/snapshot-delivery/application/snapshot-project-contact.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { createMediaSnapshotFactReader } from "../../src/modules/media-assets/server.ts";
@@ -704,6 +706,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const source = await tx.source.findUniqueOrThrow({ where: { id: fixture.sourceId } });
       await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+      // Real captured fallback is required for this all-unbound graph; never forge
+      // requiresContact=false merely to exercise a publication reader.
+      await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        phone: "+70000000000", messengers: [] } });
       const asset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)), contentType: "image/jpeg", byteSize: 100,
         originalFileName: "synthetic-private-filename", source: "synthetic-private-source", rightsBasis: "OWNED", uploadedBy: "synthetic" } });
@@ -739,6 +745,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const parts = validateSnapshotInput(receipt);
     const anchors = prepareSnapshotPublicationSourceAnchors({ sources: parts.filter((part) => part.kind === "sources").flatMap((part) => part.payload),
       inventory: parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload) });
+    const projectAnchors = prepareSnapshotPublicationProjectAnchors({ project: parts.filter((part) => part.kind === "project").flatMap((part) => part.payload),
+      contacts: parts.filter((part) => part.kind === "contacts").flatMap((part) => part.payload), agents: [], links: [],
+      publishedAgentUids: new Set(), publishedBindings: new Map(),
+      requiresContact: snapshotRequiresProjectContact(identities.map((row) => row.uid), new Map()) });
+    expect(projectAnchors).toMatchObject({ requiresContact: true, contactVersion: 1 });
     const freshStarted = performance.now();
     await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "snapshot-publication",
       organizationId: exactScope.organizationId, projectIds: [exactScope.projectId], correlationId: randomUUID() }, async (tx) => {
@@ -746,6 +757,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname=current_user"))
         .toEqual([{ rolbypassrls: false, rolsuper: false }]);
       await lockSnapshotPublication(tx, exactScope);
+      await createSnapshotPublicationProjectReader(tx)(exactScope, projectAnchors);
       await createSnapshotPublicationSourceReader(tx)(exactScope, anchors);
     }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
     const freshElapsed = Math.round(performance.now() - freshStarted);
