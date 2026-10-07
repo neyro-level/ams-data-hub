@@ -249,6 +249,28 @@ determinism, privacy and unchanged receipt replay using synthetic fixtures.
 Signing/publication and runtime activation remain later tasks. No deployment,
 real feeds, real PII or new credentials are authorized by this contract.
 
+The first MP-05.2 checkpoint implements only the five catalog/geo/price candidate
+closure projectors, with strict public schemas, deterministic order, explicit
+references and cross-parent validation. Receipt validation checks bounded all-18
+parts and their order/hashes plus the header/input/catalog digests. Prices retain
+exact decimal strings; no observation source/external IDs or private metadata
+are spread into public rows. Persisted seven-place coordinates and 200-character
+developer/development names/aliases remain supported. This does not yet apply
+subscription filtering or produce the eight remaining public datasets. Actual
+GOOD inventory resolution, persistent URL readiness, public media verification,
+agent/contact/editorial/URL/lifecycle projection and complete-build proof remain
+required before MP-05.2 closure.
+
+Native PostgreSQL proof now projects the actual captured candidate closure,
+including persisted seven-place Decimal coordinates and 200-character names
+and aliases; persisted replay produces the same five public datasets after live
+catalog changes. A capacity rerun exposed a 36.8-second complete-capture result
+against the unchanged 30-second limit. The additive exact identity/hash lookup
+index now has a natural NOBYPASS EXPLAIN-plan regression, and the final native
+16-test suite passes the original 4100-identity/8200-media capacity assertion.
+No fixture volume or worker limit was reduced/relaxed; full public assembly
+capacity and the remaining eight projectors are still unproven.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

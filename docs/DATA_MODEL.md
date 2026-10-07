@@ -95,6 +95,13 @@ durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
 persisted without moving Last Good. GOOD records and revision metadata are
 immutable, protected by database triggers as well as application checks.
 
+The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
+`SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
+record hash. Exact historical GOOD resolution can locate the pinned record
+without scanning a source's complete revision history for every identity.
+Organization/project/source and GOOD predicates remain in the query; this
+index changes neither FORCE RLS nor record immutability or worker grants.
+
 `Source.lastGoodRevisionId` is a composite FK to the same org/project/source's
 revision, and the DB requires a GOOD target. A forward migration refuses legacy
 dangling pointers rather than inventing history or clearing Last Good.

@@ -6,6 +6,7 @@ import { captureSnapshotInput, PrismaSnapshotInputRepository, runInSnapshotInput
 import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
+  projectSnapshotCatalog,
 } from "../../src/modules/snapshot-delivery/index.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
   type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -69,9 +70,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
       await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         mode: "ALL_SHARED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
-      await tx.developer.create({ data: { uid: developerUid, name: "Synthetic capture developer", normalizedName: "synthetic capture developer" } });
+      await tx.developer.create({ data: { uid: developerUid, name: "D".repeat(200), normalizedName: "d".repeat(200),
+        aliases: { create: { value: "A".repeat(200), normalizedValue: "a".repeat(200) } } } });
       await tx.development.create({ data: { uid: developmentUid, developerUid, cityUid: "01M41T6Q04BADHXSERJHZFXKCH",
-        name: "Captured development", normalizedName: "captured development" } });
+        name: "N".repeat(200), normalizedName: "n".repeat(200), latitude: "55.1234567", longitude: "37.1234567",
+        aliases: { create: { value: "B".repeat(200), normalizedValue: "b".repeat(200) } } } });
       await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId, phone: "+70000000001", messengers: [] } });
       const asset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)), byteSize: 100, contentType: "image/jpeg",
@@ -120,6 +123,15 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     try {
       const first = await captureSnapshotInput(principal, request);
       const pinned = structuredClone(first);
+      const publicCatalog = projectSnapshotCatalog(first);
+      expect(publicCatalog.find((dataset) => dataset.kind === "developers")!.records)
+        .toContainEqual(expect.objectContaining({ value: expect.objectContaining({ uid: developerUid,
+          name: "D".repeat(200), aliases: ["A".repeat(200)] }) }));
+      expect(publicCatalog.find((dataset) => dataset.kind === "developments")!.records)
+        .toContainEqual(expect.objectContaining({ value: expect.objectContaining({ uid: developmentUid,
+          name: "N".repeat(200), latitude: "55.1234567", longitude: "37.1234567" }) }));
+      expect(publicCatalog.find((dataset) => dataset.kind === "prices")!.records[0]!.value)
+        .toMatchObject({ amount: "12345.67" });
       expect(first.publishSequence).toBe(1);
       expect([...new Set(first.parts.map((part) => part.kind))]).toEqual([...SNAPSHOT_INPUT_PART_KINDS]);
       expect(first.catalogRevision).toMatch(/^[a-f0-9]{64}$/u);
@@ -139,7 +151,9 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       });
       // Caller mutation cannot change the persisted parts returned by replay.
       first.parts[0]!.payload.length = 0;
-      expect(await captureSnapshotInput(principal, request)).toEqual(pinned);
+      const replay = await captureSnapshotInput(principal, request);
+      expect(replay).toEqual(pinned);
+      expect(projectSnapshotCatalog(replay)).toEqual(publicCatalog);
       await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
       await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
       await worker(scope, async (tx) => {
@@ -202,6 +216,15 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       return { sourceId: source.id };
     }, { timeout: 30_000 });
     await worker(scope, async (tx) => {
+      const probe = identities[0]!;
+      const plans = await tx.$queryRaw<{ "QUERY PLAN": unknown }[]>(Prisma.sql`
+        EXPLAIN (FORMAT JSON)
+        SELECT "revisionId" FROM "SourceRevisionRecord"
+        WHERE "organizationId" = ${scope.organizationId} AND "projectId" = ${scope.projectId}
+          AND "sourceId" = ${fixture.sourceId} AND "inventoryUid" = ${probe.uid}
+          AND "externalId" = ${probe.externalId} AND "recordHash" = ${"b".repeat(64)}
+      `);
+      expect(JSON.stringify(plans)).toContain("SourceRevisionRecord_inventory_fact_idx");
       const queries = vi.spyOn(tx, "$queryRaw");
       const relations = vi.spyOn(tx.mediaSource, "findMany");
       try {

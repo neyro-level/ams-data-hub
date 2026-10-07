@@ -984,6 +984,7 @@ model SourceRevisionRecord {
   @@id([revisionId, externalId])
   @@unique([revisionId, orderKey])
   @@index([projectId, sourceId, revisionId])
+  @@index([inventoryUid, externalId, recordHash], map: "SourceRevisionRecord_inventory_fact_idx")
 }
 
 model InventoryIdentity {

@@ -168,6 +168,16 @@ remediation program preserves these boundaries while connecting them:
   parts and their input hash identify the complete state. `catalogRevision`
   hashes captured catalog values, not a global sequence. Public projection,
   signing and publication remain pending; input capture is not full build proof.
+  MP-05.2 is IN_PROGRESS. Five captured candidate-closure projectors now emit
+  strict geo/developer/development/building/price rows with explicit references,
+  cross-parent checks, deterministic order and exact decimal strings. Input
+  validation checks all 18 sections, part order/hashes, header/input digest and
+  captured catalog digest before projection. Catalog coordinates retain their
+  persisted seven-place precision; developer/development names and aliases
+  accept persisted 200-character values. Observation source/external IDs and
+  private catalog metadata are not copied into public values. These are five
+  projectors, not all 13 datasets; subscription filtering, inventory GOOD
+  resolution, remaining projectors and unified build proof remain pending.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
