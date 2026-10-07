@@ -47,6 +47,116 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it("pins scoped shared observation mirrors without requiring an XML revision for manual imports", async () => {
+    const scope = await setup();
+    const uid = createUlid(); const excludedUid = createUlid();
+    const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const developerUid = createUlid();
+      await tx.developer.create({ data: { uid: developerUid, name: developerUid, normalizedName: developerUid.toLowerCase() } });
+      for (const developmentUid of [uid, excludedUid]) await tx.development.create({ data: { uid: developmentUid,
+        developerUid, cityUid: "01M41T6Q04BADHXSERJHZFXKCH", name: developmentUid, normalizedName: developmentUid.toLowerCase() } });
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-shared", name: "Synthetic shared", adapterKey: "manual", adapterVersion: "1",
+        profileKey: "manual", profileVersion: "1", datasetType: "NEW_BUILD", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const ownAsset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)), byteSize: 100, contentType: "image/jpeg",
+        originalFileName: "synthetic-private-filename", rightsBasis: "OWNED", source: "synthetic-private", uploadedBy: "synthetic" } });
+      const foreignAsset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.foreignProjectId,
+        sha256: "b".repeat(64), storageKey: createMediaKey("b".repeat(64)), byteSize: 100, contentType: "image/jpeg",
+        originalFileName: "synthetic-private-filename", rightsBasis: "OWNED", source: "synthetic-private", uploadedBy: "synthetic" } });
+      let retainedRelationId = "";
+      for (let index = 0; index < 5; index++) {
+        const canonicalSourceUrl = `https://private.example.invalid/${index}.jpg`;
+        await tx.sharedMediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          sourceId: source.id, developmentUid: index === 4 ? excludedUid : uid, externalId: `synthetic-${index}`,
+          position: index, sourceUrl: canonicalSourceUrl, canonicalSourceUrl, observedAt: new Date(),
+          rightsBasis: index === 3 ? "LICENSED" : "OWNED", attribution: index === 3 ? "synthetic-private-attribution" : null } });
+        if (index === 2 || index === 4) continue;
+        const relation = await tx.mediaSource.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          sourceId: source.id, sourceRevisionId: "manual-approved-observation", entityType: "DEVELOPMENT", entityUid: uid,
+          kind: "DEVELOPMENT_IMAGE", position: 999, sourceUrl: canonicalSourceUrl, canonicalSourceUrl,
+          status: "WARNING", assetId: index === 1 ? foreignAsset.id : ownAsset.id, firstSeenAt: new Date(),
+          lastAttemptAt: new Date(), mirroredAt: index === 3 ? null : new Date() } });
+        if (index === 0) retainedRelationId = relation.id;
+      }
+      return { ownAssetId: ownAsset.id, foreignAssetId: foreignAsset.id, retainedRelationId };
+    });
+    async function capture(tx: DatabaseTransaction) {
+      const rows: CanonicalJsonValue[] = [];
+      const reader = createMediaSnapshotFactReader(tx, (_kind, page) => rows.push(...page));
+      await reader.captureShared(scope, [uid]); reader.finishCapture(); return rows;
+    }
+    const pinned = await worker(scope, async (tx) => {
+      const before = await capture(tx);
+      expect(before).toHaveLength(4);
+      expect(before).toContainEqual(expect.objectContaining({ position: 0, provenance: "SHARED_OBSERVATION_MIRROR",
+        mirrorStatus: "WARNING", asset: expect.objectContaining({ id: fixture.ownAssetId }) }));
+      for (const position of [1, 2, 3]) expect(before).toContainEqual(expect.objectContaining({ position, omission: "MEDIA_MIRROR_UNAVAILABLE" }));
+      expect(JSON.stringify(before)).not.toMatch(/https:|synthetic-private|canonicalSourceUrl|license":|attribution":/u);
+      await runInPrincipalDatabaseTransaction(admin, (other) => other.mediaSource.update({ where: { id: fixture.retainedRelationId },
+        data: { assetId: fixture.foreignAssetId } }));
+      expect(await capture(tx)).toEqual(before);
+      await expect(createMediaSnapshotFactReader(tx, () => undefined).captureShared(scope, Array.from({ length: 5001 }, () => uid)))
+        .rejects.toThrow("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      return before;
+    });
+    expect((await worker(scope, capture)).every((row) => typeof row === "object" && row && "omission" in row)).toBe(true);
+    expect(pinned).toContainEqual(expect.objectContaining({ asset: expect.objectContaining({ id: fixture.ownAssetId }) }));
+  });
+
+  it("pins consent-gated agent photo assignments and scoped asset facts in one cut", async () => {
+    const scope = await setup();
+    const publicUid = createUlid();
+    const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      async function asset(projectId: string, sha256: string, license: string | null) {
+        return tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId, sha256,
+          storageKey: createMediaKey(sha256), contentType: "image/jpeg", byteSize: 100,
+          originalFileName: "synthetic-private-filename", source: "https://private.example.invalid/photo",
+          rightsBasis: "LICENSED", license, uploadedBy: "synthetic-private-actor" } });
+      }
+      const own = await asset(scope.projectId, "a".repeat(64), "synthetic-private-license");
+      const invalid = await asset(scope.projectId, "b".repeat(64), "synthetic");
+      await tx.mediaAsset.update({ where: { id: invalid.id }, data: { storageKey: "synthetic-wrong-object-key" } });
+      const foreign = await asset(scope.foreignProjectId, "c".repeat(64), "synthetic");
+      async function agent(uid: string, data: Partial<Prisma.AgentUncheckedCreateInput>) {
+        return tx.agent.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          uid, slug: `synthetic-${uid}`, fullName: "synthetic-private-name", status: "ACTIVE", showOnSite: true,
+          consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-private-actor",
+          consentBasis: "synthetic-private-basis", photoMediaId: own.id, ...data } });
+      }
+      await agent(publicUid, { feedPhotoMediaId: own.id });
+      await agent(createUlid(), { consentConfirmedAt: null });
+      await agent(createUlid(), { showOnSite: false });
+      await agent(createUlid(), { status: "DEPARTED" });
+      await agent(createUlid(), { status: "HIDDEN" });
+      const foreignUid = createUlid(); const invalidUid = createUlid();
+      await agent(foreignUid, { photoMediaId: foreign.id });
+      await agent(invalidUid, { photoMediaId: invalid.id });
+      await agent(createUlid(), { projectId: scope.foreignProjectId });
+      return { ownId: own.id, foreignUid, invalidUid };
+    });
+    async function capture(tx: DatabaseTransaction) {
+      const rows: CanonicalJsonValue[] = [];
+      const reader = createMediaSnapshotFactReader(tx, (_kind, page) => rows.push(...page));
+      await reader.captureAgents(scope); reader.finishCapture(); return rows;
+    }
+    const pinned = await worker(scope, async (tx) => {
+      const before = await capture(tx);
+      expect(before).toHaveLength(4);
+      for (const slot of ["photoMediaId", "feedPhotoMediaId"]) expect(before).toContainEqual(expect.objectContaining({
+        kind: "AGENT_PHOTO", agentUid: publicUid, slot, asset: expect.objectContaining({ id: fixture.ownId }) }));
+      for (const agentUid of [fixture.foreignUid, fixture.invalidUid]) expect(before).toContainEqual(
+        expect.objectContaining({ agentUid, omission: "MEDIA_ASSET_UNAVAILABLE" }));
+      expect(JSON.stringify(before)).not.toMatch(/https:|synthetic-private|fullName|consentBasis|consentConfirmedBy|license":/u);
+      await runInPrincipalDatabaseTransaction(admin, (other) => other.agent.update({ where: { uid: publicUid },
+        data: { consentConfirmedAt: null, version: { increment: 1 } } }));
+      expect(await capture(tx)).toEqual(before);
+      return before;
+    });
+    expect(await worker(scope, capture)).toHaveLength(2);
+    expect(pinned).toHaveLength(4);
+  });
+
   it("pins historical GOOD media assets and producer positions without foreign/future relations or remirror substitution", async () => {
     const scope = await setup();
     const uid = createUlid();

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { createMediaSnapshotFactReader, type InventorySnapshotMediaPin } from "../src/modules/media-assets/server.ts";
 import type { DatabaseTransaction } from "../src/platform/database/transaction.ts";
+import { createMediaKey } from "../src/platform/storage/object-storage.ts";
 
 const scope = { organizationId: "synthetic-org", projectId: "synthetic-project" };
 const pin: InventorySnapshotMediaPin = { sourceId: "synthetic-source", inventoryUid: "synthetic-inventory",
@@ -14,6 +15,59 @@ function database(imageUrls: string[]) {
 }
 
 describe("media capture bounded batching (native tests own eligibility proof)", () => {
+  it("batches shared associations by observation page, not by asset or development", async () => {
+    const observations = Array.from({ length: 201 }, (_, index) => ({ id: `shared-${String(index).padStart(3, "0")}`,
+      sourceId: "source", developmentUid: "development", buildingUid: null, kind: "DEVELOPMENT_IMAGE",
+      position: index, canonicalSourceUrl: `https://example.invalid/${index}.jpg`, rightsBasis: "OWNED",
+      attribution: null, observedAt: new Date(0), updatedAt: new Date(0) }));
+    const tx = { sharedMediaAsset: { findMany: vi.fn().mockResolvedValueOnce(observations.slice(0, 200))
+      .mockResolvedValueOnce(observations.slice(200)).mockResolvedValueOnce([]) },
+      mediaSource: { findMany: vi.fn().mockResolvedValue([]) } } as unknown as DatabaseTransaction;
+    const pages: CanonicalJsonValue[][] = [];
+    const reader = createMediaSnapshotFactReader(tx, (_kind, rows) => pages.push(rows));
+    await reader.captureShared(scope, ["development"]); reader.finishCapture();
+    expect(pages.map((page) => page.length)).toEqual([200, 1]);
+    expect(tx.mediaSource.findMany).toHaveBeenCalledTimes(2);
+    const relationCalls = vi.mocked(tx.mediaSource.findMany).mock.calls;
+    expect(relationCalls[0]![0]).toMatchObject({ take: 201, where: { ...scope, OR: expect.any(Array) } });
+    expect((relationCalls[0]![0]!.where!.OR as unknown[]).length).toBe(200);
+    expect((relationCalls[1]![0]!.where!.OR as unknown[]).length).toBe(1);
+    expect(JSON.stringify(pages)).not.toContain("https:");
+  });
+
+  it("rejects an oversized shared candidate closure without allowing finalization", async () => {
+    const sink = vi.fn();
+    const reader = createMediaSnapshotFactReader(database([]), sink);
+    await expect(reader.captureShared(scope, Array.from({ length: 5001 }, () => "development")))
+      .rejects.toThrow("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+    expect(() => reader.finishCapture()).toThrow("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  it("loads assigned agent assets once per bounded page and preserves ownership slots", async () => {
+    const sha256 = "b".repeat(64);
+    const tx = { agent: { findMany: vi.fn().mockResolvedValueOnce([
+      { uid: "agent-one", version: 3, photoMediaId: "asset-one", feedPhotoMediaId: "asset-one" },
+      { uid: "agent-two", version: 1, photoMediaId: "unavailable", feedPhotoMediaId: null },
+    ]).mockResolvedValueOnce([]) }, mediaAsset: { findMany: vi.fn().mockResolvedValue([
+      { ...scope, id: "asset-one", sha256, storageKey: createMediaKey(sha256), contentType: "image/jpeg",
+        byteSize: 100, rightsBasis: "OWNED", license: null },
+    ]) } } as unknown as DatabaseTransaction;
+    const pages: CanonicalJsonValue[][] = [];
+    const reader = createMediaSnapshotFactReader(tx, (_kind, rows) => pages.push(rows));
+    await reader.captureAgents(scope);
+    reader.finishCapture();
+    expect(pages.flat()).toEqual([
+      expect.objectContaining({ agentUid: "agent-one", agentVersion: 3, slot: "photoMediaId", asset: expect.any(Object) }),
+      expect.objectContaining({ agentUid: "agent-one", slot: "feedPhotoMediaId", asset: expect.any(Object) }),
+      { agentUid: "agent-two", agentVersion: 1, kind: "AGENT_PHOTO", slot: "photoMediaId", omission: "MEDIA_ASSET_UNAVAILABLE" },
+    ]);
+    expect(tx.mediaAsset.findMany).toHaveBeenCalledExactlyOnceWith({ where: { ...scope,
+      id: { in: ["asset-one", "unavailable"] } }, take: 401, select: expect.any(Object) });
+    expect(tx.agent.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 200,
+      where: { ...scope, status: "ACTIVE", showOnSite: true, consentConfirmedAt: { not: null }, uid: { gt: "agent-two" } } }));
+  });
+
   it("does not consume one empty part per image-less inventory", async () => {
     const sink = vi.fn();
     const reader = createMediaSnapshotFactReader(database([]), sink);

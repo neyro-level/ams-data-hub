@@ -198,8 +198,18 @@ only when the whole media capture is empty. Any failure prevents finalization.
 HEAD/public DTO projection remains outside capture. Native proof covers
 historical grace, wrong/foreign/future/stale-head pins, warning omissions and
 remirror after capture; batching has separate resource regression tests.
-Agent/shared media associations, complete resolver composition and immutable
-receipt replay proof remain pending, so this is not MP-05.1 completion.
+Agent photo capture now pins scoped eligible assets for both assignment slots,
+with ACTIVE/visibility/consent gating and ASSIGNED_ASSET_ONLY provenance. It
+does not choose slot priority or prove approved feed-photo origin; feed-photo
+public projection must omit absent proof rather than treating assignment as GOOD.
+Shared observation capture now pins scoped development/building associations and
+eligible mirrored asset facts in page-batched queries. Manual import observations
+do not need a fabricated XML revision: SHARED_OBSERVATION_MIRROR records the
+actual association, not GOOD-backed feed provenance. Captured shared-media facts
+remain the rights/attribution-marker source for future projectors; no live reads
+may substitute changed rights or remirrored assets during replay.
+Complete resolver composition and immutable receipt replay proof remain pending,
+so this is not MP-05.1 completion.
 Batching unit tests prove part-budget behavior, not database throughput: the
 current per-inventory SQL fanout still needs a measured/batched page capture
 seam within the real transaction timeout before supported capacity is claimed.

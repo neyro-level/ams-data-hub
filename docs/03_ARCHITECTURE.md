@@ -141,9 +141,16 @@ remediation program preserves these boundaries while connecting them:
   mutable relation IDs. It checks Source.LastGood in the same cut and omits
   foreign/future/invalid mirrors; a cross-listing bounded buffer prevents early
   part-budget exhaustion. Object HEAD and public media projection are outside
-  the DB capture transaction. Agent/shared media associations and concrete
-  command composition are
-  still pending; native fact-reader/admission proof is not full build proof.
+  the DB capture transaction. Agent capture pins both assigned photo slots under
+  ACTIVE/visibility/consent gates, using scoped asset facts and an explicit
+  ASSIGNED_ASSET_ONLY marker; assignment is not approved feed-photo provenance.
+  Shared observation capture pins exact scoped development/building mirror
+  associations in page-batched queries, retaining eligible warning assets and
+  rights markers without requiring XML revisions for manual imports. Its
+  SHARED_OBSERVATION_MIRROR marker is not a GOOD feed claim. Public projectors
+  must use captured observation rights and fail closed on missing feed provenance.
+  Concrete command composition is still pending; native fact-reader/admission
+  proof is not full build proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
