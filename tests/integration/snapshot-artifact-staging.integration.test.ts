@@ -4,7 +4,8 @@ import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hu
 import { describe, expect, it, vi } from "vitest";
 
 const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
-  afterInitialReplay: null as (() => Promise<void>) | null }));
+  afterInitialReplay: null as (() => Promise<void>) | null,
+  afterInitialStageReplay: null as (() => Promise<void>) | null }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
@@ -25,6 +26,11 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
       const after = cuts.afterInitialReplay; cuts.afterInitialReplay = null;
       await after(); // Actual transaction has committed and released its locks.
     }
+    if (context.actorId === "snapshot-input" && context.correlationId === "synthetic-stage-replay-race"
+      && cuts.afterInitialStageReplay) {
+      const after = cuts.afterInitialStageReplay; cuts.afterInitialStageReplay = null;
+      await after(); // Inspection completed; a competing BUILD can now commit.
+    }
     return result;
   };
   const system: typeof actual.runInSystemJobDatabaseTransaction = (input, execute) =>
@@ -32,6 +38,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInSystemJobDatabaseTransaction: system };
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
+  createSnapshotStagedBuildServer, inspectStagedSnapshotServer,
   PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -87,6 +94,122 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it("recovers a concurrently committed stage after cancellation following the initial replay miss", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519"); const controller = new AbortController();
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const build = createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+      keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+      trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } });
+    let committed: Awaited<ReturnType<typeof build>> | undefined;
+    cuts.afterInitialStageReplay = async () => {
+      committed = await build(setup.principal, setup.lookup);
+      controller.abort("Synthetic private cancellation reason");
+    };
+    try {
+      const replay = await build(createProjectJobPrincipal({ ...setup.scope, jobName: "snapshot-input",
+        correlationId: "synthetic-stage-replay-race" }), setup.lookup, controller.signal);
+      expect(committed).toBeDefined(); expect(replay).toEqual(committed); expect(send).toHaveBeenCalledTimes(14);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotArtifactStageReceipt.count()).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+    } finally { cuts.afterInitialStageReplay = null; send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
+  it("records BUILD only after settled artifacts/manifest, replays without configuration and never writes current", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let manifests = 0;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      await observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.count().then((count) => expect(count).toBe(0)));
+      if (command instanceof PutObjectCommand && command.input.ContentType === "application/json") manifests++;
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const bound = { ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }), keyId: "synthetic-stage-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    try {
+      expect(await inspectStagedSnapshotServer(setup.principal, setup.lookup)).toBeNull();
+      const receipt = await createSnapshotStagedBuildServer(bound)(setup.principal, setup.lookup);
+      expect(send).toHaveBeenCalledTimes(14); expect(manifests).toBe(1);
+      expect(receipt).toMatchObject({ ...setup.scope, buildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash,
+        publishSequence: setup.receipt.publishSequence, idempotencyKeyHash: setup.lookup.idempotencyKeyHash });
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotArtifactStageReceipt.count()).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+      const pins = { organizationId: receipt.organizationId, projectId: receipt.projectId, buildInputId: receipt.buildInputId,
+        inputHash: receipt.inputHash, idempotencyKeyHash: receipt.idempotencyKeyHash,
+        publishSequence: receipt.publishSequence, manifestSha256: receipt.manifestSha256 };
+      await expect(observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.create({
+        data: { ...pins, manifestSha256: "e".repeat(64) },
+      }))).rejects.toThrow("SNAPSHOT_STAGE_RECEIPT_INVALID"); // Guard rejects before duplicate-key checks.
+      await expect(observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.create({
+        data: pins,
+      }), "snapshot-input")).rejects.toThrow("SNAPSHOT_STAGE_SCOPE_DENIED"); // Scope guard, not duplicate-key rejection.
+      await expect(observer(setup.scope, (tx) => tx.$executeRaw`UPDATE "SnapshotArtifactStageReceipt"
+        SET "manifestSha256" = ${"e".repeat(64)} WHERE "buildInputId" = ${receipt.buildInputId}`)).rejects.toThrow();
+      const immutableAdmin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-immutable", correlationId: randomUUID() };
+      await expect(runInPrincipalDatabaseTransaction(immutableAdmin, (tx) => tx.$executeRaw`
+        UPDATE "SnapshotArtifactStageReceipt" SET "manifestSha256" = ${"e".repeat(64)}
+        WHERE "buildInputId" = ${receipt.buildInputId}`)).rejects.toThrow("SNAPSHOT_STAGE_RECEIPT_IMMUTABLE"); // Privileged rewrite is guarded too.
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+      const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-replay", correlationId: randomUUID() };
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      const replay = await createSnapshotStagedBuildServer({ ...bound, keyId: "synthetic-rotated-unavailable",
+        trustSet: { ...bound.trustSet, revokedKeyIds: ["synthetic-stage-key"] } })(setup.principal, setup.lookup);
+      expect(replay).toEqual(receipt); expect(send).toHaveBeenCalledTimes(14);
+      await expect(inspectStagedSnapshotServer(createProjectJobPrincipal({ ...setup.scope, projectId: setup.foreignId,
+        jobName: "snapshot-input" }), setup.lookup)).resolves.toBeNull();
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
+
+  it.each(["manifest-failure", "cancel", "project-blocked", "freeze"])("does not record a staged BUILD after %s", async (mode) => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519"); const controller = new AbortController();
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let manifestStarted = false;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      if (command instanceof PutObjectCommand && command.input.ContentType === "application/json") {
+        manifestStarted = true;
+        if (mode === "manifest-failure") throw new Error("SYNTHETIC_STAGE_MANIFEST_FAILURE");
+        if (mode === "cancel") controller.abort("Synthetic private cancellation reason");
+        const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-stale", correlationId: randomUUID() };
+        if (mode === "project-blocked") await runInPrincipalDatabaseTransaction(admin, (tx) =>
+          tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+        if (mode === "freeze") await runInPrincipalDatabaseTransaction(admin, (tx) =>
+          tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      }
+      return { ETag: "synthetic-stage" } as never;
+    });
+    try {
+      await expect(createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+        keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+        trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+          publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup, controller.signal)).rejects.toThrow();
+      expect(manifestStarted).toBe(true); expect(send).toHaveBeenCalledTimes(14);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.count()).toBe(1); expect(await tx.snapshotArtifactStageReceipt.count()).toBe(0);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+      expect(await inspectStagedSnapshotServer(setup.principal, setup.lookup)).toBeNull();
+    } finally { controller.abort(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
   it("executes a canonical GOOD intent through the enabled capability and replays committed publication after lease recovery", async () => {
     const setup = await fixture(); const { scope } = setup;
     const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-executor-setup", correlationId: randomUUID() };

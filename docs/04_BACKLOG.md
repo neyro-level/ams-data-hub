@@ -71,6 +71,13 @@ JobRun на старте и каждые 60 секунд; unresolved requests з
 28 scoped unit tests PASS. Остальные пять исполнителей и полный MP-08.1 DoD
 ещё не завершены; task не закрыт.
 
+Следующий groundwork BUILD отделяет completed staging от publication:
+immutable scoped stage receipt появляется только после settled artifact/manifest
+PUT и повторного четырёхстороннего admission. Replay не требует ключа или IO,
+а failed/cancelled staging не создаёт current/DeliveryRun. Это ещё не
+операционный BUILD-исполнитель: request-owned capture identity, fenced success
+и регистрация в общей очереди остаются продолжением MP-08.1.
+
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
 MP-05.1 закрыт implementation ledger

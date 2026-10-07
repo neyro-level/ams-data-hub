@@ -133,6 +133,17 @@ HEAD/PUT, all four post-PUT permission changes, atomic rollback/cancellation,
 concurrent committed fallback and restart/rotation replay. It does not prove a
 registered durable outbox execution, a live provider or production readiness.
 
+Manual BUILD has a separate server-only staged-build facade. It reuses actual
+capture/sign/bind/artifact staging but never writes current or DeliveryRun.
+Following settled PUTs and fresh Project/Source/Catalog/Media admission, it
+records an immutable scoped `SnapshotArtifactStageReceipt` with exact
+input/idempotency/sequence/manifest pins and a database-generated timestamp.
+Config-free exact replay precedes mutable admission and signer/storage IO,
+including concurrent committed-stage recovery after cancellation following an
+initial replay miss. Stage completion does not authorize later publication:
+PUBLISH must independently verify current trust, artifact integrity and fresh
+admission. The operational BUILD request adapter is not yet registered.
+
 The existing combined source-worker optionally registers `snapshot.build.request`
 when `SNAPSHOT_BUILD_ENABLED=true`; absent/false preserves old intake and reserved
 snapshot intents. Its strict envelope/payload must agree on organization and

@@ -546,9 +546,25 @@ model SnapshotPublicationBinding {
   manifestCanonical String @db.Text
   createdAt         DateTime @default(now()) @db.Timestamptz(3)
   buildInput        SnapshotBuildInput @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  stageReceipt      SnapshotArtifactStageReceipt?
 
   @@id([organizationId, projectId, buildInputId])
   @@unique([organizationId, projectId, publishSequence])
+}
+
+model SnapshotArtifactStageReceipt {
+  organizationId    String
+  projectId         String
+  buildInputId      String
+  inputHash         String @db.Char(64)
+  idempotencyKeyHash String @db.Char(64)
+  publishSequence   Int
+  manifestSha256    String @db.Char(64)
+  stagedAt          DateTime @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamptz(3)
+  binding           SnapshotPublicationBinding @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, buildInputId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, buildInputId])
+  @@unique([organizationId, projectId, idempotencyKeyHash])
 }
 
 model ProjectCurrentSnapshotManifest {

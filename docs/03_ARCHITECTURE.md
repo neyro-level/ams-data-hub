@@ -332,7 +332,10 @@ remediation program preserves these boundaries while connecting them:
   definer predicate and delete guard; its owner-only RLS policy supports the
   non-BYPASS migrator without granting runtime private-request reads. Malformed
   or unbound terminal intents stay quarantined, never fabricate a result and do
-  not block consumer startup. Other five adapters and HTTP discovery/delivery/ACK
+  not block consumer startup. Manual BUILD groundwork adds a separate immutable
+  stage receipt only after settled PUTs and fresh four-owner admission, with
+  config-free exact replay and no current/DeliveryRun. It is not yet a registered
+  operational executor or a PUBLISH permission. Other five adapters and HTTP discovery/delivery/ACK
   remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.

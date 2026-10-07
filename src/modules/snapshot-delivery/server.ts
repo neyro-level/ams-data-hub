@@ -2,6 +2,7 @@ import "server-only";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";
 export { createSnapshotSignedBuildServer } from "./infrastructure/snapshot-signed-build.ts";
 export { createSnapshotArtifactStagingServer } from "./infrastructure/snapshot-artifact-staging.ts";
+export { createSnapshotStagedBuildServer, inspectStagedSnapshotServer } from "./infrastructure/snapshot-staged-build.ts";
 export { createSnapshotPublicationServer } from "./infrastructure/snapshot-publication.ts";
 export { inspectSnapshotPublicationServer } from "./infrastructure/snapshot-publication-replay.ts";
 export { createSnapshotBuildRequestHandler } from "./infrastructure/snapshot-build-request-handler.ts";
