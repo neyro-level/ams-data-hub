@@ -183,8 +183,19 @@ Each mutable step validates the full current accepted lease; valid takeover keep
 the original reserved identity. These metadata APIs are not an executor or proof
 of external IO. Internal bounded artifact reading now retains the authenticated
 compressed bytes for unchanged-file reuse without extra GETs or recompression;
-consumer trust, privacy and limits are unchanged. Source archival-key authentication, safe-key restart/staging
-facade, full-lease atomic current/run/result and registered runtime remain work.
+consumer trust, privacy and limits are unchanged. Approved-source loading validates
+exact committed run/stage/root capture before config/IO and authenticates retained
+exact-source PUBLIC Ed25519 key in a separate archive-only trust view. This permits
+reading an already-approved revoked/noncurrent source, never accepting a revoked
+new signature or changing ordinary PUBLISH. Root identity adaptation is private
+attribution only; original source bytes/signature remain pinned. Safe-key restart/
+staging server now binds the higher-sequence actual signature before IO, PUTs only
+the new manifest, awaits settlement and records staging after fresh lease/rights/
+current-trust admission. Pending binding reuses exact bytes without signing;
+revoked pending key denies recovery. Snapshot-owned finish atomically publishes
+current/run under final full lease/current trust and permissions. Committed run
+replay needs no config/IO/fresh rights and does not rewind newer current. Operational
+SUCCESS must still be added to that atomic cut; adapter/registered runtime remain work.
 
 ## Streaming raw artifacts — remediation foundation
 

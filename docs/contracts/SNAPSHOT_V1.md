@@ -68,10 +68,48 @@ GETs and fixed limits, without recompression or extra IO; ordinary selected
 PUBLISH still receives only verified manifest/datasets. This byte-reuse seam does
 not prove database source approval or relax revoked/current/next consumer trust.
 
-This repository is internal, not a registered executable rollback. Source GET
-authentication with retained archival public key, safe current-key signing/restart
-facade, atomic current/run/request success and runtime registration remain
-required. Synthetic tests compose the actual signer and
+The snapshot-private approved-source loader checks an exact scoped committed
+DeliveryRun plus completed stage/binding and validates its immutable root capture
+in one bounded RepeatableRead cut, before public configuration or artifact GET.
+Stage-only and mismatched run metadata are not approval. Only the retained exact
+source PUBLIC Ed25519 key may authenticate these already-approved archived bytes;
+missing/private/invalid/wrong keys fail closed. A separate local archive-only
+trust object permits this key even after consumer revocation/rotation, without
+mutating live trust or changing ordinary PUBLISH/new-signature policy. All content,
+privacy, signature, scope and resource limits still apply.
+
+Rollback-of-rollback preserves the original source manifest and compressed bytes.
+An internal attribution-only copy changes sequence/generatedAt/publishedAt to the
+validated root capture identity for the existing strict attribution checks. This
+copy is never returned as a cryptographically verified or publishable artifact;
+schema, catalog/source revisions, file descriptors and datasets remain unchanged.
+No fresh permission, full lease, new signature, stage or current/run/result write
+is implied by this read seam.
+
+The internal rollback staging server reserves identity under the full accepted
+lease before configuration/IO. It authenticates approved source bytes, composes
+only the higher-sequence manifest, checks the new signing key against live
+current/next/non-revoked public trust before resolving its SecretRef, uses the
+actual Ed25519 signer, and pins the signature under fresh historical permission
+and a current full lease. Existing pending binding never resolves signing or
+changes signature/sequence/time; a revoked bound key fails before archive GET/PUT.
+Only the new manifest is PUT, and its owned IO is awaited before a fresh lease,
+permission and current-trust cut records staging. Completed stage skips this PUT.
+
+Its snapshot-owned finish closure checks full lease, fresh historical permission
+and current signature/sequence policy inside the caller's short transaction,
+then writes current and DeliveryRun atomically. Caller mutation cannot retarget
+the captured lease or metadata. Committed matching run replays before config,
+signing, artifacts, cancellation or fresh rights and never rewinds a newer current.
+If another invocation commits after initial inspection or during owned IO failure,
+a fresh locked full-lease/identity recheck may recover the exact committed run;
+lost lease cannot use this fallback. Otherwise the original failure is retained.
+This closure does not itself settle the operational request; operational SUCCESS
+must join the same transaction through a separate validated adapter/result guard.
+
+These seams are internal, not a registered executable rollback. Full-lease atomic
+current/run/request success, combined-worker capability and runtime registration
+remain required. Synthetic tests compose the actual signer and
 storage/domain repositories to prove the metadata boundary, not a completed
 operational executor or provider/production activation.
 

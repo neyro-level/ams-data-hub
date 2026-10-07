@@ -207,15 +207,31 @@ history и не меняет sequence/signature identity. Forward migration не
 pg_locks contention, stale lease, malformed canonical bytes, source/root/lease
 forgery, scope NULL/empty denial, overflow и prior-rollback ancestry. Architecture
 428/1447, RLS coverage 53 models, docs и secrets PASS. Это internal repository
-proof, не rollback execution: safe-key recovery, owned manifest-only staging,
-full-lease atomic current/run/result и operational runtime ещё открыты.
+proof, не зарегистрированный rollback executor. Для атомарного operational
+current/run/result и runtime нужны отдельные adapter/result guard и capability.
 Bounded reader теперь возвращает snapshot-private composition с исходными
 authenticated compressed bytes без recompression/extra GET; обычный PUBLISH API
 не раскрывает bodies. Native staging matrix — 58/58 PASS, 56 migrations, 47,97s,
 final reset; 52 scoped units PASS. Byte identity, fourteen bounded GETs, stream
 cleanup, revoked-key denial и private-field rejection проверены. Types/lint и
 architecture 428/1448 PASS; scoped architect review без actionable findings.
-Это unchanged-file prerequisite, не архивный trust или operational rollback.
+Сам byte-reader не даёт архивное approval или operational rollback.
+Следующий internal server seam проверяет committed run/stage/root capture до
+config/GET и допускает retained exact-source PUBLIC Ed25519 key для чтения старого
+approved artifact, включая revoked/noncurrent key; consumer/new-key trust не
+ослаблен. Actual signer создаёт higher-sequence manifest, durable binding до IO,
+manifest-only awaited PUT и staged marker после fresh full lease/permissions/trust.
+Pending identity переживает key rotation/takeover без нового signing/sequence.
+Snapshot-owned finish проверяет fresh rights/current trust и атомарно пишет
+current/run; lost lease/stale sequence/revoked pending key fail closed. Committed
+replay config-free, без rewind нового current; concurrent commit после initial
+cut/во время PUT failure подтверждён повторным locked full-lease lookup.
+Найденный архитектором P2 отсутствующего concurrent recovery исправлен; повторный
+review без новых findings. Final native matrix — 86/86 PASS, 56 migrations,
+73,39s, final reset, включая held-PUT cancellation/settlement. 65 scoped units,
+prod/test types, lint, architecture430/1471, docs/secrets PASS. Request в этих
+snapshot-owned fixtures остаётся RUNNING: operational SUCCESS в том же cut,
+реальный adapter и combined-worker runtime ещё не реализованы.
 MP-08.1 остаётся IN_PROGRESS, зарегистрированы только три из шести executors.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
