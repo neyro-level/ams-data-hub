@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
-import { PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
 import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
@@ -17,6 +17,7 @@ import * as transactionRuntime from "../../src/platform/database/transaction.ts"
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { createMediaSnapshotFactReader } from "../../src/modules/media-assets/server.ts";
 import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 
 const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-input-admin", correlationId: "synthetic-input" };
 async function setup() {
@@ -40,6 +41,21 @@ function worker<T>(scope: { organizationId: string; projectId: string }, execute
     return execute(tx);
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 }
+async function captureWithWorkerRole(scope: { organizationId: string; projectId: string }, idempotencyKey: string) {
+  const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
+  const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
+    async (context, execute, options) => original(context, async (tx) => {
+      if (context.actorId === "snapshot-input") {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+          .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      }
+      return execute(tx);
+    }, options));
+  try { return await captureSnapshotInput(createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" }),
+    { ...scope, idempotencyKey, schemaMinor: 0 }); }
+  finally { role.mockRestore(); }
+}
 function parts() {
   const builder = new SnapshotInputPartsBuilder();
   for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind, kind === "catalog" ? [{ uid: "synthetic", version: 1 }] : []);
@@ -47,12 +63,121 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it("runs the complete command and replays its immutable input after live facts change", async () => {
+    const scope = await setup();
+    const developerUid = createUlid(); const developmentUid = createUlid(); const agentUid = createUlid();
+    const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        mode: "ALL_SHARED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+      await tx.developer.create({ data: { uid: developerUid, name: "Synthetic capture developer", normalizedName: "synthetic capture developer" } });
+      await tx.development.create({ data: { uid: developmentUid, developerUid, cityUid: "01M41T6Q04BADHXSERJHZFXKCH",
+        name: "Captured development", normalizedName: "captured development" } });
+      await tx.projectPublicContact.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId, phone: "+70000000001", messengers: [] } });
+      const asset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)), byteSize: 100, contentType: "image/jpeg",
+        originalFileName: "synthetic-private-filename", rightsBasis: "OWNED", source: "synthetic-private-source", uploadedBy: "synthetic" } });
+      await tx.agent.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId, uid: agentUid,
+        slug: "synthetic-capture-agent", fullName: "Synthetic consented agent", showOnSite: true,
+        consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-private-actor", consentBasis: "synthetic-private-basis", photoMediaId: asset.id } });
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-command", name: "Synthetic command", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+        profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      const inventoryUid = createUlid(); const image = "https://private.example.invalid/captured.jpg";
+      const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
+      await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId: "captured",
+        inventoryUid, recordHash: "b".repeat(64), orderKey: "6361707475726564",
+        payload: { schemaVersion: 1, draft: { imageUrls: [image, image], contactPhones: ["synthetic-private-phone"] }, rawRecord: { private: true } } } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawStorageKey: "synthetic-private-raw", rawArtifactHash: "c".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+      await tx.inventoryIdentity.create({ data: { ...where, uid: inventoryUid, externalOfferId: "captured", normalizedHash: "b".repeat(64),
+        sourceHash: "c".repeat(64), status: "ACTIVE", firstSeenAt: new Date(), lastSeenAt: new Date() } });
+      await tx.mediaSource.create({ data: { ...where, sourceRevisionId: revision.id, entityType: "INVENTORY", entityUid: inventoryUid,
+        kind: "LISTING_IMAGE", position: 999, sourceUrl: image, canonicalSourceUrl: image, status: "MIRRORED", assetId: asset.id,
+        firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
+      await tx.priceObservation.create({ data: { ...where, developmentUid, externalId: "synthetic-price", observedAt: new Date(), amount: "12345.67", currency: "RUB", basis: "TOTAL" } });
+      return { assetId: asset.id, inventoryUid };
+    });
+    const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let workerTransactions = 0;
+    const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
+      async (context, execute, options) => original(context, async (tx) => {
+        if (context.actorId === "snapshot-input") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+          workerTransactions++;
+        }
+        return execute(tx);
+      }, options));
+    const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+    const request = { organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-complete", schemaMinor: 0 };
+    try {
+      const first = await captureSnapshotInput(principal, request);
+      const pinned = structuredClone(first);
+      expect(first.publishSequence).toBe(1);
+      expect([...new Set(first.parts.map((part) => part.kind))]).toEqual([...SNAPSHOT_INPUT_PART_KINDS]);
+      expect(first.catalogRevision).toMatch(/^[a-f0-9]{64}$/u);
+      const values = (kind: typeof SNAPSHOT_INPUT_PART_KINDS[number], receipt = first) => receipt.parts.filter((part) => part.kind === kind).flatMap((part) => part.payload);
+      expect(values("inventory")).toContainEqual(expect.objectContaining({ uid: fixture.inventoryUid }));
+      expect(values("prices")).toContainEqual(expect.objectContaining({ amount: "12345.67" }));
+      expect(values("agents")).toContainEqual(expect.objectContaining({ uid: agentUid }));
+      expect(values("media").filter((row) => typeof row === "object" && row && "inventoryUid" in row)).toHaveLength(2);
+      expect(JSON.stringify(first.parts)).not.toMatch(/https:|synthetic-private|rawRecord|contactPhones|originalFileName|consentBasis|consentConfirmedBy/u);
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.development.update({ where: { uid: developmentUid }, data: { name: "Changed development", normalizedName: "changed development", version: { increment: 1 } } });
+        await tx.projectPublicContact.update({ where: { organizationId_projectId: { organizationId: scope.organizationId,
+          projectId: scope.projectId } }, data: { phone: "+70000000002", version: { increment: 1 } } });
+        await tx.agent.update({ where: { uid: agentUid }, data: { consentConfirmedAt: null, version: { increment: 1 } } });
+        await tx.mediaAsset.update({ where: { id: fixture.assetId }, data: { storageKey: "synthetic-wrong-object-key" } });
+        await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: { organizationId: scope.organizationId, projectId: scope.projectId } } });
+      });
+      // Caller mutation cannot change the persisted parts returned by replay.
+      first.parts[0]!.payload.length = 0;
+      expect(await captureSnapshotInput(principal, request)).toEqual(pinned);
+      await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
+      await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
+      await worker(scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count()).toBe(1);
+        expect((await tx.projectSnapshotSequence.findFirstOrThrow()).lastReservedSequence).toBe(1);
+      });
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCatalogSubscription.create({ data: {
+        organizationId: scope.organizationId, projectId: scope.projectId, mode: "CURATED", version: 2,
+        cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } }, selections: { create: { developmentUid, decision: "INCLUDE" } } } }));
+      const second = await captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-second" });
+      expect(second.publishSequence).toBe(2);
+      expect(second.catalogRevision).not.toBe(pinned.catalogRevision);
+      expect(values("agents", second)).toEqual([]);
+      expect(values("contacts", second)).toContainEqual(expect.objectContaining({ phone: "+70000000002", version: 2 }));
+      expect(second.inputHash).not.toBe(pinned.inputHash);
+      await expect(captureSnapshotInput(principal, { ...request, projectId: scope.foreignProjectId })).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      await expect(captureSnapshotInput(principal, request)).rejects.toThrow("SNAPSHOT_INPUT_JOBS_FROZEN");
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.dataSafetyState.update({ where: { id: "global" },
+        data: { jobsFrozen: false, unfrozenAt: new Date() } }));
+      const concurrent = await Promise.all([1, 2].map(() => captureSnapshotInput(principal,
+        { ...request, idempotencyKey: "synthetic-concurrent" })));
+      expect(concurrent[0]).toEqual(concurrent[1]);
+      expect(concurrent[0]!.publishSequence).toBe(3);
+      await worker(scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count()).toBe(3);
+        expect((await tx.projectSnapshotSequence.findFirstOrThrow()).lastReservedSequence).toBe(3);
+      });
+      expect(workerTransactions).toBeGreaterThanOrEqual(10);
+    } finally { role.mockRestore(); }
+  }, 60_000);
+
   it("captures 4100 inventory pins with page-bounded SQL inside the actual worker timeout", async () => {
     const scope = await setup();
     const identities = Array.from({ length: 4100 }, (_, index) => ({ uid: createUlid(), externalId: `synthetic-page-${index}` }));
     // Fixture construction has its own bounded allowance; the worker assertion
     // below still exercises the unchanged real 30-second capture contract.
-    await runInAuthorizedDatabaseTransaction(transactionRuntime.createDatabaseAuthorizationContext(admin), async (tx) => {
+    const fixture = await runInAuthorizedDatabaseTransaction(transactionRuntime.createDatabaseAuthorizationContext(admin), async (tx) => {
       const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sourceKey: "synthetic-page", name: "Synthetic page", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
         profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
@@ -74,6 +199,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
       await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
       await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+      return { sourceId: source.id };
     }, { timeout: 30_000 });
     await worker(scope, async (tx) => {
       const queries = vi.spyOn(tx, "$queryRaw");
@@ -104,7 +230,44 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=64 elapsed_ms=${elapsedMs}`);
       } finally { queries.mockRestore(); relations.mockRestore(); }
     });
-  }, 60_000);
+    const images = ["https://private.example.invalid/a.jpg", "https://private.example.invalid/b.jpg"];
+    await runInAuthorizedDatabaseTransaction(transactionRuntime.createDatabaseAuthorizationContext(admin), async (tx) => {
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: fixture.sourceId };
+      const source = await tx.source.findUniqueOrThrow({ where: { id: fixture.sourceId } });
+      await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+      const asset = await tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)), contentType: "image/jpeg", byteSize: 100,
+        originalFileName: "synthetic-private-filename", source: "synthetic-private-source", rightsBasis: "OWNED", uploadedBy: "synthetic" } });
+      const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: identities.length } });
+      for (let offset = 0; offset < identities.length; offset += 200) {
+        const page = identities.slice(offset, offset + 200);
+        await tx.sourceRevisionRecord.createMany({ data: page.map((identity) => ({ ...where, revisionId: revision.id,
+          externalId: identity.externalId, inventoryUid: identity.uid, recordHash: "b".repeat(64),
+          orderKey: Buffer.from(identity.externalId).toString("hex"), payload: { schemaVersion: 1, draft: { imageUrls: images } } })) });
+        await tx.mediaSource.createMany({ data: page.flatMap((identity) => images.map((sourceUrl, position) => ({ ...where,
+          sourceRevisionId: revision.id, entityType: "INVENTORY", entityUid: identity.uid, kind: "LISTING_IMAGE" as const,
+          position, sourceUrl, canonicalSourceUrl: sourceUrl, status: "MIRRORED" as const, assetId: asset.id,
+          firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() }))) });
+      }
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 2,
+        rawStorageKey: "synthetic-page-images", rawArtifactHash: "d".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+    }, { timeout: 30_000 });
+    const exactScope = { organizationId: scope.organizationId, projectId: scope.projectId };
+    const startedAt = performance.now();
+    const receipt = await captureWithWorkerRole(exactScope, "synthetic-full-capacity");
+    expect(performance.now() - startedAt).toBeLessThan(30_000);
+    expect(receipt.publishSequence).toBe(1);
+    expect(receipt.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload)).toHaveLength(4100);
+    expect(receipt.parts.filter((part) => part.kind === "media").flatMap((part) => part.payload)).toHaveLength(8200);
+    expect([...new Set(receipt.parts.map((part) => part.kind))]).toEqual([...SNAPSHOT_INPUT_PART_KINDS]);
+    expect(await captureWithWorkerRole(exactScope, "synthetic-full-capacity")).toEqual(receipt);
+  }, 120_000);
 
   it("pins scoped shared observation mirrors without requiring an XML revision for manual imports", async () => {
     const scope = await setup();

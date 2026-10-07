@@ -167,9 +167,8 @@ notes, media-order policy and persistent URL entries/reservations, redirects,
 tombstones, confirmed listing links and lifecycle facts in that same caller cut.
 Reservations without an entry remain pinned; no replacement public URL IDs are
 allocated during capture. Private consent actors/bases and non-publishable agent
-data are not selected. These are private input facts, not public DTOs: media
-association capture, full resolver composition and its native replay proof
-remain required before MP-05.1 completion.
+data are not selected. These are private input facts, not public DTOs; the
+complete command now composes them with media association capture below.
 
 Catalog candidate capture returns its bounded development UID closure. Own-project
 price/shared-media observations are selected only within that closure and pinned
@@ -208,8 +207,12 @@ do not need a fabricated XML revision: SHARED_OBSERVATION_MIRROR records the
 actual association, not GOOD-backed feed provenance. Captured shared-media facts
 remain the rights/attribution-marker source for future projectors; no live reads
 may substitute changed rights or remirrored assets during replay.
-Complete resolver composition and immutable receipt replay proof remain pending,
-so this is not MP-05.1 completion.
+The private `captureSnapshotInput` command now composes all readers and persists
+all 18 sections with a positive sequence in one transaction. Its receipt-first
+path skips fact rematerialization but still requires fresh current admission.
+Every retry constructs a new builder. Catalog revision hashes captured catalog
+values; project-state revision is the base Project version, with full captured
+version/value parts and input hash identifying the complete state.
 Inventory media capture now validates up to 200 pins with one scoped bulk query,
 then reads mirrors in keyset pages of 200. Current and historical image membership
 queries return at most 1 MiB of arrays or small split markers; normalized leaves
@@ -220,8 +223,14 @@ keeps Source and media capture in the same cut and propagates failures.
 Native NOBYPASS Source-to-media capture of 4100 image-less identities now uses
 64 raw SQL calls and passes the actual 30-second worker transaction. Unit tests
 cover split accumulation and combined current/historical URL-budget exhaustion.
-Full resolver throughput (including image-bearing cases and persisted replay)
-is still required before supported complete-build capacity is claimed.
+The complete command additionally passes native capture of 4100 image-bearing
+identities and 8200 media positions within the unchanged 30-second transaction
+limit, followed by persisted replay. The 16-test native suite also proves
+immutable replay after live facts change, concurrent same-key requests, atomic
+rollback, foreign-scope denial and fresh freeze admission. This proves the
+private input-capture boundary, not 13-dataset projection, signing, publication
+or production capacity. Strict task closure still requires the clean pushed
+implementation checkpoint and Task Manager evidence.
 
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final

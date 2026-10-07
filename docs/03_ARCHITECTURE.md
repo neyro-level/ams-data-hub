@@ -114,8 +114,8 @@ remediation program preserves these boundaries while connecting them:
   transaction-bound inserts, immutable post-commit state, request/input hashes
   and bounded replay. A positive sequence is reserved atomically with capture;
   the scoped counter floors existing current/delivery/input sequences. Complete
-  transaction-bound DB fact resolution and its native proof are still pending;
-  this foundation is not a working public assembly/publication pipeline.
+  transaction-bound DB fact resolution is now composed by the private
+  `captureSnapshotInput` command. It is not a public assembly/publication pipeline.
   Transaction-bound shared-catalog and Source fact readers capture the scoped
   subscription candidate closure and exact GOOD identity/hash membership,
   including historical grace facts. Profile configuration is pinned once per
@@ -147,7 +147,9 @@ remediation program preserves these boundaries while connecting them:
   historical requests deduplicated per inventory/revision and released per page.
   This bounds retained representations, not process RSS. Native Source-to-media
   capture of 4100 image-less identities uses 64 raw SQL calls and passes the
-  actual 30-second worker transaction; this is not full resolver capacity proof.
+  actual 30-second worker transaction. The complete command additionally captures
+  4100 image-bearing identities and 8200 media positions within that unchanged
+  transaction limit, then replays the persisted receipt.
   Object HEAD and public media projection are outside
   the DB capture transaction. Agent capture pins both assigned photo slots under
   ACTIVE/visibility/consent gates, using scoped asset facts and an explicit
@@ -157,8 +159,14 @@ remediation program preserves these boundaries while connecting them:
   rights markers without requiring XML revisions for manual imports. Its
   SHARED_OBSERVATION_MIRROR marker is not a GOOD feed claim. Public projectors
   must use captured observation rights and fail closed on missing feed provenance.
-  Concrete command composition is still pending; native fact-reader/admission
-  proof is not full build proof.
+  The command persists all 18 sections atomically and creates a fresh builder
+  per transaction retry. Native NOBYPASS tests prove immutable replay after live
+  facts change, concurrent same-key capture, rollback and fresh freeze admission.
+  Replay skips fact rematerialization, not the current admission check.
+  `projectStateRevision` is the base Project version; captured version/value
+  parts and their input hash identify the complete state. `catalogRevision`
+  hashes captured catalog values, not a global sequence. Public projection,
+  signing and publication remain pending; input capture is not full build proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
