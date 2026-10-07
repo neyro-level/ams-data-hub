@@ -45,64 +45,123 @@ export function createMediaSnapshotFactReader(transaction: DatabaseTransaction, 
     if (buffer.length >= 200 || bytes + length + Number(buffer.length > 0) > 1048576) flush();
     bytes += length + Number(buffer.length > 0); buffer.push(row);
   }
-  async function images(scope: MediaSnapshotFactScope, pin: InventorySnapshotMediaPin,
-    revisionId: string, maxSequence: number, expectedHash: string | null): Promise<string[] | null> {
-    const rows = await transaction.$queryRaw<{ images: unknown }[]>(Prisma.sql`
-      SELECT CASE WHEN octet_length((r."payload" #> '{draft,imageUrls}')::text) <= 1048576
-        THEN r."payload" #> '{draft,imageUrls}' ELSE NULL END AS images
-      FROM "SourceRevisionRecord" r JOIN "SourceRevision" v ON v."id" = r."revisionId"
-        AND v."organizationId" = r."organizationId" AND v."projectId" = r."projectId" AND v."sourceId" = r."sourceId"
-      WHERE r."organizationId" = ${scope.organizationId} AND r."projectId" = ${scope.projectId}
-        AND r."sourceId" = ${pin.sourceId} AND r."revisionId" = ${revisionId}
-        AND r."inventoryUid" = ${pin.inventoryUid} AND r."externalId" = ${pin.externalOfferId}
-        AND (${expectedHash}::text IS NULL OR r."recordHash" = ${expectedHash})
-        AND v."status" = 'GOOD' AND v."sequence" <= ${maxSequence}
-      LIMIT 2
+  type ImageRequest = { pin: InventorySnapshotMediaPin; revisionId: string; expectedHash: string | null };
+  type UrlBudget = { bytes: number };
+  const retainedUrlBytes = (values: readonly (string[] | null)[]) =>
+    values.reduce((sum, value) => sum + (value ? canonicalJsonBytes(value).byteLength : 0), 0);
+  async function imagePage(scope: MediaSnapshotFactScope, requests: readonly ImageRequest[], budget: UrlBudget): Promise<(string[] | null)[]> {
+    if (!requests.length) return [];
+    const values = requests.map(({ pin, revisionId, expectedHash }, index) => Prisma.sql`(${index}::int,
+      ${pin.sourceId}::text, ${pin.inventoryUid}::text, ${pin.externalOfferId}::text, ${revisionId}::text,
+      ${pin.factRevisionSequence}::int, ${expectedHash}::text)`);
+    const rows = await transaction.$queryRaw<{ index: number; found: boolean; oversized: boolean; images: unknown }[]>(Prisma.sql`
+      WITH requested("index", "sourceId", "uid", "externalId", "revisionId", "maxSequence", "hash") AS (VALUES ${Prisma.join(values)}),
+      selected AS (
+        SELECT q."index", r."externalId" IS NOT NULL AS found, r.images
+        FROM requested q LEFT JOIN LATERAL (
+          SELECT r."externalId", r."payload" #> '{draft,imageUrls}' AS images
+          FROM "SourceRevisionRecord" r JOIN "SourceRevision" v ON v."id" = r."revisionId"
+            AND v."organizationId" = r."organizationId" AND v."projectId" = r."projectId" AND v."sourceId" = r."sourceId"
+          WHERE r."organizationId" = ${scope.organizationId} AND r."projectId" = ${scope.projectId}
+            AND r."sourceId" = q."sourceId" AND r."revisionId" = q."revisionId"
+            AND r."inventoryUid" = q.uid AND r."externalId" = q."externalId"
+            AND (q.hash IS NULL OR r."recordHash" = q.hash) AND v."status" = 'GOOD' AND v."sequence" <= q."maxSequence"
+          LIMIT 2
+        ) r ON true
+      )
+      SELECT "index", found, SUM(COALESCE(octet_length(images::text), 0)) OVER () > 1048576 AS oversized,
+        CASE WHEN SUM(COALESCE(octet_length(images::text), 0)) OVER () <= 1048576 THEN images ELSE NULL END AS images
+      FROM selected ORDER BY "index"
     `);
-    if (rows.length !== 1) return null;
-    const value = rows[0]!.images;
-    if (!Array.isArray(value) || value.length > 500
-      || value.some((url) => typeof url !== "string" || url.length > 2048)) throw invalid();
-    try { return (value as string[]).map(canonicalizeMediaSourceUrl); } catch { throw invalid(); }
+    // SQL returns only small markers when the raw image page is too large.
+    // Split before materializing URLs rather than lowering supported per-record capacity.
+    if (rows.some((row) => row.oversized)) {
+      if (requests.length === 1) throw invalid();
+      const middle = Math.floor(requests.length / 2);
+      const left = await imagePage(scope, requests.slice(0, middle), budget);
+      const right = await imagePage(scope, requests.slice(middle), budget);
+      return [...left, ...right];
+    }
+    return requests.map((_request, index) => {
+      const matches = rows.filter((row) => row.index === index);
+      if (matches.length !== 1 || !matches[0]!.found) return null;
+      const value = matches[0]!.images;
+      if (!Array.isArray(value) || value.length > 500
+        || value.some((url) => typeof url !== "string" || url.length > 2048)) throw invalid();
+      let images: string[];
+      try { images = (value as string[]).map(canonicalizeMediaSourceUrl); } catch { throw invalid(); }
+      budget.bytes += canonicalJsonBytes(images).byteLength;
+      if (budget.bytes > 32 * 1024 * 1024) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      return images;
+    });
   }
-  return {
-    async captureInventory(scope: MediaSnapshotFactScope, pin: InventorySnapshotMediaPin): Promise<void> {
+  async function captureInventoryPage(scope: MediaSnapshotFactScope, pins: readonly InventorySnapshotMediaPin[]): Promise<void> {
       if (failed || finished) throw new Error("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");
       failed = true;
-      if (!Number.isSafeInteger(pin.factRevisionSequence) || pin.factRevisionSequence <= 0
-        || pin.factRevisionSequence > pin.approvedHeadSequence) throw invalid();
-      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: pin.sourceId };
-      const [identity, head, fact, source] = await Promise.all([
-        transaction.inventoryIdentity.count({ where: { ...where, uid: pin.inventoryUid, externalOfferId: pin.externalOfferId,
-          normalizedHash: pin.normalizedHash, status: "ACTIVE" } }),
-        transaction.sourceRevision.count({ where: { ...where, id: pin.approvedHeadId, status: "GOOD", sequence: pin.approvedHeadSequence } }),
-        transaction.sourceRevision.count({ where: { ...where, id: pin.factRevisionId, status: "GOOD", sequence: pin.factRevisionSequence } }),
-        transaction.source.count({ where: { organizationId: scope.organizationId, projectId: scope.projectId,
-          id: pin.sourceId, lastGoodRevisionId: pin.approvedHeadId } }),
-      ]);
-      if (identity !== 1 || head !== 1 || fact !== 1 || source !== 1) throw invalid();
-      const orderedImages = await images(scope, pin, pin.factRevisionId, pin.factRevisionSequence, pin.normalizedHash);
-      if (!orderedImages) throw invalid();
-      const relations = await transaction.mediaSource.findMany({ where: { ...where, entityType: "INVENTORY",
-        entityUid: pin.inventoryUid, kind: "LISTING_IMAGE", canonicalSourceUrl: { in: [...new Set(orderedImages)] } },
-        orderBy: { id: "asc" }, take: 501, select: { id: true, sourceRevisionId: true, canonicalSourceUrl: true,
-          status: true, mirroredAt: true, updatedAt: true, asset: { select: assetSelect } } });
-      if (relations.length > 500) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
-      const eligible = new Map<string, CanonicalJsonValue>();
-      for (const relation of relations) {
-        const asset = relation.asset;
-        if (!relation.mirroredAt || !eligibleAsset(scope, asset)) continue;
-        const membership = relation.sourceRevisionId === pin.factRevisionId ? orderedImages
-          : await images(scope, pin, relation.sourceRevisionId, pin.factRevisionSequence, null);
-        if (!membership?.includes(relation.canonicalSourceUrl)) continue;
-        eligible.set(relation.canonicalSourceUrl, json({ sourceId: pin.sourceId, inventoryUid: pin.inventoryUid,
+      if (pins.length > 200) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      if (pins.some((pin) => !Number.isSafeInteger(pin.factRevisionSequence) || pin.factRevisionSequence <= 0
+        || !Number.isSafeInteger(pin.approvedHeadSequence) || pin.approvedHeadSequence > 2_147_483_647
+        || pin.factRevisionSequence > pin.approvedHeadSequence)
+        || new Set(pins.map((pin) => pin.inventoryUid)).size !== pins.length) throw invalid();
+      if (!pins.length) { failed = false; return; }
+      const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.sourceId}::text,
+        ${pin.inventoryUid}::text, ${pin.externalOfferId}::text, ${pin.normalizedHash}::text,
+        ${pin.factRevisionId}::text, ${pin.factRevisionSequence}::int, ${pin.approvedHeadId}::text, ${pin.approvedHeadSequence}::int)`);
+      const valid = await transaction.$queryRaw<{ index: number }[]>(Prisma.sql`
+        WITH requested("index", "sourceId", uid, "externalId", hash, fact, "factSequence", head, "headSequence") AS (VALUES ${Prisma.join(values)})
+        SELECT q."index" FROM requested q
+        JOIN "InventoryIdentity" i ON i."organizationId" = ${scope.organizationId} AND i."projectId" = ${scope.projectId}
+          AND i."sourceId" = q."sourceId" AND i.uid = q.uid AND i."externalOfferId" = q."externalId"
+          AND i."normalizedHash" = q.hash AND i.status = 'ACTIVE'
+        JOIN "Source" s ON s."organizationId" = i."organizationId" AND s."projectId" = i."projectId"
+          AND s.id = q."sourceId" AND s."lastGoodRevisionId" = q.head
+        JOIN "SourceRevision" h ON h."organizationId" = i."organizationId" AND h."projectId" = i."projectId"
+          AND h."sourceId" = q."sourceId" AND h.id = q.head AND h.status = 'GOOD' AND h.sequence = q."headSequence"
+        JOIN "SourceRevision" f ON f."organizationId" = i."organizationId" AND f."projectId" = i."projectId"
+          AND f."sourceId" = q."sourceId" AND f.id = q.fact AND f.status = 'GOOD' AND f.sequence = q."factSequence"
+      `);
+      if (valid.length !== pins.length || new Set(valid.map((row) => row.index)).size !== pins.length) throw invalid();
+      const urlBudget: UrlBudget = { bytes: 0 };
+      const ordered = await imagePage(scope, pins.map((pin) => ({ pin, revisionId: pin.factRevisionId, expectedHash: pin.normalizedHash })), urlBudget);
+      if (ordered.some((images) => images === null)) throw invalid();
+      if (ordered.reduce((sum, images) => sum + images!.length, 0) > 50_000) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      const byUid = new Map(pins.map((pin, index) => [pin.inventoryUid, { pin, images: ordered[index]!, eligible: new Map<string, CanonicalJsonValue>() }]));
+      const associations = pins.flatMap((pin, index) => ordered[index]!.length ? [{ sourceId: pin.sourceId,
+        entityUid: pin.inventoryUid, canonicalSourceUrl: { in: [...new Set(ordered[index]!)] } }] : []);
+      let cursor = "";
+      let capturedBytes = 0;
+      while (associations.length) {
+        const relations = await transaction.mediaSource.findMany({ where: { organizationId: scope.organizationId,
+          projectId: scope.projectId, entityType: "INVENTORY", kind: "LISTING_IMAGE", OR: associations, id: { gt: cursor } },
+          orderBy: { id: "asc" }, take: 200, select: { id: true, entityUid: true, sourceRevisionId: true, canonicalSourceUrl: true,
+            status: true, mirroredAt: true, updatedAt: true, asset: { select: assetSelect } } });
+        if (!relations.length) break;
+        const older = relations.filter((relation) => relation.sourceRevisionId !== byUid.get(relation.entityUid)!.pin.factRevisionId);
+        const oldKey = (relation: typeof relations[number]) => JSON.stringify([relation.entityUid, relation.sourceRevisionId]);
+        const oldRequests = new Map(older.map((relation) => [oldKey(relation), { pin: byUid.get(relation.entityUid)!.pin,
+          revisionId: relation.sourceRevisionId, expectedHash: null }]));
+        const oldImages = await imagePage(scope, [...oldRequests.values()], urlBudget);
+        const byOldKey = new Map([...oldRequests.keys()].map((key, index) => [key, oldImages[index]]));
+        for (const relation of relations) {
+          const { pin, images, eligible } = byUid.get(relation.entityUid)!;
+          const asset = relation.asset;
+          if (!relation.mirroredAt || !eligibleAsset(scope, asset)) continue;
+          const membership = relation.sourceRevisionId === pin.factRevisionId ? images : byOldKey.get(oldKey(relation));
+          if (!membership?.includes(relation.canonicalSourceUrl)) continue;
+          const candidate = json({ sourceId: pin.sourceId, inventoryUid: pin.inventoryUid,
           factRevisionId: pin.factRevisionId, approvedHeadId: pin.approvedHeadId, recordHash: pin.normalizedHash,
           relationId: relation.id, relationRevisionId: relation.sourceRevisionId, relationUpdatedAt: relation.updatedAt,
           mirrorStatus: relation.status, mirroredAt: relation.mirroredAt,
-          asset: assetFact(asset) }));
+          asset: assetFact(asset) });
+          capturedBytes += canonicalJsonBytes(candidate).byteLength;
+          if (capturedBytes > 32 * 1024 * 1024) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+          eligible.set(relation.canonicalSourceUrl, candidate);
+        }
+        urlBudget.bytes -= retainedUrlBytes(oldImages);
+        cursor = relations[relations.length - 1]!.id;
       }
-      for (let position = 0; position < orderedImages.length; position++) {
-        const candidate = eligible.get(orderedImages[position]!);
+      for (const { pin, images, eligible } of byUid.values()) for (let position = 0; position < images.length; position++) {
+        const candidate = eligible.get(images[position]!);
         if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
           append({ ...candidate, kind: "LISTING_IMAGE", position });
         } else {
@@ -111,6 +170,11 @@ export function createMediaSnapshotFactReader(transaction: DatabaseTransaction, 
         }
       }
       failed = false;
+  }
+  return {
+    captureInventoryPage,
+    async captureInventory(scope: MediaSnapshotFactScope, pin: InventorySnapshotMediaPin): Promise<void> {
+      await captureInventoryPage(scope, [pin]);
     },
     async captureAgents(scope: MediaSnapshotFactScope): Promise<void> {
       if (failed || finished) throw new Error("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");

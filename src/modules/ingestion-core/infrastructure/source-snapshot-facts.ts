@@ -6,7 +6,7 @@ import { adapterProfileRegistry } from "../domain/adapter-profile-registry.ts";
 const PAGE = 200;
 export type SourceSnapshotFactSink = (kind: "sources" | "inventory", records: CanonicalJsonValue[]) => void;
 export interface SourceSnapshotFactScope { organizationId: string; projectId: string }
-interface PinnedInventoryRow {
+export interface SourceSnapshotInventoryFact {
   uid: string; sourceId: string; externalOfferId: string; status: string; version: number;
   normalizedHash: string; sourceHash: string; firstSeenAt: Date; lastSeenAt: Date;
   sourceCreatedAt: Date | null; sourceUpdatedAt: Date | null; missingSince: Date | null; missingGoodRuns: number;
@@ -18,7 +18,8 @@ interface PinnedInventoryRow {
 /** Captures exact immutable GOOD references, never raw records/URLs/phones. */
 export function createSourceSnapshotFactReader(transaction: DatabaseTransaction) {
   return {
-    async capture(scope: SourceSnapshotFactScope, sink: SourceSnapshotFactSink): Promise<void> {
+    async capture(scope: SourceSnapshotFactScope, sink: SourceSnapshotFactSink,
+      visitInventoryPage?: (rows: readonly SourceSnapshotInventoryFact[]) => Promise<void>): Promise<void> {
       const profiles = new Set<string>();
       const pinProfile = (key: string, version: string) => {
         const identity = `${key}@${version}`;
@@ -57,7 +58,7 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
       sink("sources", []);
       after = "";
       while (true) {
-        const rows = await transaction.$queryRaw<PinnedInventoryRow[]>(Prisma.sql`
+        const rows = await transaction.$queryRaw<SourceSnapshotInventoryFact[]>(Prisma.sql`
           SELECT i."uid", i."sourceId", i."externalOfferId", i."status"::text, i."version",
             i."normalizedHash", i."sourceHash", i."firstSeenAt", i."lastSeenAt", i."sourceCreatedAt",
             i."sourceUpdatedAt", i."missingSince", i."missingGoodRuns", i."createdAt", i."updatedAt",
@@ -91,6 +92,7 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
             ? pinProfile(row.factProfileKey, row.factProfileVersion) : null;
           return JSON.parse(JSON.stringify({ ...row, factProfileIdentity })) as CanonicalJsonValue;
         }));
+        if (visitInventoryPage) await visitInventoryPage(rows);
         after = rows.at(-1)!.uid;
       }
       sink("inventory", []);

@@ -1,6 +1,6 @@
 import "server-only";
 export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
-export { createSourceSnapshotFactReader } from "./infrastructure/source-snapshot-facts.ts";
+export { createSourceSnapshotFactReader, type SourceSnapshotInventoryFact } from "./infrastructure/source-snapshot-facts.ts";
 export { createInventoryPublicProjectionServer } from "./infrastructure/inventory-public-projection-server.ts";
 
 import { createUlid } from "@ams-data-hub/data-contracts";

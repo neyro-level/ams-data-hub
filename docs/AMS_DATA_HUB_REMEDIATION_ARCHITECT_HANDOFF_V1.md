@@ -210,9 +210,18 @@ remain the rights/attribution-marker source for future projectors; no live reads
 may substitute changed rights or remirrored assets during replay.
 Complete resolver composition and immutable receipt replay proof remain pending,
 so this is not MP-05.1 completion.
-Batching unit tests prove part-budget behavior, not database throughput: the
-current per-inventory SQL fanout still needs a measured/batched page capture
-seam within the real transaction timeout before supported capacity is claimed.
+Inventory media capture now validates up to 200 pins with one scoped bulk query,
+then reads mirrors in keyset pages of 200. Current and historical image membership
+queries return at most 1 MiB of arrays or small split markers; normalized leaves
+share a 32 MiB retained-URL budget before accumulation. Historical requests are
+deduplicated per inventory/revision and released after each mirror page. This is
+a bound on retained representations, not RSS. The awaited Source page visitor
+keeps Source and media capture in the same cut and propagates failures.
+Native NOBYPASS Source-to-media capture of 4100 image-less identities now uses
+64 raw SQL calls and passes the actual 30-second worker transaction. Unit tests
+cover split accumulation and combined current/historical URL-budget exhaustion.
+Full resolver throughput (including image-bearing cases and persisted replay)
+is still required before supported complete-build capacity is claimed.
 
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final

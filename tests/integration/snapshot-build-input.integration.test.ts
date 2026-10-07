@@ -47,6 +47,65 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it("captures 4100 inventory pins with page-bounded SQL inside the actual worker timeout", async () => {
+    const scope = await setup();
+    const identities = Array.from({ length: 4100 }, (_, index) => ({ uid: createUlid(), externalId: `synthetic-page-${index}` }));
+    // Fixture construction has its own bounded allowance; the worker assertion
+    // below still exercises the unchanged real 30-second capture contract.
+    await runInAuthorizedDatabaseTransaction(transactionRuntime.createDatabaseAuthorizationContext(admin), async (tx) => {
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-page", name: "Synthetic page", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+        profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: identities.length } });
+      for (let offset = 0; offset < identities.length; offset += 200) {
+        const page = identities.slice(offset, offset + 200);
+        await tx.sourceRevisionRecord.createMany({ data: page.map((identity) => ({ ...where, revisionId: revision.id,
+          externalId: identity.externalId, inventoryUid: identity.uid, recordHash: "b".repeat(64),
+          orderKey: Buffer.from(identity.externalId).toString("hex"), payload: { schemaVersion: 1, draft: { imageUrls: [] } } })) });
+        await tx.inventoryIdentity.createMany({ data: page.map((identity) => ({ ...where, uid: identity.uid,
+          externalOfferId: identity.externalId, normalizedHash: "b".repeat(64), sourceHash: "c".repeat(64),
+          status: "ACTIVE", firstSeenAt: new Date(), lastSeenAt: new Date() })) });
+      }
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawStorageKey: "synthetic-page", rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+    }, { timeout: 30_000 });
+    await worker(scope, async (tx) => {
+      const queries = vi.spyOn(tx, "$queryRaw");
+      const relations = vi.spyOn(tx.mediaSource, "findMany");
+      try {
+        const sink = vi.fn(); const reader = createMediaSnapshotFactReader(tx, sink);
+        const startedAt = performance.now();
+        let capturedIdentities = 0;
+        await createSourceSnapshotFactReader(tx).capture(scope, () => undefined, async (page) => {
+          capturedIdentities += page.length;
+          await reader.captureInventoryPage(scope, page.map((row) => {
+            if (!row.factRevisionId || !row.factRevisionSequence || !row.approvedHeadId || !row.approvedHeadSequence) {
+              throw new Error("SYNTHETIC_PAGE_PIN_MISSING");
+            }
+            return { sourceId: row.sourceId, inventoryUid: row.uid, externalOfferId: row.externalOfferId,
+              normalizedHash: row.normalizedHash, factRevisionId: row.factRevisionId,
+              approvedHeadId: row.approvedHeadId, factRevisionSequence: row.factRevisionSequence,
+              approvedHeadSequence: row.approvedHeadSequence };
+          }));
+        });
+        reader.finishCapture();
+        const elapsedMs = Math.round(performance.now() - startedAt);
+        expect(elapsedMs).toBeLessThan(30_000);
+        expect(capturedIdentities).toBe(4100);
+        expect(queries).toHaveBeenCalledTimes(64);
+        expect(relations).not.toHaveBeenCalled();
+        expect(sink).toHaveBeenCalledExactlyOnceWith("media", []);
+        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=64 elapsed_ms=${elapsedMs}`);
+      } finally { queries.mockRestore(); relations.mockRestore(); }
+    });
+  }, 60_000);
+
   it("pins scoped shared observation mirrors without requiring an XML revision for manual imports", async () => {
     const scope = await setup();
     const uid = createUlid(); const excludedUid = createUlid();

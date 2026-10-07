@@ -140,7 +140,15 @@ remediation program preserves these boundaries while connecting them:
   original repeated positions and complete allowlisted asset facts, not just
   mutable relation IDs. It checks Source.LastGood in the same cut and omits
   foreign/future/invalid mirrors; a cross-listing bounded buffer prevents early
-  part-budget exhaustion. Object HEAD and public media projection are outside
+  part-budget exhaustion. Inventory capture now uses pages of at most 200 pins,
+  bulk scoped identity/head/fact checks and keyset-batched mirror queries.
+  SQL returns at most 1 MiB of image arrays or small split markers; a shared
+  32 MiB retained-URL budget covers current and historical memberships, with
+  historical requests deduplicated per inventory/revision and released per page.
+  This bounds retained representations, not process RSS. Native Source-to-media
+  capture of 4100 image-less identities uses 64 raw SQL calls and passes the
+  actual 30-second worker transaction; this is not full resolver capacity proof.
+  Object HEAD and public media projection are outside
   the DB capture transaction. Agent capture pins both assigned photo slots under
   ACTIVE/visibility/consent gates, using scoped asset facts and an explicit
   ASSIGNED_ASSET_ONLY marker; assignment is not approved feed-photo provenance.

@@ -9,12 +9,49 @@ const pin: InventorySnapshotMediaPin = { sourceId: "synthetic-source", inventory
   externalOfferId: "synthetic-offer", normalizedHash: "a".repeat(64), factRevisionId: "synthetic-fact",
   factRevisionSequence: 1, approvedHeadId: "synthetic-head", approvedHeadSequence: 2 };
 function database(imageUrls: string[]) {
-  return { inventoryIdentity: { count: vi.fn(async () => 1) }, sourceRevision: { count: vi.fn(async () => 1) },
-    source: { count: vi.fn(async () => 1) }, $queryRaw: vi.fn(async () => [{ images: imageUrls }]),
+  return { $queryRaw: vi.fn().mockResolvedValueOnce([{ index: 0 }]).mockResolvedValueOnce([
+    { index: 0, found: true, oversized: false, images: imageUrls },
+  ]).mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes("selected AS")
+    ? [{ index: 0, found: true, oversized: false, images: imageUrls }] : [{ index: 0 }]),
     mediaSource: { findMany: vi.fn(async () => []) } } as unknown as DatabaseTransaction;
 }
 
 describe("media capture bounded batching (native tests own eligibility proof)", () => {
+  function oversizedDatabase(imageUrls: string[]) {
+    return { $queryRaw: vi.fn(async (query: { strings: string[]; values: unknown[] }) => {
+      const imageQuery = query.strings.join("").includes("selected AS");
+      const count = imageQuery ? (query.values.length - 2) / 7 : (query.values.length - 2) / 9;
+      return Array.from({ length: count }, (_, index) => imageQuery
+        ? { index, found: true, oversized: count > 1, images: count > 1 ? null : imageUrls } : { index });
+    }), mediaSource: { findMany: vi.fn(async () => []) } } as unknown as DatabaseTransaction;
+  }
+
+  it("charges split URL leaves before accumulated pages exceed the retained budget", async () => {
+    const imageUrls = Array.from({ length: 500 }, (_, index) => `https://example.invalid/${index}/${"x".repeat(1950)}`);
+    const tx = oversizedDatabase(imageUrls); const sink = vi.fn();
+    const reader = createMediaSnapshotFactReader(tx, sink);
+    await expect(reader.captureInventoryPage(scope, Array.from({ length: 35 }, (_, index) =>
+      ({ ...pin, inventoryUid: `synthetic-${index}` })))).rejects.toThrow("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+    expect(tx.mediaSource.findMany).not.toHaveBeenCalled();
+    expect(() => reader.finishCapture()).toThrow("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  it("shares the retained URL budget between current and historical membership arrays", async () => {
+    const imageUrls = Array.from({ length: 500 }, (_, index) => `https://example.invalid/${index}/${"x".repeat(1950)}`);
+    const tx = oversizedDatabase(imageUrls); const sink = vi.fn();
+    vi.mocked(tx.mediaSource.findMany).mockResolvedValueOnce(Array.from({ length: 34 }, (_, index) => ({
+      id: `relation-${index}`, entityUid: pin.inventoryUid, sourceRevisionId: `older-${index}`,
+      canonicalSourceUrl: imageUrls[index]!, status: "MIRRORED", mirroredAt: new Date(0), updatedAt: new Date(0),
+      asset: { ...scope, id: "synthetic", sha256: "b".repeat(64), storageKey: createMediaKey("b".repeat(64)),
+        contentType: "image/jpeg", byteSize: 100, rightsBasis: "OWNED", license: null },
+    })) as never);
+    const reader = createMediaSnapshotFactReader(tx, sink);
+    await expect(reader.captureInventoryPage(scope, [pin])).rejects.toThrow("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+    expect(() => reader.finishCapture()).toThrow("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");
+    expect(sink).not.toHaveBeenCalled();
+  });
+
   it("batches shared associations by observation page, not by asset or development", async () => {
     const observations = Array.from({ length: 201 }, (_, index) => ({ id: `shared-${String(index).padStart(3, "0")}`,
       sourceId: "source", developmentUid: "development", buildingUid: null, kind: "DEVELOPMENT_IMAGE",
@@ -97,7 +134,7 @@ describe("media capture bounded batching (native tests own eligibility proof)", 
     const sink = vi.fn();
     const reader = createMediaSnapshotFactReader(tx, sink);
     await reader.captureInventory(scope, pin);
-    vi.mocked(tx.inventoryIdentity.count).mockResolvedValueOnce(0);
+    vi.mocked(tx.$queryRaw).mockResolvedValueOnce([]);
     await expect(reader.captureInventory(scope, pin)).rejects.toThrow("SNAPSHOT_INPUT_MEDIA_PIN_INVALID");
     expect(() => reader.finishCapture()).toThrow("SNAPSHOT_INPUT_MEDIA_CAPTURE_CLOSED");
     expect(sink).not.toHaveBeenCalled();
