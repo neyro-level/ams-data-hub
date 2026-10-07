@@ -314,6 +314,147 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     } finally { role.mockRestore(); }
   }, 60_000);
 
+  it("selects captured subscriptions without letting confirmed inventory links override exclusions", async () => {
+    const scope = await setup();
+    const target = { organizationId: scope.organizationId, projectId: scope.projectId };
+    const cityA = createUlid(); const cityB = createUlid(); const developerUid = createUlid();
+    const developments = [createUlid(), createUlid(), createUlid()];
+    const buildings = [createUlid(), createUlid(), createUlid()];
+    const inventoryUids = [createUlid(), createUlid()];
+    const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const regionUid = (await tx.city.findUniqueOrThrow({ where: { uid: "01M41T6Q04BADHXSERJHZFXKCH" } })).regionUid;
+      await tx.city.createMany({ data: [cityA, cityB].map((uid) => ({ uid, regionUid, name: `City ${uid}`, normalizedName: uid.toLowerCase() })) });
+      await tx.developer.create({ data: { uid: developerUid, name: "Synthetic selection developer", normalizedName: developerUid.toLowerCase() } });
+      for (const [index, uid] of developments.entries()) await tx.development.create({ data: {
+        uid, developerUid, cityUid: index === 2 ? cityB : cityA, name: `Development ${index}`, normalizedName: uid.toLowerCase(),
+      } });
+      const inactiveDeveloper = createUlid();
+      await tx.developer.create({ data: { uid: inactiveDeveloper, name: "Inactive synthetic developer",
+        normalizedName: inactiveDeveloper.toLowerCase(), lifecycle: "INACTIVE" } });
+      for (const [index, uid] of [createUlid(), createUlid()].entries()) await tx.development.create({ data: {
+        uid, developerUid: index === 0 ? inactiveDeveloper : developerUid, cityUid: cityA,
+        name: `Unpublishable ${index}`, normalizedName: uid.toLowerCase(), mergedIntoUid: index === 1 ? developments[0]! : null,
+      } });
+      for (const [index, uid] of buildings.entries()) await tx.building.create({ data: { uid,
+        developmentUid: developments[0]!, label: `Building ${index}`, normalizedLabel: uid.toLowerCase(),
+        lifecycle: index === 1 ? "INACTIVE" : "ACTIVE", mergedIntoUid: index === 2 ? buildings[0]! : null } });
+      await tx.projectCatalogSubscription.create({ data: { ...target, mode: "ALL_SHARED",
+        cities: { create: { cityUid: cityA } }, selections: { create: [
+          { developmentUid: developments[1]!, decision: "EXCLUDE" }, { developmentUid: developments[2]!, decision: "INCLUDE" },
+        ] } } });
+      const source = await tx.source.create({ data: { ...target, sourceKey: "synthetic-selection", name: "Synthetic selection",
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const where = { ...target, sourceId: source.id };
+      const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 2 } });
+      const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: "2", attributes: {}, children: {} }] } };
+      for (const [index, uid] of inventoryUids.entries()) {
+        const externalId = `selection-${index}`;
+        const draft = { externalId, sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+          title: "Synthetic retained inventory", address: "Synthetic City, house 9", imageUrls: [], contactPhones: [], provenance: {} };
+        const hash = normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields });
+        await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId, inventoryUid: uid,
+          recordHash: hash, orderKey: Buffer.from(externalId).toString("hex"), payload: { schemaVersion: 1, draft, fields } } });
+        await tx.inventoryIdentity.create({ data: { ...where, uid, externalOfferId: externalId, normalizedHash: hash,
+          sourceHash: "c".repeat(64), status: "ACTIVE", firstSeenAt: new Date(), lastSeenAt: new Date() } });
+        await tx.listingDevelopmentLink.create({ data: { ...target, inventoryUid: uid, developmentUid: developments[index + 1]!,
+          candidateReason: "synthetic-confirmed", status: "CONFIRMED", confirmedBy: "synthetic-admin",
+          confirmedAt: new Date(), sourceRevisionId: revision.id } });
+        const reservation = await tx.publicUrlIdReservation.create({ data: { ...target, subjectType: "INVENTORY",
+          subjectUid: uid, publicUrlId: `${index + 4}000000000000000` } });
+        await tx.projectUrlEntry.create({ data: { ...target, entityType: "INVENTORY", entityUid: uid,
+          reservationId: reservation.id, slug: externalId, canonicalPath: `/inventory/${externalId}` } });
+      }
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawStorageKey: "synthetic-selection", rawArtifactHash: "c".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "d".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+      for (const [index, developmentUid] of developments.entries()) {
+        const sha256 = String(index + 1).repeat(64); const image = `https://private.example.invalid/selection-${index}.png`;
+        const asset = await tx.mediaAsset.create({ data: { ...target, sha256, storageKey: createMediaKey(sha256),
+          byteSize: 1, contentType: "image/png", originalFileName: "synthetic-private.png",
+          rightsBasis: "OWNED", source: "synthetic-private", uploadedBy: "synthetic" } });
+        await tx.sharedMediaAsset.create({ data: { ...where, developmentUid, position: 0, externalId: `selection-${index}`,
+          sourceUrl: image, canonicalSourceUrl: image, rightsBasis: "OWNED", observedAt: new Date() } });
+        await tx.mediaSource.create({ data: { ...where, sourceRevisionId: revision.id, entityType: "DEVELOPMENT", entityUid: developmentUid,
+          kind: "DEVELOPMENT_IMAGE", position: 0, sourceUrl: image, canonicalSourceUrl: image, status: "MIRRORED", assetId: asset.id,
+          firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
+        await tx.priceObservation.create({ data: { ...where, developmentUid, externalId: `selection-${index}`,
+          observedAt: new Date(), amount: "100", currency: "RUB", basis: "TOTAL" } });
+        await tx.entityEditorial.create({ data: { ...target, entityType: "DEVELOPMENT", entityUid: developmentUid,
+          description: `Public selection ${index}`, faq: [], mediaOrder: [] } });
+      }
+      const reservation = await tx.publicUrlIdReservation.create({ data: { ...target, subjectType: "DEVELOPMENT",
+        subjectUid: developments[1]!, publicUrlId: "6000000000000000" } });
+      const entry = await tx.projectUrlEntry.create({ data: { ...target, entityType: "DEVELOPMENT", entityUid: developments[1]!,
+        reservationId: reservation.id, slug: "excluded-history", canonicalPath: "/developments/excluded-history" } });
+      await tx.projectRedirect.create({ data: { ...target, urlEntryId: entry.id, fromPath: "/developments/old-excluded",
+        toPath: "/developments/excluded-history", code: 301, reason: "SLUG_CHANGE" } });
+      await tx.projectUrlTombstone.create({ data: { ...target, reservationId: reservation.id, entityType: "DEVELOPMENT",
+        entityUid: developments[1]!, canonicalPath: "/developments/retired-excluded", reason: "RETIRE" } });
+      for (const buildingUid of buildings.slice(1)) await tx.priceObservation.create({ data: { ...where,
+        developmentUid: developments[0]!, buildingUid, externalId: buildingUid, observedAt: new Date(),
+        amount: "200", currency: "RUB", basis: "TOTAL" } });
+      return source.id;
+    });
+    const all = await captureWithWorkerRole(target, "selection-all");
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCatalogSubscription.update({
+      where: { organizationId_projectId: target }, data: { mode: "CURATED", version: { increment: 1 } } }));
+    const curated = await captureWithWorkerRole(target, "selection-curated");
+    const pinned = structuredClone([all, curated]);
+    const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let transactionOpen = false;
+    const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((context, execute, options) =>
+      original(context, async (tx) => {
+        if (context.actorId === "snapshot-input") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+        }
+        transactionOpen = true; try { return await execute(tx); } finally { transactionOpen = false; }
+      }, options));
+    const head = vi.fn(async (key: string) => {
+      expect(transactionOpen).toBe(false);
+      const sha256 = ["1", "3"].map((value) => value.repeat(64)).find((value) => createMediaKey(value) === key);
+      expect(sha256).toBeDefined();
+      return { key, sha256: sha256!, contentType: "image/png", contentLength: 1, etag: null, lastModifiedAt: new Date(0) };
+    });
+    try {
+      const assemble = createSnapshotCandidateAssemblyServer({ ...target, storage: { head } });
+      const principal = createProjectJobPrincipal({ ...target, jobName: "snapshot-input" });
+      const lookup = (receipt: typeof all) => ({ idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash });
+      const first = await assemble(principal, lookup(all)); const second = await assemble(principal, lookup(curated));
+      for (const [result, expected] of [[first, developments[0]!], [second, developments[2]!]] as const) {
+        expect(result.datasets).toHaveLength(13);
+        const records = (kind: typeof SNAPSHOT_DATASET_KINDS[number]) => result.datasets.find((dataset) => dataset.kind === kind)!.records;
+        expect(records("developments").map((record) => record.key)).toEqual([expected]);
+        expect(records("buildings").map((record) => record.key)).toEqual(expected === developments[0] ? [buildings[0]] : []);
+        expect(records("inventory").map((record) => record.key).sort()).toEqual([...inventoryUids].sort());
+        expect(records("prices")).toHaveLength(1); expect(records("editorial")).toHaveLength(1);
+        expect(records("media")).toHaveLength(1); expect(records("redirects")).toHaveLength(1);
+        expect(JSON.stringify(records("urls"))).toContain("excluded-history");
+        expect(JSON.stringify(records("lifecycle"))).toContain("retired-excluded");
+      }
+      expect(head.mock.calls.map(([key]) => key)).toEqual([createMediaKey("1".repeat(64)), createMediaKey("3".repeat(64))]);
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.source.update({ where: { id: fixture }, data: { enabled: false, profileKey: "default-v1", version: { increment: 1 } } });
+        await tx.development.updateMany({ where: { uid: { in: developments } }, data: { lifecycle: "INACTIVE", version: { increment: 1 } } });
+        await tx.listingDevelopmentLink.updateMany({ where: target, data: { status: "REJECTED" } });
+        await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: target } });
+      });
+      expect(await assemble(principal, lookup(all))).toEqual(first);
+      expect(await assemble(principal, lookup(curated))).toEqual(second);
+      expect([all, curated]).toEqual(pinned);
+      const before = head.mock.calls.length;
+      await expect(assemble(createProjectJobPrincipal({ organizationId: scope.organizationId,
+        projectId: scope.foreignProjectId, jobName: "snapshot-input" }), lookup(all))).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      expect(head).toHaveBeenCalledTimes(before);
+    } finally { role.mockRestore(); }
+  }, 60_000);
+
   it("assembles historical GOOD public facts in bounded pages after producer-off without loading a live profile", async () => {
     const scope = await setup(); const uids = Array.from({ length: 201 }, () => createUlid());
     const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: "2", attributes: {}, children: {} }] } };

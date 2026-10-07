@@ -232,6 +232,36 @@ private input-capture boundary, not 13-dataset projection, signing, publication
 or production capacity. Clean pushed implementation checkpoint and strict
 Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
 
+### Active implementation contract: MP-05.3
+
+Select a deterministic public catalog cohort from the immutable captured
+subscription and candidate closure, never by a live subscription query or by
+rewriting receipt parts/hashes. Reuse the existing query semantics: ALL_SHARED
+subscribed cities minus EXCLUDE; CURATED explicit INCLUDE minus EXCLUDE, without
+an implicit city restriction. Development/developer/building must be ACTIVE and
+not merged. Confirmed listing links expand capture, not subscription authority.
+Preserve subscribed-city anchors and selected dependency closure; omit excluded
+catalog owners, their prices, shared media before HEAD and catalog editorial.
+Keep inventory and persistent URL/redirect/tombstone/lifecycle history intact.
+Verify native scoped capture-to-selection/replay, linked exclusions, CURATED
+outside-city inclusion, inactive/merged parents/buildings, zero excluded HEAD,
+reference/privacy integrity, unit/static checks and original capacity limit.
+No production, real feeds/PII, credentials or historical migration changes.
+
+Implemented evidence (2026-10-07): real persisted capture/assembly under the
+NOBYPASS worker selects ALL_SHARED and CURATED across two synthetic cities;
+confirmed excluded/outside links retain both GOOD listings without admitting
+their catalog owners. Inactive developer, merged development and inactive/merged
+buildings are omitted with dependent prices. Distinct shared assets prove only
+selected HEAD calls outside transactions. Nonempty URL/redirect/tombstone history
+survives exclusions; replay remains unchanged after source-off, live lifecycle/
+link edits and subscription deletion. Foreign project is rejected before HEAD.
+Native suites: 21/21 PASS; original 4100/8200 capture stays within 30 seconds
+(16.245 seconds). Targeted units: 41/41 PASS. verify:quick, final test types,
+focused lint, docs canon, secret scan and diff checks PASS. Architect scoped
+static reviews have no actionable findings. External HEAD is synthetic, not a
+live-provider proof; fresh publication gates and MP-05 epic delivery remain open.
+
 ### Active implementation contract: MP-05.2
 
 Unified candidate assembly extension: load only a persisted scoped receipt under

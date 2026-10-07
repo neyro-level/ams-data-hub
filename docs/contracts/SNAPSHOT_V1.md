@@ -102,7 +102,15 @@ transaction and immediately projects public records. No live Source/profile or
 LastGood substitution is allowed. All thirteen actual projectors are invoked;
 exact kinds, declared references and privacy are verified. Aggregate uncompressed
 canonical dataset arrays are capped at 32 MiB including brackets and separators
-across pages. This candidate result does not claim fresh rights/consent/cohort
+across pages. Captured catalog selection uses ALL_SHARED subscribed cities minus
+EXCLUDE, or CURATED explicit INCLUDE minus EXCLUDE without an implicit city
+restriction. Confirmed inventory links expand captured candidates but cannot
+override subscription decisions. Developments/developers and buildings must be
+ACTIVE and unmerged; subscribed-city anchors and selected geo dependencies remain.
+Selected-owner prices, shared media and editorial follow the same cohort; shared
+media filtering precedes HEAD. Inventory and persistent URL/redirect/tombstone/
+lifecycle history remain intact. Selection never changes persisted parts or hashes.
+This candidate result does not claim fresh rights/consent/cohort
 admission, complete source-fact coverage, inferred agent linkage, signing or
 publication. Later plan steps must supply those proofs.
 

@@ -217,7 +217,14 @@ remediation program preserves these boundaries while connecting them:
   performs HEAD outside DB, resolves immutable GOOD in pages of at most 200 and
   immediately projects public records. Exact thirteen-dataset references/privacy
   are checked; aggregate canonical array work is capped at 32 MiB including
-  brackets and page-spanning separators. This is not signing/publication;
+  brackets and page-spanning separators. Captured subscription selection applies
+  ALL_SHARED city scope or CURATED explicit INCLUDE, with EXCLUDE taking priority
+  over confirmed listing links. ACTIVE, unmerged developments and developers
+  determine the cohort; only ACTIVE, unmerged buildings survive. Geo anchors and
+  selected dependencies remain; prices, shared media (before HEAD) and editorial
+  follow selected owners. Inventory and persistent URL history are not pruned.
+  No live subscription lookup or receipt/hash rewriting occurs.
+  This is not signing/publication;
   complete fact preservation and confirmed agent linkage remain unfinished steps;
   fresh consent/rights/publication admission is not replaced by captured replay.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`

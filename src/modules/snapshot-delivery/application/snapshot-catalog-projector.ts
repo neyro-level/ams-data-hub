@@ -6,6 +6,7 @@ import type { SnapshotDatasetInput, SnapshotDatasetKind, SnapshotRecordReference
 import { assertSnapshotPrivacySafe } from "../domain/privacy-scanner.ts";
 import { snapshotInputHash, type SnapshotBuildInputReceipt } from "./snapshot-build-input.ts";
 import { validateSnapshotInput } from "./snapshot-input-validation.ts";
+import type { SnapshotCatalogSelection } from "./snapshot-catalog-selection.ts";
 
 const name = z.string().trim().min(1).max(160);
 const catalogName = z.string().trim().min(1).max(200);
@@ -43,7 +44,7 @@ function publicAliases(value: CanonicalJsonValue | undefined): string[] {
 }
 
 /** Candidate closure projection only. Subscription policy filtering is a separate step. */
-export function projectSnapshotCatalog(input: SnapshotBuildInputReceipt): SnapshotDatasetInput[] {
+export function projectSnapshotCatalog(input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection): SnapshotDatasetInput[] {
   const parts = validateSnapshotInput(input);
   const kinds = ["geo", "developers", "developments", "buildings", "prices"] as const;
   const datasets: SnapshotDatasetInput[] = kinds.map((kind) => ({ kind, records: [] }));
@@ -67,6 +68,7 @@ export function projectSnapshotCatalog(input: SnapshotBuildInputReceipt): Snapsh
     const row = object(item);
     const key = ulidSchema.parse(row.uid);
     const type = row.entityType;
+    if (selection && (typeof type !== "string" || !selection.includes(type, key))) continue;
     if (type === "region" || type === "city" || type === "district") {
       const base = { entityType: type, uid: key, name: row.name, normalizedName: row.normalizedName,
         lifecycle: row.lifecycle, aliases: row.aliases };
@@ -94,6 +96,8 @@ export function projectSnapshotCatalog(input: SnapshotBuildInputReceipt): Snapsh
   }
   for (const part of parts) if (part.kind === "prices") for (const item of part.payload) {
     const row = object(item);
+    if (selection && (!selection.developmentUids.has(ulidSchema.parse(row.developmentUid))
+      || (row.buildingUid !== null && !selection.buildingUids.has(ulidSchema.parse(row.buildingUid))))) continue;
     const value = snapshotPricePublicSchema.parse({ developmentUid: row.developmentUid, buildingUid: row.buildingUid,
       observedAt: row.observedAt, amount: row.amount, currency: row.currency, basis: row.basis,
       areaM2: row.areaM2, roomCount: row.roomCount });

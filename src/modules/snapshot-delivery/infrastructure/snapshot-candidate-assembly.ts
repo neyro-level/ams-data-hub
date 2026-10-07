@@ -8,6 +8,7 @@ import type { SnapshotDatasetInput, SnapshotRecordInput } from "../contracts.ts"
 import { SNAPSHOT_INPUT_PAGE_SIZE } from "../application/snapshot-build-input.ts";
 import { SnapshotAssemblyBudget } from "../application/snapshot-assembly-budget.ts";
 import { projectSnapshotCatalog } from "../application/snapshot-catalog-projector.ts";
+import { selectSnapshotCatalog } from "../application/snapshot-catalog-selection.ts";
 import { assertSnapshotDatasetIntegrity } from "../application/snapshot-composer.ts";
 import { prepareSnapshotInventoryInput } from "../application/snapshot-inventory-input.ts";
 import { projectSnapshotInventory } from "../application/snapshot-inventory-projector.ts";
@@ -33,10 +34,11 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
       .find(scope.organizationId, scope.projectId, lookup.idempotencyKeyHash, lookup.requestHash), options);
     if (!receipt) throw new Error("SNAPSHOT_INPUT_NOT_FOUND");
     const captured = prepareSnapshotInventoryInput(receipt);
-    const catalog = projectSnapshotCatalog(receipt);
-    projectSnapshotProjectState(receipt); // Admission validation before any object IO.
-    const media = await projectMedia(receipt); // No transaction remains open here.
-    const projectState = projectSnapshotProjectState(receipt, media.agentMedia);
+    const selection = selectSnapshotCatalog(receipt);
+    const catalog = projectSnapshotCatalog(receipt, selection);
+    projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before any object IO.
+    const media = await projectMedia(receipt, selection); // No transaction remains open here.
+    const projectState = projectSnapshotProjectState(receipt, media.agentMedia, selection);
     const budget = new SnapshotAssemblyBudget();
     for (const dataset of [...catalog, ...projectState, media.dataset]) budget.add(dataset.kind, dataset.records);
     const records = await runInAuthorizedDatabaseTransaction(context, async (tx) => {

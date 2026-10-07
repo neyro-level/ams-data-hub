@@ -7,6 +7,7 @@ import type { SnapshotDatasetInput } from "../contracts.ts";
 import { assertSnapshotPrivacySafe } from "../domain/privacy-scanner.ts";
 import type { SnapshotBuildInputReceipt, SnapshotInputPartKind } from "./snapshot-build-input.ts";
 import { validateSnapshotInput } from "./snapshot-input-validation.ts";
+import type { SnapshotCatalogSelection } from "./snapshot-catalog-selection.ts";
 
 const owner = z.enum(["INVENTORY", "AGENT", "DEVELOPMENT", "BUILDING"]);
 export const snapshotMediaPublicSchema = z.object({ entityType: owner, entityUid: ulidSchema, media: mediaPublicV1Schema }).strict()
@@ -17,7 +18,7 @@ function object(value: CanonicalJsonValue | undefined): Record<string, Canonical
 }
 
 /** Receipt-only provenance admission. This is not authorization of arbitrary request JSON. */
-export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt): CapturedMediaCandidate[] {
+export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt, selection?: SnapshotCatalogSelection): CapturedMediaCandidate[] {
   const parts = validateSnapshotInput(input);
   const rows = (kind: SnapshotInputPartKind) => parts.filter((part) => part.kind === kind).flatMap((part) => part.payload).map(object);
   const index = (values: Record<string, CanonicalJsonValue>[], key: string) => {
@@ -39,6 +40,8 @@ export function prepareSnapshotMediaCandidates(input: SnapshotBuildInputReceipt)
         : row.mirrorStatus === "WARNING" ? { warning: "MEDIA_MIRROR_WARNING" as const } : {}) });
   };
   for (const row of rows("media")) {
+    if (selection && row.sharedMediaId !== undefined && (!selection.developmentUids.has(ulidSchema.parse(row.developmentUid))
+      || (row.buildingUid !== null && !selection.buildingUids.has(ulidSchema.parse(row.buildingUid))))) continue;
     if (row.asset !== undefined && row.omission !== undefined) throw new Error("SNAPSHOT_MEDIA_PIN_INVALID");
     if (row.asset !== undefined && (row.kind === "LISTING_IMAGE" || row.sharedMediaId !== undefined)) {
       z.enum(["MIRRORED", "WARNING"]).parse(row.mirrorStatus);

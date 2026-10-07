@@ -81,7 +81,16 @@ captured unit/period policy, STREET coordinates, persistent URL и media referen
 safe-HTML source-code cleanup. Серверная candidate assembly теперь связывает
 persisted receipt, captured profiles/URLs, HEAD вне DB и GOOD pages ≤200 с
 реальными 13 projectors; strict reference/privacy и aggregate 32 MiB canonical
-array budget включают brackets/commas. Полнота source facts, подтверждённый
+array budget включают brackets/commas. Captured selection применяет ALL_SHARED
+по subscribed cities либо CURATED по explicit INCLUDE; EXCLUDE сильнее confirmed
+listing links. ACTIVE/unmerged parent и building filters управляют catalog,
+prices, shared media до HEAD и editorial. Inventory и persistent URL history
+сохраняются; live subscription query и переписывание receipt/hash отсутствуют.
+MP-05.3 scoped native proof от 2026-10-07: 21/21 в двух suites, targeted units
+41/41, verify:quick — PASS; capture 4100/8200 — 16,245 секунды при лимите 30.
+Доказан replay после live edits и непустая URL history; HEAD synthetic, не live
+provider proof. Это implementation checkpoint, не завершение MP-05 delivery.
+Полнота source facts, подтверждённый
 agent linkage и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay

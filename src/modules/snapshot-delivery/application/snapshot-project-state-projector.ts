@@ -12,6 +12,7 @@ import type { SnapshotDatasetInput, SnapshotDatasetKind, SnapshotRecordInput, Sn
 import { assertSnapshotPrivacySafe } from "../domain/privacy-scanner.ts";
 import { snapshotInputHash, type SnapshotBuildInputReceipt, type SnapshotInputPartKind } from "./snapshot-build-input.ts";
 import { validateSnapshotInput } from "./snapshot-input-validation.ts";
+import type { SnapshotCatalogSelection } from "./snapshot-catalog-selection.ts";
 
 const date = z.iso.datetime({ offset: true });
 const entityType = projectEditorialEntityTypeSchema;
@@ -57,7 +58,7 @@ const entityDatasets: Record<z.infer<typeof entityType>, SnapshotDatasetKind> = 
 /** Pure captured projection; media supplied only by server-owned captured candidate verification.
  * Fresh publication admission/consent checks remain separate from deterministic projection. */
 export function projectSnapshotProjectState(input: SnapshotBuildInputReceipt,
-  agentMedia: ReadonlyMap<string, readonly MediaPublicV1[]> = new Map()): SnapshotDatasetInput[] {
+  agentMedia: ReadonlyMap<string, readonly MediaPublicV1[]> = new Map(), selection?: SnapshotCatalogSelection): SnapshotDatasetInput[] {
   const parts = validateSnapshotInput(input);
   if (agentMedia.size > 50_000) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
   const rows = (kind: SnapshotInputPartKind) => parts.filter((part) => part.kind === kind).flatMap((part) => part.payload).map(object);
@@ -95,7 +96,7 @@ export function projectSnapshotProjectState(input: SnapshotBuildInputReceipt,
   const catalogTypes = new Map([["developer", "DEVELOPER"], ["development", "DEVELOPMENT"], ["building", "BUILDING"]]);
   for (const row of rows("catalog")) {
     const type = typeof row.entityType === "string" ? catalogTypes.get(row.entityType) : undefined;
-    if (type) publicSubjects.add(`${type}\0${ulidSchema.parse(row.uid)}`);
+    if (type && (!selection || selection.includes(String(row.entityType), ulidSchema.parse(row.uid)))) publicSubjects.add(`${type}\0${ulidSchema.parse(row.uid)}`);
   }
   const inventory = rows("inventory");
   for (const row of inventory) {
