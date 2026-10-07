@@ -47,6 +47,7 @@ describe("captured inventory preflight", () => {
       approval: approval("synthetic-new-head", 2) };
     Object.assign(historical.inventory[0]!, { approvedHeadId: "synthetic-new-head", approvedHeadSequence: 2 });
     expect(prepareSnapshotInventoryInput(receipt(historical, [head])).rows[0]!.pin.factRevisionId).toBe("synthetic-good");
+    expect(prepareSnapshotInventoryInput(receipt(historical, [head])).sourceRevisions).toEqual(["synthetic-good", "synthetic-new-head"]);
     historical.inventory[0]!.factRevisionId = "synthetic-new-head";
     expect(() => prepareSnapshotInventoryInput(receipt(historical, [head]))).toThrow("SOURCE_COMPOSITION_INVALID");
   });

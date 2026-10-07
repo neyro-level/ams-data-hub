@@ -1,8 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { createSnapshotVerifier } from "@ams-data-hub/snapshot-verifier";
+import { z } from "zod";
+import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
-import { captureSnapshotInput, createSnapshotCandidateAssemblyServer, createSnapshotMediaProjectionServer, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotCandidateAssemblyServer, createSnapshotSignedBuildServer, createSnapshotMediaProjectionServer, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
+import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
@@ -223,7 +226,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         { ...projectScope, inventoryUid, type: "INACTIVATED", occurredAt: new Date("2026-01-01T00:00:00.000Z") },
         { ...projectScope, inventoryUid, type: "REACTIVATED", occurredAt: new Date("2026-02-01T00:00:00.000Z") },
       ] });
-      return { assetId: asset.id, inventoryUid, sourceId: source.id };
+      return { assetId: asset.id, inventoryUid, sourceId: source.id, revisionId: revision.id };
     });
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     let workerTransactions = 0;
@@ -269,6 +272,41 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         keyId: "synthetic-unsigned-key", requiresProjectContact: assembled.requiresProjectContact, datasets });
       const composition = compose(assembled.datasets);
       expect(composition.files.map((file) => file.manifest.kind)).toEqual(SNAPSHOT_DATASET_KINDS);
+      const keys = generateKeyPairSync("ed25519");
+      const trustSet = { currentKeyId: "synthetic-complete-signing-key", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-complete-signing-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+      const signedBuild = createSnapshotSignedBuildServer({ organizationId: scope.organizationId, projectId: scope.projectId,
+        storage: { head }, keyId: trustSet.currentKeyId, privateKeyRef: defineSecretRef("SYNTHETIC_COMPLETE_SIGNING_KEY"), trustSet });
+      async function buildSigned() {
+        const previous = process.env.SYNTHETIC_COMPLETE_SIGNING_KEY;
+        process.env.SYNTHETIC_COMPLETE_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+        try { return await signedBuild(principal, lookup); }
+        finally {
+          if (previous === undefined) delete process.env.SYNTHETIC_COMPLETE_SIGNING_KEY;
+          else process.env.SYNTHETIC_COMPLETE_SIGNING_KEY = previous;
+        }
+      }
+      const signed = await buildSigned();
+      expect(signed.manifest.sourceRevisions).toEqual([fixture.revisionId]);
+      expect(signed.receiptId).toBe(first.id); expect(signed.inputHash).toBe(first.inputHash);
+      const expectedValues = Object.fromEntries(assembled.datasets.map((dataset) => [dataset.kind,
+        [...dataset.records].sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0).map((record) => record.value)]));
+      const jsonArray = z.array(z.json());
+      const portable = createSnapshotVerifier({
+        datasetSchemas: { geo: jsonArray, developers: jsonArray, developments: jsonArray, buildings: jsonArray,
+          prices: jsonArray, media: jsonArray, inventory: jsonArray, agents: jsonArray, "project/contacts": jsonArray,
+          editorial: jsonArray, urls: jsonArray, redirects: jsonArray, lifecycle: jsonArray },
+        // Fixture policy requires the exact reference-checked public graph, not an always-true callback.
+        validateReferences: (datasets) => SNAPSHOT_DATASET_KINDS.every((kind) =>
+          canonicalJson(datasets[kind] as CanonicalJsonValue) === canonicalJson(expectedValues[kind] as CanonicalJsonValue)),
+      });
+      const portableInput = { manifest: signed.manifest,
+        files: Object.fromEntries(signed.composition.files.map((file) => [file.manifest.key, file.body])),
+        trustSet, expectedProjectId: scope.projectId, supportedSchemaMajor: 1, lastGood: null };
+      expect(portable(portableInput)).toMatchObject({ accepted: true, nextState: { publishSequence: first.publishSequence } });
+      const corrupt = Uint8Array.from(signed.composition.files[0]!.body); corrupt[corrupt.length - 1] ^= 1;
+      expect(portable({ ...portableInput, files: { ...portableInput.files, [signed.composition.files[0]!.manifest.key]: corrupt } }))
+        .toMatchObject({ accepted: false, reason: "FILE_HASH_MISMATCH", nextState: null });
       expect(JSON.stringify(assembled.datasets)).not.toMatch(/synthetic-private|storageKey|sourceId|normalizedHash|rawRecord|contactPhones/u);
       await expect(assemble(createProjectJobPrincipal({ organizationId: scope.organizationId,
         projectId: scope.foreignProjectId, jobName: "snapshot-input" }), lookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
@@ -324,7 +362,8 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(await projectMedia(replay)).toEqual(publicMedia);
       expect(await assemble(principal, lookup)).toEqual(assembled);
       expect(compose((await assemble(principal, lookup)).datasets)).toEqual(composition);
-      expect(head).toHaveBeenCalledTimes(5);
+      expect(await buildSigned()).toEqual(signed);
+      expect(head).toHaveBeenCalledTimes(7);
       await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
       await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
       await worker(scope, async (tx) => {

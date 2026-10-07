@@ -166,9 +166,10 @@ remediation program preserves these boundaries while connecting them:
   Replay skips fact rematerialization, not the current admission check.
   `projectStateRevision` is the base Project version; captured version/value
   parts and their input hash identify the complete state. `catalogRevision`
-  hashes captured catalog values, not a global sequence. Public projection,
-  signing and publication remain pending; input capture is not full build proof.
-  MP-05.2 is IN_PROGRESS. Five captured candidate-closure projectors now emit
+  hashes captured catalog values, not a global sequence. Input capture alone is
+  not full build proof; public projection and signing are described below,
+  while publication remains pending. MP-05.2 implementation is closed.
+  Five captured candidate-closure projectors emit
   strict geo/developer/development/building/price rows with explicit references,
   cross-parent checks, deterministic order and exact decimal strings. Input
   validation checks all 18 sections, part order/hashes, header/input digest and
@@ -182,9 +183,9 @@ remediation program preserves these boundaries while connecting them:
   Reservation IDs survive legitimate relinks; URL history/tombstones reference
   reserved IDs, not mandatory active entity rows. Lifecycle retains inactive
   state and events. Verified agent media is a server-owned input, not proof of
-  HEAD or fresh consent. These are 11 projectors, not a complete 13-dataset
-  pipeline; subscription filtering, inventory GOOD resolution, media verification,
-  fresh publication gates and unified build proof remain pending.
+  HEAD or fresh consent. MP-05.2 supplied these 11 projectors; subsequent tasks
+  below add subscription filtering, inventory GOOD resolution and verified media
+  to the complete thirteen-dataset candidate. Fresh publication remains pending.
   Generated stored payload byte/record counts avoid repeated JSON sizing in
   deferred commit checks without removing either header/part constraint trigger,
   contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
@@ -260,6 +261,16 @@ remediation program preserves these boundaries while connecting them:
   copy is introduced; current publication admission remains separate.
   This does not automatically wire Source GOOD to matching or enable publication;
   fresh consent/rights/publication admission is not replaced by captured replay.
+  MP-05.10 adds a server-only signed-build factory: strict scoped receipt lookup
+  feeds the existing assembler, composer privacy/reference guards and SecretRef
+  Ed25519 signer, then verifies against copied trusted/non-revoked key policy.
+  Manifest headers are receipt-derived; sourceRevisions is the sorted unique
+  union of approved captured GOOD heads and historical facts used by ACTIVE rows,
+  capped at 10000. generatedAt/publishedAt use capturedAt as stable identity time;
+  DeliveryRun.createdAt remains the delivery staleness clock. Factory-pinned
+  key configuration is not cross-process publication idempotency: MP-05.11 must
+  bind the signed identity durably before upload and enforce fresh admission.
+  Signing alone does not upload artifacts, update current or register outbox work.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private

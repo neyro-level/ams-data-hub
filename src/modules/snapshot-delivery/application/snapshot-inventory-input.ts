@@ -119,5 +119,10 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
       externalOfferId: row.externalOfferId, normalizedHash: row.normalizedHash,
       factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence } });
   }
-  return { rows, factProfiles };
+  const sourceRevisions = [...new Set([
+    ...[...sources.values()].flatMap((row) => row.approvedHead ? [row.approvedHead.id] : []),
+    ...rows.map((row) => row.pin.factRevisionId),
+  ])].sort();
+  if (sourceRevisions.length > 10_000) throw new Error("SNAPSHOT_SOURCE_REVISION_LIMIT_EXCEEDED");
+  return { rows, factProfiles, sourceRevisions };
 }

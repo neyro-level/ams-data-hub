@@ -15,6 +15,17 @@ manifest and DeliveryRun; replay does not allocate. First counter creation uses
 atomic INSERT ON CONFLICT, and serialization conflicts retry the entire bounded
 RepeatableRead cut. Counter/header/parts roll back together; INT_MAX fails closed.
 
+The server-owned signed-build seam accepts only a scoped receipt lookup. It
+derives headers from the validated persisted cut, invokes the real composer
+before the SecretRef Ed25519 signer, and verifies the signature with a copied
+trusted/non-revoked key policy. sourceRevisions is the sorted unique union of
+captured approved GOOD heads and historical GOOD facts used by ACTIVE inventory,
+at most 10000 IDs. generatedAt/publishedAt use capturedAt as stable snapshot
+identity time; delivery staleness continues to use DeliveryRun.createdAt.
+Factory-pinned signing configuration does not establish cross-process/rotation
+publication idempotency. Durable binding and fresh publication admission must
+precede exposing a current pointer; successful signing alone does not publish.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

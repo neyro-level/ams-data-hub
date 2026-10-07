@@ -61,6 +61,8 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     }, options);
     const datasets: SnapshotDatasetInput[] = [...catalog, ...projectState, { kind: "inventory", records }, media.dataset];
     assertSnapshotDatasetIntegrity(datasets);
-    return { receiptId: receipt.id, inputHash: receipt.inputHash, requiresProjectContact, datasets, diagnostics: media.diagnostics };
+    return { receiptId: receipt.id, inputHash: receipt.inputHash, requiresProjectContact, datasets, diagnostics: media.diagnostics,
+      manifestMetadata: { projectId: receipt.projectId, schemaMinor: receipt.schemaMinor, publishSequence: receipt.publishSequence,
+        generatedAt: receipt.capturedAt.toISOString(), catalogRevision: receipt.catalogRevision, sourceRevisions: captured.sourceRevisions } };
   };
 }

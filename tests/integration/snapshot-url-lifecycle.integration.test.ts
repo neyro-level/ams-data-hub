@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { createUlid } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 
@@ -28,8 +28,9 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   return { ...actual, runInPrincipalDatabaseTransaction: principal, runInAuthorizedDatabaseTransaction: authorized };
 });
 import { projectUrlRegistryCommands } from "../../src/modules/project-state/server.ts";
-import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
-import { composeSnapshot } from "../../src/modules/snapshot-delivery/index.ts";
+import { captureSnapshotInput, createSnapshotCandidateAssemblyServer, createSnapshotSignedBuildServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { composeSnapshot, verifySnapshotSignatureCandidate } from "../../src/modules/snapshot-delivery/index.ts";
+import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -156,6 +157,33 @@ describe("persistent Hub URL commands through captured snapshot composition", ()
       return { receipt, lookup, candidate, composition };
     }
     const before = await build("url-before-lifecycle");
+    const keys = generateKeyPairSync("ed25519");
+    const previousSigningKey = process.env.SYNTHETIC_SNAPSHOT_SIGNING_KEY;
+    process.env.SYNTHETIC_SNAPSHOT_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    try {
+      const trustSet = { currentKeyId: "synthetic-signing-key", nextKeyId: null,
+        publicKeys: { "synthetic-signing-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() }, revokedKeyIds: [] as string[] };
+      const signedBuild = createSnapshotSignedBuildServer({ ...scope, storage: { head }, keyId: trustSet.currentKeyId,
+        privateKeyRef: defineSecretRef("SYNTHETIC_SNAPSHOT_SIGNING_KEY"), trustSet });
+      const signed = await signedBuild(job, before.lookup);
+      expect(signed.manifest).toMatchObject({ projectId: scope.projectId, publishSequence: before.receipt.publishSequence,
+        generatedAt: before.receipt.capturedAt.toISOString(), publishedAt: before.receipt.capturedAt.toISOString(),
+        catalogRevision: before.receipt.catalogRevision, sourceRevisions: [], keyId: trustSet.currentKeyId });
+      expect(verifySnapshotSignatureCandidate({ manifest: signed.manifest, trustSet, lastGood: null }).accepted).toBe(true);
+      trustSet.revokedKeyIds.push("synthetic-signing-key");
+      expect(await signedBuild(job, before.lookup)).toEqual(signed); // Pinned nested policy is not a caller-owned mutable object.
+      await expect(signedBuild(createProjectJobPrincipal({ ...scope, projectId: setup.foreignId, jobName: "snapshot-input" }), before.lookup))
+        .rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      const headerOverride = { ...before.lookup, publishSequence: 99, keyId: "consumer-injected-key" };
+      await expect(signedBuild(job, headerOverride)).rejects.toThrow();
+      expect(() => createSnapshotSignedBuildServer({ ...scope, storage: { head }, keyId: trustSet.currentKeyId,
+        privateKeyRef: defineSecretRef("SYNTHETIC_SNAPSHOT_SIGNING_KEY"), trustSet })).toThrow("SNAPSHOT_BUILD_KEY_UNTRUSTED");
+      delete process.env.SYNTHETIC_SNAPSHOT_SIGNING_KEY;
+      await expect(signedBuild(job, before.lookup)).rejects.toThrow("SNAPSHOT_BUILD_SIGNING_FAILED");
+    } finally {
+      if (previousSigningKey === undefined) delete process.env.SYNTHETIC_SNAPSHOT_SIGNING_KEY;
+      else process.env.SYNTHETIC_SNAPSHOT_SIGNING_KEY = previousSigningKey;
+    }
     expect(before.candidate.requiresProjectContact).toBe(false);
     const urls = before.candidate.datasets.find((dataset) => dataset.kind === "urls")!.records;
     expect(urls).toContainEqual(expect.objectContaining({ key: `reservation:${created.publicUrlId}`,

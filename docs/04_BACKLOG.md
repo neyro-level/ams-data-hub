@@ -153,6 +153,17 @@ actual-command rollback, независимые project counters, manifest/deliv
 14,233s при неизменных 30s; units — 15/15; full quick + final delta types/lint,
 docs/secrets/diff — PASS. Exact checkpoint/closure ledger — Beads. Global
 safety lock по-прежнему сериализует проекты; signed publication ещё не завершена.
+MP-05.10 implementation proof: server-owned receipt lookup → thirteen-dataset
+assembler → composer privacy/reference guards → SecretRef Ed25519 → trusted
+signature verification. Headers/source revisions derived from immutable cut;
+caller overrides denied. Native signing/URL — 2/2; final complete capture —
+22/22, including actual GOOD → signed portable-verifier roundtrip, corrupt-file
+rejection and immutable signed replay. Consumer fixture uses generic JSON plus
+exact reference-checked public graph, not universal consumer policy. Units —
+35/35; full quick — PASS (390/1206), final fixture types/lint — PASS. Capacity
+4100/8200 — 15,751s при прежних 30s. Exact checkpoint/closure ledger — Beads.
+generatedAt/publishedAt = capturedAt; DeliveryRun.createdAt is staleness clock.
+Durable identity binding, fresh admission, uploads/current/outbox — MP-05.11.
 Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay

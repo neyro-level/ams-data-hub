@@ -1,5 +1,6 @@
 import "server-only";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";
+export { createSnapshotSignedBuildServer } from "./infrastructure/snapshot-signed-build.ts";
 export { createSnapshotMediaProjectionServer } from "./infrastructure/snapshot-media-projection.ts";
 
 export { createEd25519SecretRefSigner } from "./infrastructure/ed25519-secret-ref-signer.ts";

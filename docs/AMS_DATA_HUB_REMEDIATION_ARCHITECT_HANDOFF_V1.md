@@ -10,6 +10,34 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.10 implementation proof — 2026-10-07
+
+Task base `b8de74a`. `createSnapshotSignedBuildServer` composes the actual
+persisted-receipt assembler, composer privacy/reference guards, existing
+SecretRef Ed25519 signer and trusted/non-revoked signature verification. Lookup
+is strict; caller headers/entities/keyId are not accepted. Manifest metadata
+comes from the validated receipt; sourceRevisions is the sorted unique union
+of captured approved GOOD heads and historical GOOD facts used by ACTIVE rows,
+bounded to 10000 IDs. No FAILED/REJECTED/baseline-only revision is invented.
+Signed generatedAt/publishedAt equal capturedAt: stable snapshot identity time,
+not the later pointer commit time. DeliveryRun.createdAt remains the delivery
+staleness clock. Key/trust configuration is copied and pinned for the factory;
+cross-process/rotation idempotency needs the durable binding before upload in
+MP-05.11. Signing failure returns a fixed error, not SecretRef/key material.
+Native URL/signing proof: 2/2 PASS. Final complete capture suite: 22/22 PASS,
+81.45s, including actual NOBYPASS capture with nonempty GOOD revision, signed
+thirteen-file portable-verifier roundtrip, corrupt artifact rejection and exact
+signed replay after live edits. Fixture consumer policy uses generic JSON plus
+exact reference-checked public graph equality, not a universal consumer schema.
+Historical/head revision union is additionally unit-proven. Units: 35/35 in
+four suites; full verify:quick PASS (390 modules, 1206 dependencies), final delta
+test types/lint PASS. Original capacity cut: 15.751s below unchanged 30s limit.
+Initial fixture TS2352, non-canonical property-order comparison and a preexisting
+5s test timeout remain recorded in Task Manager; no timeout/assertion was weakened.
+Exact pushed checkpoint and closure ledger belong to Task Manager. No fresh
+publication admission, artifact upload, current pointer or outbox registration
+is claimed by this checkpoint.
+
 ### MP-05.9 implementation proof — 2026-10-07
 
 Task base `b29dec8`. Different-key concurrent first captures exposed a real
