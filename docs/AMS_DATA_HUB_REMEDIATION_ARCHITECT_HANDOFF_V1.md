@@ -10,6 +10,36 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 final publication facade — 2026-10-07, IN_PROGRESS
+
+Checkpoint base `20c144c`. A server-only facade now consumes the actual persisted
+receipt hash lookup and snapshot-input principal, then repeats all four owner
+readers after settled artifact PUTs in one global -> publication RC cut. Binding
+identity is rechecked before atomic current/run persistence. An exact committed
+run returns without signing, HEAD, PUT or a newer-pointer rewrite; failed staging
+also checks for a concurrent durable success. Cancellation after writes is checked
+inside the transaction callback, not after commit. Architect review found a narrow
+abort-between-early-replay-and-try gap; its check was moved inside the replay
+fallback boundary. Initial app types/lint passed. First native facade/delivery
+matrix passed 14/14 across two files (25.56 seconds) with synthetic SDK and local
+NOBYPASS publication roles, followed by database cleanup. Final native proof is
+16/16 across two files (33.98 seconds), after 48 local synthetic migrations and
+completed cleanup. Actual SDK transport is synthetic; publication uses the
+explicit NOBYPASS role. Deterministic post-early-cut concurrent commit -> abort
+and concurrent commit -> failed manifest PUT both return the same durable run,
+with no extra IO on committed replay. Nonempty actual captured Agent photo performs
+SDK HEAD; changing its asset rights/license after manifest PUT rejects at the
+Media reader before current/run. The initial fixture tried an invalid LICENSED/null
+transition rejected by the database constraint; the final fixture uses valid
+OWNED/null metadata, without relaxing constraints/grants. Project/Source/catalog/
+freeze post-PUT changes and cancellation after actual DB writes likewise preserve
+zero current/run. Restart with revoked/unconfigured signer returns the existing
+run and preserves a newer pointer. Final test types and focused lint pass;
+architect final read-only review found no actionable findings after the P2 fix.
+Full quick check PASS (402 modules / 1271 dependencies), docs canon, diff and
+secret scan PASS. Actual registered outbox,
+durable dispatch completion and complete MP-05.11 DoD remain required.
+
 ### MP-05.11 Media admission prerequisite — 2026-10-07, IN_PROGRESS
 
 Checkpoint base `c66eda2`. The actual candidate preparation owns copied asset,

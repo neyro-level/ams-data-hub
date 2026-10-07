@@ -1,13 +1,14 @@
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { canonicalJson, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 
-const cuts = vi.hoisted(() => ({ active: 0, roles: 0 }));
+const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
+  afterInitialReplay: null as (() => Promise<void>) | null }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
-  const authorized: typeof actual.runInAuthorizedDatabaseTransaction = (context, execute, options) =>
-    actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
+  const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
+    const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
       const snapshot = ["snapshot-input", "snapshot-publication"].includes(context.actorId);
       if (snapshot) {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
@@ -19,17 +20,25 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
       if (track) cuts.active++;
       try { return await execute(tx); } finally { if (track) cuts.active--; }
     }, options);
+    if (context.actorId === "snapshot-publication" && context.correlationId === "synthetic-cancel-replay-race"
+      && cuts.afterInitialReplay) {
+      const after = cuts.afterInitialReplay; cuts.afterInitialReplay = null;
+      await after(); // Actual transaction has committed and released its locks.
+    }
+    return result;
+  };
   return { ...actual, runInAuthorizedDatabaseTransaction: authorized };
 });
-import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotSignedBuildServer, PrismaSnapshotPublicationRepository } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
+  PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
-import { calculateObjectSha256 } from "../../src/platform/storage/object-storage.ts";
+import { calculateObjectSha256, createMediaKey } from "../../src/platform/storage/object-storage.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 
-async function fixture() {
+async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
   const setup = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
     const suffix = randomUUID().slice(0, 8);
@@ -46,7 +55,16 @@ async function fixture() {
       cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
     await tx.dataSafetyState.upsert({ where: { id: "global" }, create: { id: "global", jobsFrozen: false, unfrozenAt: new Date() },
       update: { jobsFrozen: false, unfrozenAt: new Date() } });
-    return { scope, foreignId: foreign.id };
+    let mediaId: string | null = null;
+    if (withMedia) {
+      const asset = await tx.mediaAsset.create({ data: { ...scope, sha256: "a".repeat(64), storageKey: createMediaKey("a".repeat(64)),
+        contentType: "image/jpeg", byteSize: 100, originalFileName: "synthetic-private-file", source: "synthetic-private-source",
+        rightsBasis: "LICENSED", license: "synthetic-private-license", uploadedBy: "synthetic" } });
+      mediaId = asset.id;
+      await tx.agent.create({ data: { ...scope, uid: createUlid(), slug: "synthetic-public-agent", fullName: "Synthetic public Agent",
+        showOnSite: true, consentConfirmedAt: instant, photoMediaId: asset.id } });
+    }
+    return { scope, foreignId: foreign.id, mediaId };
   });
   const principal = createProjectJobPrincipal({ ...setup.scope, jobName: "snapshot-input" });
   const receipt = await captureSnapshotInput(principal, { ...setup.scope, idempotencyKey: "synthetic-binding", schemaMinor: 0 });
@@ -60,6 +78,164 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it("replays a concurrent commit when cancelled just after initial no-run lookup", async () => {
+    const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(command).toBeInstanceOf(PutObjectCommand); return { ETag: "synthetic-etag" } as never;
+    });
+    const bound = { ...scope, storage: new S3ObjectStorage({ bucket: "synthetic-replay-race", client }), keyId: "synthetic-binding-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: { currentKeyId: "synthetic-binding-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    let committedId: string | undefined; let committedWrites = 0;
+    cuts.afterInitialReplay = async () => {
+      const run = await createSnapshotPublicationServer(bound)(setup.principal, setup.lookup);
+      committedId = run.deliveryRunId; committedWrites = send.mock.calls.length; controller.abort();
+    };
+    try {
+      const result = await createSnapshotPublicationServer(bound)({ ...setup.principal,
+        correlationId: "synthetic-cancel-replay-race" }, setup.lookup, controller.signal);
+      expect(committedId).toBeDefined(); expect(result.deliveryRunId).toBe(committedId);
+      expect(committedWrites).toBe(14); expect(send).toHaveBeenCalledTimes(committedWrites);
+      expect(cuts.afterInitialReplay).toBeNull();
+    } finally {
+      cuts.afterInitialReplay = null;
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  }, 60_000);
+  it.each(["project", "source", "catalog", "media", "freeze", "cancel", "rollback"])("does not publish after post-PUT %s changes", async (mode) => {
+    const setup = await fixture(mode === "media"); const { scope } = setup; const controller = new AbortController();
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-final-cut", correlationId: randomUUID() };
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let manifestPut = false;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof HeadObjectCommand) {
+        expect(mode).toBe("media"); expect(command.input.Key).toBe(createMediaKey("a".repeat(64)));
+        return { ContentType: "image/jpeg", ContentLength: 100, ETag: "synthetic-etag", LastModified: new Date(0) } as never;
+      }
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      if (!(command instanceof PutObjectCommand)) throw new Error("SYNTHETIC_UNEXPECTED_IO");
+      if (command.input.ContentType === "application/json") {
+        manifestPut = true;
+        await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          if (mode === "project") await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
+          if (mode === "source") await tx.source.create({ data: { ...scope, sourceKey: "synthetic-post-put", name: "Synthetic post PUT",
+            adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+            datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+          if (mode === "catalog") await tx.projectCatalogSubscriptionCity.deleteMany({ where: scope });
+          if (mode === "media") await tx.mediaAsset.update({ where: { id: setup.mediaId! }, data: { rightsBasis: "OWNED", license: null } });
+          if (mode === "freeze") await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        });
+        if (mode === "cancel") controller.abort();
+      }
+      return { ETag: "synthetic-etag" } as never;
+    });
+    // Abort after actual DB writes but before transaction callback completes.
+    const actualPublish = PrismaSnapshotDeliveryRepository.prototype.publishCurrentAndCreateRun;
+    const publish = vi.spyOn(PrismaSnapshotDeliveryRepository.prototype, "publishCurrentAndCreateRun").mockImplementation(async function (this: PrismaSnapshotDeliveryRepository, input) {
+      const run = await actualPublish.call(this, input); if (mode === "rollback") controller.abort(); return run;
+    });
+    try {
+      const expected = { project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED", source: "SNAPSHOT_PUBLICATION_SOURCE_STALE",
+        catalog: "SNAPSHOT_PUBLICATION_CATALOG_STALE", media: "SNAPSHOT_PUBLICATION_MEDIA_STALE", freeze: "SNAPSHOT_PUBLICATION_JOBS_FROZEN",
+        cancel: "SNAPSHOT_PUBLICATION_CANCELLED", rollback: "SNAPSHOT_PUBLICATION_CANCELLED" }[mode];
+      await expect(createSnapshotPublicationServer({ ...scope, storage: new S3ObjectStorage({ bucket: "synthetic-final-cut", client }),
+        keyId: "synthetic-binding-key", privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: {
+          currentKeyId: "synthetic-binding-key", nextKeyId: null, revokedKeyIds: [],
+          publicKeys: { "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup, controller.signal)).rejects.toThrow(expected);
+      expect(manifestPut).toBe(true);
+      await observer(scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.count()).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+      if (mode === "rollback") expect(publish).toHaveBeenCalledOnce(); else expect(publish).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      publish.mockRestore(); send.mockRestore(); client.destroy();
+    }
+  }, 30_000);
+
+  it("publishes atomically and replays after restart/rotation without IO or moving newer current", async () => {
+    const setup = await fixture(); const { scope } = setup;
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      // Other concurrent invocations may own a DB cut; the serial post-PUT
+      // tests above trace that this invocation itself performs IO outside DB.
+      expect(command).toBeInstanceOf(PutObjectCommand); return { ETag: "synthetic-etag" } as never;
+    });
+    const bound = { ...scope, storage: new S3ObjectStorage({ bucket: "synthetic-final-cut", client }), keyId: "synthetic-binding-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: { currentKeyId: "synthetic-binding-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    try {
+      const runs = await Promise.all([1, 2].map(() => createSnapshotPublicationServer(bound)(setup.principal, setup.lookup)));
+      expect(runs[0]).toEqual(runs[1]); const run = runs[0]!;
+      expect(run.status).toBe("PENDING"); const before = send.mock.calls.length;
+      await observer(scope, async (tx) => {
+        expect(await tx.deliveryRun.count()).toBe(1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).manifestSha256).toBe(run.manifestSha256);
+      });
+      const next = await captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-next-publication", schemaMinor: 0 });
+      await createSnapshotPublicationServer(bound)(setup.principal, { idempotencyKeyHash: next.idempotencyKeyHash, requestHash: next.requestHash });
+      expect(send.mock.calls.length).toBeGreaterThan(before); const afterNewer = send.mock.calls.length;
+      delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; // A committed receipt must not resolve any signer.
+      const replay = await createSnapshotPublicationServer({ ...bound, keyId: "synthetic-rotated-unconfigured",
+        trustSet: { currentKeyId: "synthetic-rotated-unconfigured", nextKeyId: null, revokedKeyIds: [bound.keyId], publicKeys: {} },
+      })(setup.principal, setup.lookup);
+      expect(replay).toEqual(run); expect(send).toHaveBeenCalledTimes(afterNewer);
+      await observer(scope, async (tx) => {
+        expect(await tx.deliveryRun.count()).toBe(2);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).publishSequence).toBe(next.publishSequence);
+      });
+      await expect(createSnapshotPublicationServer(bound)(createProjectJobPrincipal({ ...scope, projectId: setup.foreignId,
+        jobName: "snapshot-input" }), setup.lookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      expect(send).toHaveBeenCalledTimes(afterNewer);
+    } finally {
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  }, 60_000);
+  it("returns concurrent committed success even when its own manifest PUT then fails", async () => {
+    const setup = await fixture(); const { scope } = setup;
+    const keys = generateKeyPairSync("ed25519"); const previous = process.env.SYNTHETIC_BINDING_SIGNING_KEY;
+    process.env.SYNTHETIC_BINDING_SIGNING_KEY = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const bound = { ...scope, storage: new S3ObjectStorage({ bucket: "synthetic-concurrent-cut", client }), keyId: "synthetic-binding-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_BINDING_SIGNING_KEY"), trustSet: { currentKeyId: "synthetic-binding-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-binding-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    let nested = false; let committedId: string | undefined;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      if (command instanceof PutObjectCommand && command.input.ContentType === "application/json" && !nested) {
+        nested = true;
+        const run = await createSnapshotPublicationServer(bound)(setup.principal, setup.lookup);
+        committedId = run.deliveryRunId;
+        // The other invocation is durable before this owned attempt fails.
+        throw new Error("SYNTHETIC_AFTER_CONCURRENT_COMMIT_PUT_FAILURE");
+      }
+      return { ETag: "synthetic-etag" } as never;
+    });
+    try {
+      const result = await createSnapshotPublicationServer(bound)(setup.principal, setup.lookup);
+      expect(committedId).toBeDefined(); expect(result.deliveryRunId).toBe(committedId);
+      await observer(scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.count()).toBe(1); expect(await tx.deliveryRun.count()).toBe(1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow()).manifestSha256).toBe(result.manifestSha256);
+      });
+    } finally {
+      if (previous === undefined) delete process.env.SYNTHETIC_BINDING_SIGNING_KEY; else process.env.SYNTHETIC_BINDING_SIGNING_KEY = previous;
+      send.mockRestore(); client.destroy();
+    }
+  }, 60_000);
+
   it("rejects a changed Source cohort before binding or any artifact PUT", async () => {
     const setup = await fixture();
     await runInPrincipalDatabaseTransaction({ kind: "platform-admin", userId: "synthetic-fresh-staging", correlationId: randomUUID() },

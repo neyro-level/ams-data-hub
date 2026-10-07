@@ -116,6 +116,22 @@ not substituted for the hash. The three scoped SELECT extensions keep existing
 grants and fact-write denial. Pre-PUT checks still require post-PUT repetition;
 current/run/outbox publication remains unfinished.
 
+The server-only final publication facade accepts only
+the scoped snapshot-input principal and persisted receipt hash lookup, never a
+caller-supplied staged manifest or permission cut. Following fully settled PUTs,
+it repeats Project/Source/Catalog/Media admission under global then publication
+locks in one short ReadCommitted transaction, rechecks the immutable binding and
+publishes current plus DeliveryRun atomically. Cancellation checks after DB writes
+remain inside the callback so rollback covers both rows. An exact committed
+receipt/binding/run replay returns the same run without signing, HEAD, PUT or
+rewriting a newer pointer; a concurrent commit is checked again before reporting
+a staging/admission failure. Pending bindings remain immutable and conflicting
+new signatures cannot overwrite them. This facade is not registered outbox
+execution. Targeted native proof covers actual capture/signing and synthetic SDK
+HEAD/PUT, all four post-PUT permission changes, atomic rollback/cancellation,
+concurrent committed fallback and restart/rotation replay. It does not prove a
+registered durable outbox execution, a live provider or production readiness.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 
