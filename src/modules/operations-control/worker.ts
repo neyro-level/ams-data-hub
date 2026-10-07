@@ -7,20 +7,23 @@ import { operationalActionIntentSchema, OPERATIONAL_ACTION_TOPICS } from "./cont
 import { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
 import { OperationalActionLifecycleRepository } from "./infrastructure/operational-action-lifecycle.ts";
 import type { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
+import type { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
 
 export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
 
 /** No raw exception text, cancellation reason or arbitrary diagnostic code
  * reaches generic outbox persistence. Retry/defer is not request FAILED. */
 export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal,
-  build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>) {
-  if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)) {
+  build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>, publish?: ReturnType<typeof createOperationalSnapshotPublishExecutor>) {
+  if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)
+    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish)) {
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED"), {
       code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
     });
   }
   try {
     if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build) await build(event, signal);
+    else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish) await publish(event, signal);
     else await executeSuspiciousRejection(event, signal);
   }
   catch (error) {

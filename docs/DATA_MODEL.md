@@ -276,7 +276,9 @@ The nullable additive column preserves older immutable non-operational receipts
 without backfill; a NULL legacy pin cannot satisfy operational BUILD success.
 Exact operational replay rechecks the scoped immutable result without config,
 capture or PUT. The combined queue registers BUILD only with the existing
-SNAPSHOT_BUILD_ENABLED capability; other four unimplemented actions stay reserved.
+SNAPSHOT_BUILD_ENABLED capability. Selected PUBLISH is independently registered
+under SNAPSHOT_PUBLISH_ENABLED with public trust only; rollback, ACK rotation and
+approval remain reserved until their concrete adapters are implemented.
 
 The forward publication Source-read migration adds exact-purpose scoped SELECT
 policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with

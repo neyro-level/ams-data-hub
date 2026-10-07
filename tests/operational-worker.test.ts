@@ -38,6 +38,20 @@ describe("finite operational queue adapter", () => {
     });
     expect(executor.mock.calls.length).toBe(before);
   });
+  it("reserves PUBLISH without its capability and dispatches enabled public-only adapter", async () => {
+    const publishEvent = { ...event, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH };
+    const before = executor.mock.calls.length;
+    await expect(handleOperationalOutboxEvent(publishEvent)).rejects.toMatchObject({ code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false });
+    const publish = vi.fn(async () => ({ action: "SNAPSHOT_PUBLISH" as const, buildInputId: "synthetic-input", deliveryRunId: "synthetic-run",
+      manifestSha256: "a".repeat(64), publishSequence: 1 }));
+    const signal = new AbortController().signal;
+    await expect(handleOperationalOutboxEvent(publishEvent, signal, undefined, publish)).resolves.toBeUndefined();
+    expect(publish).toHaveBeenCalledWith(publishEvent, signal); expect(executor.mock.calls.length).toBe(before);
+    publish.mockRejectedValueOnce(new Error("SNAPSHOT_PUBLICATION_PROJECT_BLOCKED"));
+    await expect(handleOperationalOutboxEvent(publishEvent, signal, undefined, publish)).resolves.toEqual({ deferred: true, code: "OPERATIONS_CONTROL_EXECUTION_DEFERRED" });
+    publish.mockRejectedValueOnce(new Error("Synthetic private GET diagnostic"));
+    await expect(handleOperationalOutboxEvent(publishEvent, signal, undefined, publish)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable: true });
+  });
   it("dispatches only the enabled operational BUILD adapter with its owned signal", async () => {
     const buildEvent = { ...event, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD };
     const build = vi.fn(async () => ({ action: "SNAPSHOT_BUILD" as const, buildInputId: "synthetic-input",

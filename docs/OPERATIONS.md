@@ -156,7 +156,20 @@ Local native runtime proof covers enabled completion, disabled/invalid startup,
 and crash recovery using the saved stage under a new lease without repeated
 capture/PUT or credential resolution. It observes and clears the exact worker's
 heartbeat. This synthetic pg-boss/SDK proof does not activate production or
-prove a live provider. PUBLISH, rollback, ACK rotation and approval remain work.
+prove a live provider.
+Operational selected PUBLISH is registered independently with
+SNAPSHOT_PUBLISH_ENABLED=true (absent/false remains reserved), using the same
+project registry's public trust fields only. BUILD and signing can stay disabled.
+Actual combined-runtime pg-boss proof covers enabled completion, disabled/no GET,
+invalid registry before startup, recovery after an atomic late SUCCESS rollback,
+and queue-ACK-loss replay after freeze/SUSPENDED with unavailable public/storage
+refs. PUBLISH performs bounded GET only, no new capture/sign/PUT/HEAD; exact own
+heartbeat is observed active and cleared after joined stop. Runtime snapshot
+matrix — 12/12 PASS with synthetic SDK transport. Rollback, ACK rotation and
+approval executors still remain work; no production activation is implied.
+Startup revokes the previous exact-owner qualification before validating storage
+or capabilities. An invalid new configuration cannot leave a crashed process's
+fresh heartbeat reporting active until TTL; pre-aborted startup remains a no-op.
 
 ## Streaming raw artifacts — remediation foundation
 

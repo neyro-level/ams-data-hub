@@ -1,6 +1,6 @@
 import "server-only";
-import { createSnapshotBuildRequestHandler, createProjectSnapshotSigningResolver } from "../modules/snapshot-delivery/server.ts";
-import { createOperationalSnapshotBuildExecutor } from "../modules/operations-control/server.ts";
+import { createSnapshotBuildRequestHandler, createProjectSnapshotSigningResolver, createProjectSnapshotTrustResolver } from "../modules/snapshot-delivery/server.ts";
+import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor } from "../modules/operations-control/server.ts";
 import type { ProjectObjectStorage, ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 
 /** Optional capability of the EXISTING combined worker, not a new process.
@@ -24,4 +24,15 @@ export function createOperationalSnapshotBuildCapability(resolveStorage: (scope:
   const resolveSigning = createProjectSnapshotSigningResolver(environment);
   return createOperationalSnapshotBuildExecutor({ resolveStage: (scope) => ({ ...scope,
     ...resolveSigning(scope), storage: resolveStorage(scope) }) });
+}
+
+/** Independent public-only capability; BUILD/signing can remain disabled. */
+export function createOperationalSnapshotPublishCapability(resolveStorage: (scope: ProjectStorageScope) => ProjectObjectStorage,
+  environment: Readonly<Record<string, string | undefined>> = process.env) {
+  const enabled = environment.SNAPSHOT_PUBLISH_ENABLED;
+  if (enabled === undefined || enabled === "false") return null;
+  if (enabled !== "true") throw new Error("SNAPSHOT_PUBLISH_CAPABILITY_INVALID");
+  const resolveTrust = createProjectSnapshotTrustResolver(environment);
+  return createOperationalSnapshotPublishExecutor({ resolvePublication: (scope) => ({ ...scope,
+    storage: resolveStorage(scope), getTrust: () => resolveTrust(scope) }) });
 }

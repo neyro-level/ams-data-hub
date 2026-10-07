@@ -89,7 +89,7 @@ Concrete adapter
 прошёл native normal/crash/takeover/wrong-minor сценарии в PostgreSQL: 70/70
 в пяти suites вместе с существующими lifecycle/rejection/delivery/runtime
 regressions; новый runtime proof описан отдельно выше.
-35 scoped units, quick/types/lint/architecture PASS. Оставшиеся четыре
+35 scoped units, quick/types/lint/architecture PASS. Оставшиеся три
 исполнителя и полный MP-08.1 DoD не завершены.
 
 Следующий PUBLISH prerequisite — project-scoped bounded snapshot GET:
@@ -128,7 +128,7 @@ historical GOOD/producer OFF, relink, duplicate public price/event history,
 cohort/URL/agent/catalog/contact mismatch, foreign receipt, manual photo priority
 и ambiguous listing slot. Decoded-value attacks проверяют attribution, не подпись
 изменённых values. Snapshot-owned final fresh admission/current trust теперь
-реализованы ниже; full operational runtime registration/proof ещё не завершены;
+реализованы ниже; остальные три operational executors ещё не завершены;
 MP-08.1 остаётся открытым.
 
 New PUBLISH request acceptance теперь сохраняет explicit buildInputId в
@@ -158,9 +158,9 @@ actor-only bridge → snapshot-owned publication → actor restore → SUCCEEDED
 Forward SQL guard независимо сверяет full lease и exact selected stage/header/
 binding/run. Current, DeliveryRun и SUCCESS откатываются вместе при late failure
 или cancellation. Конфигурация и GET разрешаются лениво после committed replay;
-исторические NULL requests, captures и grants не переписаны. В общей очереди пока
-зарегистрированы только rejection и BUILD; PUBLISH runtime registration/proof и
-остальные три executors остаются открытыми, MP-08.1 не закрывается.
+исторические NULL requests, captures и grants не переписаны. В общей очереди
+зарегистрированы rejection, BUILD и PUBLISH; остальные три executors остаются
+открытыми, MP-08.1 не закрывается.
 Final native request/rejection/staging matrix — 84/84 PASS с 55 migrations:
 late SUCCESS failure/cancel откатывает все три состояния, takeover во время GET
 отказывает старому worker, подмена каждого lease field отвергается до config/IO,
@@ -168,6 +168,23 @@ SQL не допускает success без exact run. Actual newer publication �
 older operational replay после freeze/SUSPENDED/trust rotation, без extra IO.
 15 scoped units, production/test types, scoped lint, architecture 421/1415,
 RLS coverage, docs/secrets/diff PASS. Архитектор — без actionable findings.
+PUBLISH runtime capability теперь независима от BUILD/signing и выключена по
+умолчанию. Переиспользован existing project registry, но для PUBLISH keyId/
+privateKeyRef optional и signing secret не разрешается. Public-only resolver
+проверяет exact scope, Ed25519 PUBLIC KEY, свежую policy/refs в final cut;
+private PEM в public slot отвергается. Actual combined-worker/pg-boss matrix —
+12/12 PASS (пять новых PUBLISH scenarios + семь BUILD/GOOD regressions): enabled,
+disabled/reserved/no GET, invalid-before-startup, late-SUCCESS rollback recovery,
+queue-ACK replay с freeze/SUSPENDED и unavailable refs. Один capture/stage,
+14 staging PUT total, PUBLISH GET only, active/cleared own heartbeat. Это
+runtime-function/synthetic SDK proof, не production/provider/OS-signal proof.
+Найденный архитектором readiness gap исправлен: own heartbeat очищается до
+storage/capability validation; invalid startup fixture предварительно создаёт
+fresh own row и доказывает её удаление без queue startup. Final runtime/staging
+matrix — 60/60 PASS (52,98s); 41 scoped units, types/lint и architecture422/1420
+PASS. Local web-env CLI не является proof этого worker: стандартный вызов
+упирается в server-only condition, direct conditional import — в неполный local
+database environment. Local env/credentials не изменялись; web readiness не заявлена.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

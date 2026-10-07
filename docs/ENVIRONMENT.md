@@ -27,7 +27,8 @@ Use `.env.example` as the value-free project template.
 | `LOG_LEVEL` | server/worker | pino level |
 | `PROJECT_STORAGE_BINDINGS` | source-worker | value-free exact organization/project registry of five environment reference names; no implicit global S3 fallback |
 | `SNAPSHOT_BUILD_ENABLED` | existing combined source-worker | explicit `true`/`false`, absent means disabled; disabled leaves snapshot intents reserved and keeps existing intake/maintenance behavior |
-| `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: keyId, privateKeyRef, currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; no global/cross-project fallback |
+| `SNAPSHOT_PUBLISH_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; selected PUBLISH needs public trust only, not BUILD/signing enablement |
+| `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; BUILD additionally requires keyId/privateKeyRef, PUBLISH accepts those optional fields but never resolves private refs; no global/cross-project fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
@@ -47,6 +48,12 @@ fresh work; committed replay uses only durable database identity. No new worker
 process or credential resource is provisioned by this preparation.
 Signing key IDs reject reserved prototype identifiers; resolved trust entries
 contain normalized Ed25519 public SPKI only, never an original private PEM.
+PUBLISH rejects private PEM in public refs instead of deriving a public key from
+private material. Its public-only resolver re-reads the bounded registry and
+public refs on each trust check, including the final publication cut, so policy
+rotation/revocation is not cached from startup. Registry shape is validated before
+queue startup; public key values and storage credentials remain lazy after exact
+committed replay. BUILD/signing can remain disabled with public-only registry rows.
 Snapshot staging forwards its owned cancellation signal to buffered S3 HEAD
 and PUT requests, with a 60-second adapter request bound. Artifact writes are
 fully joined before failure returns; cancellation cannot be treated as an

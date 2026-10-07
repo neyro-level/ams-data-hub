@@ -229,8 +229,9 @@ requires the full lease and exact selected stage/header/binding/run identity;
 no grants, historical requests or immutable captures are rewritten. Completed
 domain/request replay precedes lazy public config and bounded GET and preserves
 newer current, including after freeze, SUSPENDED or trust rotation. This adapter
-is not yet registered in the combined worker; whole-worker runtime proof remains
-required, as do the other operational executors and full MP-08.1 closure.
+is registered in the existing combined worker under the independent, default-off
+SNAPSHOT_PUBLISH_ENABLED capability. The other three operational executors and
+full MP-08.1 closure remain required.
 Native request/rejection/staging matrix is 84/84 PASS with 55 forward migrations:
 late SUCCESS failure/cancel rolls back all three states, GET-time takeover fences
 the old worker, each lease field substitution is rejected before config/IO, and
@@ -238,6 +239,17 @@ SQL rejects success without the exact run. An actual newer publication remains
 current during older operational replay after freeze/SUSPENDED/trust rotation,
 with no extra object IO. This is synthetic SDK/native database proof, not
 combined-worker registration, live provider or production evidence.
+Actual combined-worker/pg-boss runtime registration has separate 12/12 native
+proof (five PUBLISH and seven BUILD/GOOD cases): enabled completion, disabled
+reserved/no GET, invalid registry before startup, late-SUCCESS atomic rollback
+recovery and queue-ACK-loss replay with freeze/SUSPENDED/unavailable refs.
+PUBLISH uses only bounded GET and the exact pre-existing stage: no extra capture,
+signing, PUT or HEAD. Its public-only resolver reuses the project registry but
+does not require keyId/privateKeyRef or resolve signing secrets; private PEM in a
+public slot is rejected. Startup validates the registry, while actual public refs
+and storage stay lazy after replay; final trust resolution re-reads the current
+policy/refs. Own heartbeat is observed active and cleared after joined stop.
+SDK transport is synthetic; this is not provider live or OS-signal/production proof.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
