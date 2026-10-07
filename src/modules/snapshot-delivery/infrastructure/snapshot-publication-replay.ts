@@ -13,9 +13,12 @@ import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
 export const snapshotPublicationLookupSchema = z.object({ idempotencyKeyHash: z.string().regex(/^[a-f0-9]{64}$/u),
   requestHash: z.string().regex(/^[a-f0-9]{64}$/u) }).strict();
 
+export type SnapshotPublicationReceiptHeader = Pick<SnapshotBuildInputReceipt,
+  "id" | "organizationId" | "projectId" | "inputHash" | "publishSequence" | "capturedAt">;
+
 /** Internal caller owns global -> publication locks, using an actual persisted receipt. */
 export async function readCommittedSnapshotRun(tx: DatabaseTransaction,
-  scope: { organizationId: string; projectId: string }, receipt: SnapshotBuildInputReceipt) {
+  scope: { organizationId: string; projectId: string }, receipt: SnapshotPublicationReceiptHeader) {
   const run = await new PrismaSnapshotDeliveryRepository(tx).getRun(scope.organizationId, scope.projectId, receipt.publishSequence);
   if (!run) return null;
   const binding = await tx.snapshotPublicationBinding.findUnique({ where: {

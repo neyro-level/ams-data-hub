@@ -110,6 +110,17 @@ staging suite — 30/30 PASS: actual capture/binding/stage с agent/media чит
 current/DeliveryRun; последующая revocation отказывает после manifest GET.
 SDK transport synthetic; это не registered PUBLISH/live provider/production proof.
 
+Scoped selected-stage loader реализован отдельно: explicit buildInputId,
+immutable header + completed receipt + binding, без latest fallback или новых
+RLS grants. Private capture читается отдельно через bounded RepeatableRead;
+metadata replay не требует capture/config/key/storage и не переписывает более
+новый current. Native staging/delivery matrix — 35/35 PASS: foreign/missing scope,
+wrong purpose, unbound/binding-only interruption и replay старого run при новом
+current, freeze/SUSPENDED и недоступном private capture. Types/scoped lint и
+architecture guards PASS. Runs в replay fixture созданы test-controlled путём;
+это не полный operational PUBLISH. Fresh captured admission, final trust/lease и
+atomic publication/request result ещё не реализованы; MP-08.1 остаётся открытым.
+
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
 MP-05.1 закрыт implementation ledger

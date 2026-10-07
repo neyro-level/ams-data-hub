@@ -164,9 +164,23 @@ reservation subjects, inactive lifecycle history and coincident price/event
 values remain valid. Private observation/event/redirect-target IDs are absent
 from public values: they are not reconstructed or claimed verified here.
 This reader does not sign, PUT, HEAD, assemble, mutate current/DeliveryRun or
-succeed an operational request. Scoped selected-stage loading, captured admission,
-final current trust/lease checks and atomic PUBLISH/result remain required;
+succeed an operational request. Scoped selected-stage loading is implemented
+separately below; captured admission, final current trust/lease checks and atomic
+PUBLISH/result remain required;
 artifact verification alone cannot close MP-08.1.
+The internal selected-stage loader requires an explicit scoped buildInputId and
+matching immutable input header, completed stage receipt and publication binding.
+Missing, foreign, unbound or interrupted binding-only inputs are not replaced by
+a latest stage. It reuses snapshot-owned publication read purpose without adding
+Operations grants. Metadata inspection takes the existing publication lock and
+can replay an exact committed run without private captured parts, config, keys,
+storage IO or fresh admission; it does not rewrite a newer current pointer.
+New-publication capture loading is separate, bounded and RepeatableRead through
+the existing immutable input repository. Native staging/delivery matrix is 35/35
+PASS, including foreign scope, wrong purpose, binding-only interruption and old
+run replay with newer current, freeze/SUSPENDED and unavailable private capture
+capability. Test-controlled run setup proves the loader, not an operational
+PUBLISH executor or its final lease/atomic result.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only

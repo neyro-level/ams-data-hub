@@ -42,7 +42,7 @@ import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapsh
   PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
-import { calculateObjectSha256, createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { calculateObjectSha256, createMediaKey, createProjectSnapshotKey } from "../../src/platform/storage/object-storage.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -60,6 +60,8 @@ import { operationalSnapshotBuildRequest } from "../../src/modules/operations-co
 import { snapshotInputRequestHashes } from "../../src/modules/snapshot-delivery/index.ts";
 import { settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
 import { readStagedSnapshotArtifacts } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
+import { inspectSelectedSnapshotStageServer, loadSelectedSnapshotCaptureServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-selected-stage.ts";
+import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-input-repository.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -136,6 +138,24 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       const binding = await observer(setup.scope, (tx) => tx.snapshotPublicationBinding.findUniqueOrThrow({ where: {
         organizationId_projectId_buildInputId: { ...setup.scope, buildInputId: stage.buildInputId },
       } }));
+      const selectedLookup = { buildInputId: stage.buildInputId };
+      expect(await inspectSelectedSnapshotStageServer(setup.principal, selectedLookup)).toMatchObject({
+        input: { id: setup.receipt.id, inputHash: setup.receipt.inputHash }, stage, binding, run: null, current: null,
+      });
+      const captured = await loadSelectedSnapshotCaptureServer(setup.principal, selectedLookup);
+      expect(captured.receipt).toEqual(setup.receipt); expect(captured.stage).toEqual(stage); expect(captured.binding).toEqual(binding);
+      await expect(inspectSelectedSnapshotStageServer(setup.principal, { buildInputId: "missing-stage" })).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(setup.principal, { buildInputId: "missing-stage" })).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      const foreign = createProjectJobPrincipal({ ...setup.scope, projectId: setup.foreignId, jobName: "snapshot-input" });
+      await expect(inspectSelectedSnapshotStageServer(foreign, selectedLookup)).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(foreign, selectedLookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      const wrongPurpose = createProjectJobPrincipal({ ...setup.scope, jobName: "operations-executor" });
+      await expect(inspectSelectedSnapshotStageServer(wrongPurpose, selectedLookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      await expect(loadSelectedSnapshotCaptureServer(wrongPurpose, selectedLookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.findMany({ where: setup.scope })).toEqual([]);
+        expect(await tx.snapshotBuildInputPart.findMany({ where: setup.scope })).toEqual([]);
+      }, "operations-executor");
       vi.stubEnv("SYNTHETIC_STAGE_KEY", ""); // Verification has no private signing capability.
       const selected = { projectId: setup.scope.projectId, storage, trustSet, lastGood: null,
         binding: { projectId: binding.projectId, publishSequence: binding.publishSequence, keyId: binding.keyId,
@@ -155,6 +175,73 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
         expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
       });
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it("selected-stage replay ignores newer current, freeze, suspension and missing private capture capability", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const bound = { ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }), keyId: "synthetic-stage-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    let privateRead: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const old = await createSnapshotStagedBuildServer(bound)(setup.principal, setup.lookup);
+      const oldRun = await observer(setup.scope, (tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({
+        ...setup.scope, publishSequence: old.publishSequence, manifestSha256: old.manifestSha256,
+        manifestKey: createProjectSnapshotKey(setup.scope.projectId, old.manifestSha256), publishedAt: setup.receipt.capturedAt,
+      })); // Test-controlled committed publication, not an operational PUBLISH proof.
+      const newerCapture = await captureSnapshotInput(setup.principal, { ...setup.scope, idempotencyKey: "synthetic-newer-selected-stage", schemaMinor: 0 });
+      const newer = await createSnapshotStagedBuildServer(bound)(setup.principal, {
+        idempotencyKeyHash: newerCapture.idempotencyKeyHash, requestHash: newerCapture.requestHash,
+      });
+      const newerRun = await observer(setup.scope, (tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({
+        ...setup.scope, publishSequence: newer.publishSequence, manifestSha256: newer.manifestSha256,
+        manifestKey: createProjectSnapshotKey(setup.scope.projectId, newer.manifestSha256), publishedAt: newerCapture.capturedAt,
+      }));
+      expect(send).toHaveBeenCalledTimes(28);
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+      await runInPrincipalDatabaseTransaction({ kind: "platform-admin", userId: "synthetic-selected-replay", correlationId: randomUUID() }, async (tx) => {
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      privateRead = vi.spyOn(PrismaSnapshotInputRepository.prototype, "find").mockRejectedValue(new Error("SYNTHETIC_CAPTURE_READ_FORBIDDEN"));
+      const selected = await inspectSelectedSnapshotStageServer(setup.principal, { buildInputId: old.buildInputId });
+      expect(selected?.stage).toEqual(old); expect(selected?.run).toEqual(oldRun);
+      expect(selected?.current).toMatchObject({ publishSequence: newer.publishSequence, manifestSha256: newer.manifestSha256 });
+      expect(privateRead).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(28);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.snapshotArtifactStageReceipt.count({ where: setup.scope })).toBe(2);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(2);
+        expect(await new PrismaSnapshotDeliveryRepository(tx).getCurrentManifest(setup.scope.organizationId, setup.scope.projectId))
+          .toMatchObject({ publishSequence: newerRun.publishSequence, manifestSha256: newerRun.manifestSha256 });
+      });
+    } finally { privateRead?.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it("does not substitute an interrupted binding-only stage or an unbound capture", async () => {
+    const setup = await fixture();
+    const lookup = { buildInputId: setup.receipt.id };
+    await expect(inspectSelectedSnapshotStageServer(setup.principal, lookup)).resolves.toBeNull();
+    await expect(loadSelectedSnapshotCaptureServer(setup.principal, lookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockRejectedValue(new Error("SYNTHETIC_PARTIAL_STAGE"));
+    try {
+      await expect(createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+        keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+        trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [], publicKeys: {
+          "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup)).rejects.toThrow("SYNTHETIC_PARTIAL_STAGE");
+      expect(await observer(setup.scope, (tx) => tx.snapshotPublicationBinding.count({ where: setup.scope }))).toBe(1);
+      await expect(inspectSelectedSnapshotStageServer(setup.principal, lookup)).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(setup.principal, lookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      expect(await observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.count({ where: setup.scope }))).toBe(0);
     } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
   }, 60_000);
   it.each(["success", "domain-commit-before-result", "takeover-during-put", "wrong-schema-minor"])("fences request-owned operational BUILD after %s", async (mode) => {
