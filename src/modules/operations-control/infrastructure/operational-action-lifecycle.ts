@@ -13,10 +13,15 @@ export const stagedSnapshotResultSchema = z.object({ action: z.literal("SNAPSHOT
   buildInputId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u), inputHash: z.string().regex(/^[a-f0-9]{64}$/u),
   manifestSha256: z.string().regex(/^[a-f0-9]{64}$/u), publishSequence: z.number().int().positive().max(2_147_483_647),
 }).strict();
-const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema]);
+export const publishedSnapshotResultSchema = z.object({ action: z.literal("SNAPSHOT_PUBLISH"),
+  buildInputId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u), deliveryRunId: z.string().min(1).max(128),
+  manifestSha256: z.string().regex(/^[a-f0-9]{64}$/u), publishSequence: z.number().int().positive().max(2_147_483_647),
+}).strict();
+const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema, publishedSnapshotResultSchema]);
 
 /** Caller owns global -> domain locks -> outbox fence -> request and one atomic
- * domain/result commit. No outside IO or nested/principal-switching transaction. */
+ * domain/result commit. No outside IO, nested transaction or arbitrary principal
+ * switch. A fixed same-scope snapshot actor bridge may compose publication. */
 export class OperationalActionLifecycleRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
 
@@ -81,6 +86,7 @@ export class OperationalActionLifecycleRepository {
         throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
       }
       if (result.action === "SNAPSHOT_BUILD") await this.assertStagedResult(request, result);
+      if (result.action === "SNAPSHOT_PUBLISH") await this.assertPublishedResult(request, result);
       return { replayed: true as const, request, result };
     }
     if (request.status === "FAILED") throw new Error("OPERATIONS_CONTROL_ALREADY_FAILED");
@@ -116,6 +122,37 @@ export class OperationalActionLifecycleRepository {
       leaseJobRunId: lease.jobRunId, leaseAttempt: lease.attempt, leaseWorkerId: lease.workerId,
       leaseAcquiredAt: new Date(lease.leaseAcquiredAt),
     }, data: { status: "SUCCEEDED", result, finishedAt: new Date(Math.max(Date.now(), receipt.stagedAt.getTime())) } });
+    if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST");
+    return result;
+  }
+
+  private async assertPublishedResult(scope: { organizationId: string; projectId: string; buildInputId: string | null }, result: z.output<typeof publishedSnapshotResultSchema>) {
+    if (scope.buildInputId !== result.buildInputId) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    const stage = await this.transaction.snapshotArtifactStageReceipt.findUnique({ where: {
+      organizationId_projectId_buildInputId: { organizationId: scope.organizationId, projectId: scope.projectId, buildInputId: result.buildInputId },
+    } });
+    const run = await this.transaction.deliveryRun.findFirst({ where: { id: result.deliveryRunId,
+      organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: result.publishSequence,
+      manifestSha256: result.manifestSha256 } });
+    if (!stage || !run || stage.publishSequence !== result.publishSequence || stage.manifestSha256 !== result.manifestSha256) {
+      throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    }
+    return { stage, run };
+  }
+
+  async succeedPublishedSnapshot(lease: ClaimedReliabilityEvent, rawResult: z.input<typeof publishedSnapshotResultSchema>) {
+    const result = publishedSnapshotResultSchema.parse(rawResult); const intent = operationalActionIntentSchema.parse(lease.payload);
+    if (intent.action !== result.action) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    await lockOperationalOutboxLease(this.transaction, lease, { organizationId: intent.organizationId,
+      projectId: intent.projectId, topic: OPERATIONAL_ACTION_TOPICS[intent.action], payload: intent });
+    const request = await this.read(lease);
+    const { stage, run } = await this.assertPublishedResult(request, result);
+    const changed = await this.transaction.operationalActionRequest.updateMany({ where: {
+      id: intent.requestId, organizationId: intent.organizationId, projectId: intent.projectId,
+      action: result.action, buildInputId: result.buildInputId, outboxEventId: lease.outboxEventId, status: "RUNNING",
+      leaseJobRunId: lease.jobRunId, leaseAttempt: lease.attempt, leaseWorkerId: lease.workerId,
+      leaseAcquiredAt: new Date(lease.leaseAcquiredAt),
+    }, data: { status: "SUCCEEDED", result, finishedAt: new Date(Math.max(Date.now(), stage.stagedAt.getTime(), run.publishedAt.getTime(), request.startedAt?.getTime() ?? 0)) } });
     if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST");
     return result;
   }

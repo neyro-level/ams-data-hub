@@ -128,7 +128,7 @@ historical GOOD/producer OFF, relink, duplicate public price/event history,
 cohort/URL/agent/catalog/contact mismatch, foreign receipt, manual photo priority
 и ambiguous listing slot. Decoded-value attacks проверяют attribution, не подпись
 изменённых values. Snapshot-owned final fresh admission/current trust теперь
-реализованы ниже; full Ops lease и atomic publication/request result ещё не завершены;
+реализованы ниже; full operational runtime registration/proof ещё не завершены;
 MP-08.1 остаётся открытым.
 
 New PUBLISH request acceptance теперь сохраняет explicit buildInputId в
@@ -150,7 +150,24 @@ purpose, global→publication lock, committed replay, четыре fresh owner g
 после GET, project/source/catalog/media/freeze changes, wrong purpose, cancellation
 и rollback после actual pointer/run writes. PostgreSQL worker — NOBYPASSRLS;
 SDK transport synthetic. Это snapshot finish proof, не full operational PUBLISH:
-full lease/request SUCCESS и их общий rollback ещё требуют реализации.
+full lease/request SUCCESS реализованы отдельным adapter ниже.
+
+Concrete selected PUBLISH adapter теперь использует один Ops-owned RC final cut:
+global/publication locks → complete latest event/job/request fence → fixed same-scope
+actor-only bridge → snapshot-owned publication → actor restore → SUCCEEDED.
+Forward SQL guard независимо сверяет full lease и exact selected stage/header/
+binding/run. Current, DeliveryRun и SUCCESS откатываются вместе при late failure
+или cancellation. Конфигурация и GET разрешаются лениво после committed replay;
+исторические NULL requests, captures и grants не переписаны. В общей очереди пока
+зарегистрированы только rejection и BUILD; PUBLISH runtime registration/proof и
+остальные три executors остаются открытыми, MP-08.1 не закрывается.
+Final native request/rejection/staging matrix — 84/84 PASS с 55 migrations:
+late SUCCESS failure/cancel откатывает все три состояния, takeover во время GET
+отказывает старому worker, подмена каждого lease field отвергается до config/IO,
+SQL не допускает success без exact run. Actual newer publication сохраняется при
+older operational replay после freeze/SUSPENDED/trust rotation, без extra IO.
+15 scoped units, production/test types, scoped lint, architecture 421/1415,
+RLS coverage, docs/secrets/diff PASS. Архитектор — без actionable findings.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

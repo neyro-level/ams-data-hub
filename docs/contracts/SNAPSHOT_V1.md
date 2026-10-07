@@ -211,14 +211,33 @@ Native staging suite is 42/42 PASS, including ten final-cut scenarios for succes
 committed replay, post-GET revocation, owner/freeze changes, wrong purpose, abort
 and rollback after actual writes. The worker uses NOBYPASSRLS and SDK transport
 is synthetic. This seam does not own an Ops lease or persist request SUCCEEDED;
-that full atomic composition and its rollback proof remain required.
+that responsibility belongs to the separate operational composition below.
 New operational PUBLISH acceptance requires an explicit buildInputId, includes it
 in idempotency and audit identity, and persists a scoped FK to a completed stage.
 The INSERT guard rejects missing targets; FK validation rejects foreign, missing
 and unbound capture IDs without granting web access to private snapshot tables.
 Historical NULL-target requests are not rewritten. The admin form uses existing
 field/error primitives and clears the target when switching projects. This pins
-intent only: it does not enable a registered PUBLISH or claim final publication.
+intent only: it does not enable a registered PUBLISH.
+The concrete operational PUBLISH adapter now composes that finish closure in one
+Ops-owned ReadCommitted final cut: global/publication locks, full latest
+event/job/request lease fence, fixed same-scope actor-only bridge, publication,
+normal actor restoration and request SUCCEEDED. Role, principal kind, scope and
+correlation never change. Any late exception or cancellation rolls back current,
+DeliveryRun and request success together. A forward SQL success guard independently
+requires the full lease and exact selected stage/header/binding/run identity;
+no grants, historical requests or immutable captures are rewritten. Completed
+domain/request replay precedes lazy public config and bounded GET and preserves
+newer current, including after freeze, SUSPENDED or trust rotation. This adapter
+is not yet registered in the combined worker; whole-worker runtime proof remains
+required, as do the other operational executors and full MP-08.1 closure.
+Native request/rejection/staging matrix is 84/84 PASS with 55 forward migrations:
+late SUCCESS failure/cancel rolls back all three states, GET-time takeover fences
+the old worker, each lease field substitution is rejected before config/IO, and
+SQL rejects success without the exact run. An actual newer publication remains
+current during older operational replay after freeze/SUSPENDED/trust rotation,
+with no extra object IO. This is synthetic SDK/native database proof, not
+combined-worker registration, live provider or production evidence.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
