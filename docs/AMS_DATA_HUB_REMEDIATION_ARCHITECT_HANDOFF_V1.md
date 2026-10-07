@@ -10,6 +10,20 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.11 repository foundation — 2026-10-07, IN_PROGRESS
+
+Task base `327f210`. Current/DeliveryRun repository takes global safety then
+scoped publication advisory locks in its caller-owned short ReadCommitted
+transaction. An existing committed run with matching key/digest/timestamp is
+returned without changing current, including replay after a newer publication;
+identity conflicts fail closed. Native NOBYPASS RC proof: 3/3 PASS, including
+concurrent duplicates, conflicting digest, rollback after pointer/run write,
+historical replay and lower uncommitted sequence rejection. Scoped architect
+review found no actionable foundation issues. This is not full MP-05.11:
+durable signed binding before PUT, module-owned fresh admission/readers, serialized
+fact-writer protocol and registered outbox handler remain pending. Agent admin
+CAS alone does not serialize consent changes with the publication safety lock.
+
 ### MP-05.10 implementation proof — 2026-10-07
 
 Task base `b8de74a`. `createSnapshotSignedBuildServer` composes the actual
