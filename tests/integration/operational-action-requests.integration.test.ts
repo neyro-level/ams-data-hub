@@ -291,7 +291,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     }
   });
 
-  it("retains durable request/replay while actual NOBYPASS retention deletes its settled and unrelated intents", async () => {
+  it("protects unresolved durable requests from intent-only settlement while retaining replay and unrelated cleanup", async () => {
     const { admin, scope, suffix } = await fixture(); const requestInput = input(scope, `synthetic-retention-${suffix}`);
     const request = await requestOperationalAction(admin, requestInput);
     const ids = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -305,11 +305,12 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
         processedAt: new Date("2000-01-01T00:00:00.000Z"), correlationId: randomUUID() } });
       return [row.outboxEventId, unrelated.id];
     });
-    const result = await runReliabilityRetention(); expect(result.deletedOutboxEvents).toBeGreaterThanOrEqual(2);
+    const result = await runReliabilityRetention(); expect(result.deletedOutboxEvents).toBeGreaterThanOrEqual(1);
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
-      expect(await tx.outboxEvent.count({ where: { id: { in: ids } } })).toBe(0);
+      expect(await tx.outboxEvent.findUnique({ where: { id: ids[0]! } })).not.toBeNull();
+      expect(await tx.outboxEvent.findUnique({ where: { id: ids[1]! } })).toBeNull();
       expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: request.requestId } }))
-        .toMatchObject({ id: request.requestId, ...scope, outboxEventId: null });
+        .toMatchObject({ id: request.requestId, ...scope, outboxEventId: ids[0], status: "REQUESTED" });
     });
     await expect(requestOperationalAction(admin, requestInput)).resolves.toEqual({ ...request, duplicate: true });
   });

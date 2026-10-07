@@ -26,6 +26,13 @@ import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/m
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import type { Prisma } from "../../src/generated/prisma/client.ts";
+import { handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
+import { createOutboxDrainDependencies, drainOutboxWithDependencies, getPgBoss, listDeadLetterOutboxEvents,
+  publishClaimedEvent, runReliabilityRetention } from "../../src/modules/platform-operations/worker.ts";
+import { OUTBOX_DELIVERY_QUEUE } from "../../src/modules/platform-operations/domain/pg-boss.ts";
+import { runSourceWorker } from "../../src/infrastructure/source-worker-runtime.ts";
+import { SOURCE_IMPORT_QUEUE } from "../../src/modules/ingestion-core/worker.ts";
+import { S3Client } from "@aws-sdk/client-s3";
 
 async function fixture() {
   const suffix = randomUUID().slice(0, 8);
@@ -79,6 +86,196 @@ async function fixture() {
 }
 
 describe("actual operational rejection lifecycle under NOBYPASS", () => {
+  it("denies manufactured terminal status, wrong terminal owner and foreign executor purpose", async () => {
+    const f = await fixture();
+    const failed = { status: "FAILED" as const, safeErrorCode: "OPERATIONS_CONTROL_EXECUTION_FAILED",
+      startedAt: new Date(), finishedAt: new Date(), leaseJobRunId: f.lease.jobRunId,
+      leaseAttempt: f.lease.attempt, leaseWorkerId: f.lease.workerId, leaseAcquiredAt: new Date(f.lease.leaseAcquiredAt) };
+    await expect(runInAuthorizedDatabaseTransaction(f.context, (tx) => tx.operationalActionRequest.update({
+      where: { id: f.requestId }, data: failed,
+    }))).rejects.toThrow("OUTBOX_OPERATION_TERMINAL_INVALID");
+    await f.reliability.fail(f.lease, "SYNTHETIC_TERMINAL", false, 1);
+    await expect(runInAuthorizedDatabaseTransaction(f.context, (tx) => tx.operationalActionRequest.update({
+      where: { id: f.requestId }, data: { ...failed, leaseWorkerId: "synthetic-forged-worker" },
+    }))).rejects.toThrow("OUTBOX_OPERATION_TERMINAL_INVALID");
+    await expect(runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.operationalActionRequest.update({
+      where: { id: f.requestId }, data: failed,
+    }))).rejects.toThrow();
+    await settleTerminalOperationalRequests([{ id: f.lease.outboxEventId, organizationId: f.subject.organizationId, payload: f.lease.payload }]);
+  });
+
+  it.each(["execute", "restart-reconcile"])("proves %s through actual combined worker startup and owned readiness", async (mode) => {
+    const f = await fixture(); const controller = new AbortController();
+    const workerId = `${f.lease.workerId}-runtime`;
+    vi.stubEnv("SNAPSHOT_BUILD_ENABLED", "false");
+    vi.stubEnv("PROJECT_STORAGE_BINDINGS", JSON.stringify([{ organizationId: f.subject.organizationId,
+      projectId: f.subject.projectId, bucketRef: "SYNTHETIC_REJECTION_BUCKET", endpointRef: "SYNTHETIC_REJECTION_ENDPOINT",
+      regionRef: "SYNTHETIC_REJECTION_REGION", accessKeyIdRef: "SYNTHETIC_REJECTION_ACCESS", secretAccessKeyRef: "SYNTHETIC_REJECTION_SECRET" }]));
+    vi.stubEnv("SYNTHETIC_REJECTION_BUCKET", "synthetic-rejection-bucket");
+    vi.stubEnv("SYNTHETIC_REJECTION_ENDPOINT", "https://s3.twcstorage.ru");
+    vi.stubEnv("SYNTHETIC_REJECTION_REGION", "ru-1");
+    vi.stubEnv("SYNTHETIC_REJECTION_ACCESS", "synthetic-rejection-access");
+    vi.stubEnv("SYNTHETIC_REJECTION_SECRET", "synthetic-rejection-secret");
+    const outbound = vi.spyOn(S3Client.prototype, "send").mockRejectedValue(new Error("SYNTHETIC_UNEXPECTED_OUTBOUND"));
+    const boss = await getPgBoss(); await boss.createQueue(OUTBOX_DELIVERY_QUEUE);
+    if (mode === "execute") await publishClaimedEvent(boss, f.lease);
+    else {
+      await f.reliability.fail(f.lease, "SYNTHETIC_TERMINAL", false, 1);
+      await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.outboxEvent.create({ data: {
+        topic: OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT, organizationId: f.subject.organizationId,
+        payload: { synthetic: "malformed" }, status: "DEAD_LETTER", correlationId: "synthetic-malformed-runtime",
+      } }));
+    }
+    const observeThenStop = async () => {
+      let observed = false; const deadline = Date.now() + 2000;
+      while (!observed && Date.now() < deadline) {
+        observed = await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.runtimeHeartbeat.count({
+          where: { runtime: "source-worker", workerId },
+        }).then((count) => count === 1));
+        if (!observed) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(observed).toBe(true); controller.abort();
+    };
+    const complete = boss.complete.bind(boss); const fetch = boss.fetch.bind(boss);
+    const completed = vi.spyOn(boss, "complete").mockImplementation(async (name, id, data, options) => {
+      const job = name === OUTBOX_DELIVERY_QUEUE && typeof id === "string" ? await boss.getJobById(name, id) : null;
+      const result = await complete(name, id, data, options);
+      if (mode === "execute" && (job?.data as { event?: { outboxEventId?: string } } | undefined)?.event?.outboxEventId === f.lease.outboxEventId) {
+        expect(data).toEqual({ status: "success" }); await observeThenStop();
+      }
+      return result;
+    });
+    const fetched = vi.spyOn(boss, "fetch").mockImplementation(async (name, options) => {
+      const result = await fetch(name, options);
+      if (mode === "restart-reconcile" && name === SOURCE_IMPORT_QUEUE) await observeThenStop();
+      return result;
+    });
+    const deadline = setTimeout(() => controller.abort(), 10_000);
+    try {
+      await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 }))
+        .resolves.toEqual({ fetched: 0, completed: 0, failed: 0 });
+      expect(outbound).not.toHaveBeenCalled();
+      await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } }))
+          .toMatchObject({ status: mode === "execute" ? "SUCCEEDED" : "FAILED" });
+        expect(await tx.runtimeHeartbeat.count({ where: { runtime: "source-worker", workerId } })).toBe(0);
+      });
+    } finally { clearTimeout(deadline); controller.abort(); completed.mockRestore(); fetched.mockRestore(); outbound.mockRestore(); vi.unstubAllEnvs(); }
+  });
+  it("keeps retention predicate functional with a non-BYPASS definer without exposing requests to runtime retention", async () => {
+    const f = await fixture();
+    // Privileged fixture ownership changes stay inside this synthetic test
+    // transaction. The actual predicate call runs as NOBYPASS worker and its
+    // temporary definer is the existing NOBYPASS web role, never a new role.
+    await expect(runInAuthorizedDatabaseTransaction(f.context, async (tx) => {
+      await tx.$executeRawUnsafe("RESET ROLE");
+      await tx.$executeRawUnsafe("GRANT CREATE ON SCHEMA public TO ams_data_hub_web");
+      await tx.$executeRawUnsafe("ALTER FUNCTION operational_outbox_retention_allowed(text) OWNER TO ams_data_hub_web");
+      await tx.$executeRawUnsafe("REVOKE CREATE ON SCHEMA public FROM ams_data_hub_web");
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      await tx.$queryRawUnsafe("SELECT set_config('app.principal_kind', 'system-job', true), set_config('app.actor_id', 'outbox-retention', true)");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'ams_data_hub_web'"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      expect(await tx.$queryRawUnsafe("SELECT operational_outbox_retention_allowed($1) AS allowed", f.lease.outboxEventId))
+        .toEqual([{ allowed: false }]);
+      expect(await tx.operationalActionRequest.count({ where: { id: f.requestId } })).toBe(0);
+      // NOINHERIT fixture maintainer cannot reassign ownership back via RESET
+      // ROLE. Roll back the entire ownership fixture instead of widening roles.
+      throw new Error("SYNTHETIC_OWNER_ROLLBACK");
+    })).rejects.toThrow("SYNTHETIC_OWNER_ROLLBACK");
+    await f.reliability.fail(f.lease, "SYNTHETIC_NEGATIVE_CLEANUP", false, 1);
+  });
+
+  it("skips malformed and orphan terminal events without blocking valid request reconciliation", async () => {
+    const f = await fixture();
+    await f.reliability.fail(f.lease, "SYNTHETIC_TERMINAL", false, 1);
+    const valid = { id: f.lease.outboxEventId, organizationId: f.subject.organizationId, payload: f.lease.payload };
+    const orphan = await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.outboxEvent.create({ data: {
+      organizationId: f.subject.organizationId, topic: OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT, status: "DEAD_LETTER",
+      payload: { ...f.lease.payload, requestId: "synthetic-orphan" }, correlationId: "synthetic-orphan", occurredAt: new Date("2000-01-01"),
+    } }));
+    await settleTerminalOperationalRequests([{ ...valid, payload: { synthetic: "malformed" } },
+      { ...valid, organizationId: "synthetic-foreign" }, { id: orphan.id, organizationId: orphan.organizationId, payload: orphan.payload }, valid]);
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) =>
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } })).toMatchObject({ status: "FAILED" }));
+    await runReliabilityRetention(new Date("2030-01-01"));
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) =>
+      expect(await tx.outboxEvent.findUnique({ where: { id: orphan.id } })).toBeNull());
+  });
+  it.each(["REQUESTED", "RUNNING"])("reconciles %s only after terminal failure and protects crash evidence from retention", async (initial) => {
+    const f = await fixture();
+    if (initial === "RUNNING") await runInAuthorizedDatabaseTransaction(f.context, async (tx) => {
+      await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text");
+      await new OperationalActionLifecycleRepository(tx).begin(f.lease);
+    });
+    const event = { id: f.lease.outboxEventId, organizationId: f.subject.organizationId, payload: f.lease.payload };
+    expect(await f.reliability.fail(f.lease, "SYNTHETIC_TRANSIENT", true, 2)).toMatchObject({ status: "pending" });
+    await settleTerminalOperationalRequests([event]);
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) =>
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } })).toMatchObject({ status: initial, safeErrorCode: null }));
+    f.setNow(new Date("2000-01-01T00:01:00.000Z"));
+    const retried = await f.reliability.claim(f.lease.workerId, 300_000, [OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
+    if (!retried || retried.outboxEventId !== f.lease.outboxEventId) throw new Error("SYNTHETIC_RETRY_MISSING");
+    expect(retried.attempt).toBe(2);
+    expect(await f.reliability.fail(retried, "SYNTHETIC_TRANSIENT", true, 2)).toMatchObject({ status: "dead_letter" });
+    // Simulated crash after durable outbox failure: request still unresolved.
+    await runReliabilityRetention(new Date("2030-01-01T00:00:00.000Z"));
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+      expect(await tx.outboxEvent.findUnique({ where: { id: event.id } })).not.toBeNull();
+      expect(await tx.jobRun.findUnique({ where: { id: retried.jobRunId } })).not.toBeNull();
+    });
+    const page = await listDeadLetterOutboxEvents(OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT, "");
+    expect(page.map((item) => item.id)).toContain(event.id);
+    await settleTerminalOperationalRequests(page);
+    await settleTerminalOperationalRequests([event]); // Restart/page replay is immutable.
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+      const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } });
+      expect(request).toMatchObject({ status: "FAILED", safeErrorCode: "OPERATIONS_CONTROL_EXECUTION_FAILED",
+        result: null, leaseJobRunId: retried.jobRunId, leaseAttempt: 2, leaseWorkerId: retried.workerId,
+        leaseAcquiredAt: new Date(retried.leaseAcquiredAt) });
+      expect(request.finishedAt!.getTime()).toBeGreaterThanOrEqual(request.startedAt!.getTime());
+      expect(await tx.sourceRevision.findUniqueOrThrow({ where: { id: f.subject.sourceRevisionId } })).toMatchObject({ status: "SUSPICIOUS" });
+    });
+    await expect(runInAuthorizedDatabaseTransaction(f.context, (tx) => tx.operationalActionRequest.update({
+      where: { id: f.requestId }, data: { safeErrorCode: "SYNTHETIC_FORGERY" },
+    }))).rejects.toThrow("OPERATIONS_CONTROL_TRANSITION_INVALID");
+    await runReliabilityRetention(new Date("2030-01-01T00:00:00.000Z"));
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+      expect(await tx.outboxEvent.findUnique({ where: { id: event.id } })).toBeNull();
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } }))
+        .toMatchObject({ status: "FAILED", outboxEventId: null });
+    });
+  });
+
+  it("preserves committed success even when the queue acknowledgement exhausts into DEAD_LETTER", async () => {
+    const f = await fixture(); const result = await executeSuspiciousRejection(f.lease);
+    await f.reliability.fail(f.lease, "SYNTHETIC_ACK_FAILURE", false, 1);
+    await settleTerminalOperationalRequests([{ id: f.lease.outboxEventId, organizationId: f.subject.organizationId, payload: f.lease.payload }]);
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) =>
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } }))
+        .toMatchObject({ status: "SUCCEEDED", result, safeErrorCode: null }));
+  });
+
+  it("executes the real rejection adapter through the shared native pg-boss queue", async () => {
+    const f = await fixture(); const boss = await getPgBoss();
+    await boss.createQueue(OUTBOX_DELIVERY_QUEUE);
+    // Other real combined-worker cases can leave their own queued maintenance
+    // packets. Native priority selects only this fixture without changing the
+    // consumer predicate, settling foreign intents, or weakening assertions.
+    const queueJobId = await boss.send(OUTBOX_DELIVERY_QUEUE, { schemaVersion: 1, event: f.lease },
+      { singletonKey: f.lease.outboxEventId, priority: 1000 });
+    expect(queueJobId).not.toBeNull();
+    const result = await drainOutboxWithDependencies({ workerId: f.lease.workerId, maxEvents: 1 }, {
+      ...createOutboxDrainDependencies(boss), reliability: f.reliability,
+      topics: [OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT], handle: handleOperationalOutboxEvent,
+    });
+    expect(result).toEqual({ claimed: 1, completed: 1, failed: 0 });
+    expect((await boss.getJobById(OUTBOX_DELIVERY_QUEUE, queueJobId!))?.state).toBe("completed");
+    await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+      expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } })).toMatchObject({ status: "SUCCEEDED" });
+      expect(await tx.outboxEvent.findUniqueOrThrow({ where: { id: f.lease.outboxEventId } })).toMatchObject({ status: "PROCESSED" });
+    });
+  });
   it("atomically rejects only the suspicious revision and stores a bounded immutable result", async () => {
     const f = await fixture();
     const result = { action: "SUSPICIOUS_REJECT", sourceRevisionId: f.subject.sourceRevisionId };

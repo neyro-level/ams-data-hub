@@ -324,8 +324,16 @@ remediation program preserves these boundaries while connecting them:
   privileges are reused, not widened. The concrete suspicious-rejection adapter
   commits revision review/audit and durable success together, preserves Last GOOD,
   and replays committed success before mutable admission. SQL bounds private
-  policy/analysis before transfer. Queue registration, other five adapters,
-  terminal failure reconciliation and HTTP discovery/delivery/ACK remain unfinished.
+  policy/analysis before transfer. Only this real adapter is registered in the
+  combined queue. Terminal FAILED requires durable DEAD_LETTER and its latest
+  full FAILED JobRun identity, not retry/defer; startup/60s reconciliation closes
+  the crash gap without overwriting committed success. Retention preserves
+  unresolved bound requests' events/jobs via an exact-purpose boolean-only
+  definer predicate and delete guard; its owner-only RLS policy supports the
+  non-BYPASS migrator without granting runtime private-request reads. Malformed
+  or unbound terminal intents stay quarantined, never fabricate a result and do
+  not block consumer startup. Other five adapters and HTTP discovery/delivery/ACK
+  remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

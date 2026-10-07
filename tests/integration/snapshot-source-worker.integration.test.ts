@@ -141,6 +141,12 @@ describe("actual combined source-worker snapshot capability", () => {
         if (mode === "enabled") expect(jobs[0]).toMatchObject({ status: "SUCCESS", workerId });
       });
       if (mode !== "enabled") expect(sdk).not.toHaveBeenCalled();
+      // These deliberately unexecuted intents must remain PENDING, not be
+      // manufactured as completed. After all disabled/invalid assertions,
+      // move only this fixture's availability outside other suites' clocks.
+      if (mode !== "enabled") await runInPrincipalDatabaseTransaction(setup.admin, (tx) =>
+        tx.outboxEvent.updateMany({ where: { id: setup.intent.outboxEventId, status: "PENDING" },
+          data: { availableAt: new Date("2050-01-01T00:00:00.000Z") } }));
     } finally {
       controller.abort(); clearTimeout(timer); completeSpy?.mockRestore(); fetchSpy?.mockRestore();
       await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs();

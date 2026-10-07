@@ -160,7 +160,7 @@ export class ReliabilityService {
   defer(event: ClaimedReliabilityEvent, code: OutboxDeferralCode): Promise<void> {
     return this.repository.deferEvent({ outboxEventId: event.outboxEventId, jobRunId: event.jobRunId,
       workerId: event.workerId, leaseAcquiredAt: event.leaseAcquiredAt, finishedAt: this.now().toISOString(),
-      code: z.enum(["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY"]).parse(code),
+      code: z.enum(["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY", "OPERATIONS_CONTROL_EXECUTION_DEFERRED"]).parse(code),
       delaySeconds: code === "SOURCE_JOB_QUEUE_BUSY" ? 30 : 300 });
   }
 

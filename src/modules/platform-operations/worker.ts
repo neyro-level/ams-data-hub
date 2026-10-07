@@ -343,7 +343,8 @@ export function createOutboxDrainDependencies(boss: OutboxQueueClient): OutboxDr
 }
 
 export function listDeadLetterOutboxEvents(topic: string, afterId: string) {
-  if (topic !== "ingestion.source.manual.request" || !/^[A-Za-z0-9_-]{0,128}$/u.test(afterId)) throw new Error("OUTBOX_TERMINAL_QUERY_INVALID");
+  if (!["ingestion.source.manual.request", ...Object.values(OPERATIONAL_ACTION_TOPICS)].includes(topic)
+    || !/^[A-Za-z0-9_-]{0,128}$/u.test(afterId)) throw new Error("OUTBOX_TERMINAL_QUERY_INVALID");
   return runInSystemJobDatabaseTransaction({ jobName: "outbox-terminal-reconcile", correlationId: `outbox-terminal-${Date.now()}` },
     (tx) => tx.outboxEvent.findMany({ where: { topic, status: "DEAD_LETTER", ...(afterId ? { id: { gt: afterId } } : {}) },
       orderBy: { id: "asc" }, take: 100, select: { id: true, organizationId: true, payload: true } }));

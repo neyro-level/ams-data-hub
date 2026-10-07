@@ -1,0 +1,52 @@
+import "server-only";
+import { Prisma } from "../../generated/prisma/client.ts";
+import { createProjectJobPrincipal } from "../../platform/authorization/principal-factories.ts";
+import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction } from "../../platform/database/transaction.ts";
+import type { ClaimedReliabilityEvent } from "../platform-operations/index.ts";
+import { operationalActionIntentSchema, OPERATIONAL_ACTION_TOPICS } from "./contracts.ts";
+import { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
+import { OperationalActionLifecycleRepository } from "./infrastructure/operational-action-lifecycle.ts";
+
+export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
+
+/** No raw exception text, cancellation reason or arbitrary diagnostic code
+ * reaches generic outbox persistence. Retry/defer is not request FAILED. */
+export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal) {
+  if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT) {
+    throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED"), {
+      code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
+    });
+  }
+  try { await executeSuspiciousRejection(event, signal); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (["DATA_SAFETY_JOBS_FROZEN", "SOURCE_OPERATION_REVIEW_BLOCKED", "OPERATIONS_CONTROL_EXECUTION_CANCELLED",
+      "OUTBOX_OPERATION_LEASE_LOST"].includes(message)) {
+      return { deferred: true as const, code: "OPERATIONS_CONTROL_EXECUTION_DEFERRED" as const };
+    }
+    // Unexpected infrastructure failures consume the existing bounded retry
+    // budget. Deterministic invalid revision/request cases are terminal.
+    const retryable = !["SOURCE_REVISION_SAFETY_INVALID", "SOURCE_OPERATION_REVIEW_INVALID",
+      "OPERATIONS_CONTROL_REFERENCE_INVALID", "OPERATIONS_CONTROL_ALREADY_FAILED"].includes(message);
+    throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTION_FAILED"), {
+      code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable,
+    });
+  }
+}
+
+export async function settleTerminalOperationalRequests(events: readonly {
+  id: string; organizationId: string | null; payload: unknown;
+}[]) {
+  for (const event of events) {
+    const intent = operationalActionIntentSchema.safeParse(event.payload);
+    if (!intent.success || intent.data.organizationId !== event.organizationId) {
+      continue; // Quarantined by existing DEAD_LETTER; never fabricate a request.
+    }
+    const principal = createProjectJobPrincipal({ ...intent.data, jobName: "operations-executor",
+      correlationId: `operations-terminal-${event.id}` });
+    await runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(principal), async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
+      return new OperationalActionLifecycleRepository(tx).settleDeadLetter(event.id, intent.data);
+    }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
+  }
+}

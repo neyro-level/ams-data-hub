@@ -1,4 +1,4 @@
-import { RetentionRunStatus } from "../../../generated/prisma/client.ts";
+import { Prisma, RetentionRunStatus } from "../../../generated/prisma/client.ts";
 import { runInSystemJobDatabaseTransaction } from "../../../platform/database/transaction.ts";
 
 const PROCESSED_RETENTION_DAYS = 14;
@@ -30,21 +30,11 @@ export async function runReliabilityRetention(now = new Date()): Promise<RunRete
       select: { id: true },
     });
 
-    const outboxEvents = await transaction.outboxEvent.findMany({
-      where: {
-        OR: [
-          {
-            status: "PROCESSED",
-            processedAt: { lt: processedCutoff },
-          },
-          {
-            status: "DEAD_LETTER",
-            occurredAt: { lt: deadLetterCutoff },
-          },
-        ],
-      },
-      select: { id: true },
-    });
+    const outboxEvents = await transaction.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id" FROM "OutboxEvent"
+      WHERE (("status" = 'PROCESSED' AND "processedAt" < ${processedCutoff})
+        OR ("status" = 'DEAD_LETTER' AND "occurredAt" < ${deadLetterCutoff}))
+        AND operational_outbox_retention_allowed("id")`);
     const outboxEventIds = outboxEvents.map((event) => event.id);
     const deletedJobRuns = outboxEventIds.length
       ? await transaction.jobRun.count({ where: { outboxEventId: { in: outboxEventIds } } })

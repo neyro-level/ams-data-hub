@@ -59,7 +59,7 @@ export interface FailReliabilityEventInput extends CompleteReliabilityEventInput
   maxAttempts: number;
 }
 
-export type OutboxDeferralCode = "OUTBOX_EXECUTOR_RESERVED" | "SOURCE_JOB_QUEUE_BUSY";
+export type OutboxDeferralCode = "OUTBOX_EXECUTOR_RESERVED" | "SOURCE_JOB_QUEUE_BUSY" | "OPERATIONS_CONTROL_EXECUTION_DEFERRED";
 export type OutboxHandlerResult = void | { deferred: true; code: OutboxDeferralCode };
 export interface DeferReliabilityEventInput extends CompleteReliabilityEventInput {
   code: OutboxDeferralCode;

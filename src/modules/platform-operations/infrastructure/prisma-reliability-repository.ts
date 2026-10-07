@@ -417,7 +417,7 @@ export class PrismaReliabilityRepository implements ReliabilityRepository {
   }
 
   async deferEvent(input: DeferReliabilityEventInput): Promise<void> {
-    if (!["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY"].includes(input.code)
+    if (!["OUTBOX_EXECUTOR_RESERVED", "SOURCE_JOB_QUEUE_BUSY", "OPERATIONS_CONTROL_EXECUTION_DEFERRED"].includes(input.code)
       || !Number.isInteger(input.delaySeconds) || input.delaySeconds < 1 || input.delaySeconds > 300) throw new Error("OUTBOX_DEFERRAL_INVALID");
     await runInSystemJobDatabaseTransaction({ jobName: "outbox-defer", correlationId: `outbox-defer-${input.workerId}-${input.finishedAt}` }, async (tx) => {
       const event = await tx.outboxEvent.updateMany({ where: { id: input.outboxEventId, status: OutboxStatus.PROCESSING,

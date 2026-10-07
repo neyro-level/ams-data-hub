@@ -59,8 +59,15 @@ SUCCEEDED results for the concrete suspicious-rejection adapter. Its domain
 review, audit and request completion share one transaction; rejection never
 changes inventory or Last GOOD. Replay of an already committed result precedes
 mutable freeze/project/revision admission. Policy/analysis JSON is SQL-bounded
-before transfer. Terminal FAILED reconciliation and the other five adapters
-remain unfinished; none is registered as a placeholder consumer.
+before transfer. Only this adapter is registered in the shared queue; the other
+five remain reserved. Immutable FAILED carries one finite generic safeErrorCode
+and requires actual DEAD_LETTER/latest FAILED JobRun metadata. Retry/defer does
+not fail a request; committed success cannot be overwritten. Startup/60s paged
+reconciliation survives the fail-before-request crash gap. A purpose-restricted
+boolean definer and owner-only SELECT policy work under non-BYPASS FORCE RLS
+without opening runtime request reads; deletion is denied for bound unresolved
+requests but permits terminal or orphan event retention. Malformed/unbound
+intents are skipped without manufacturing request results.
 
 ## Confirmed listing-agent assignments
 

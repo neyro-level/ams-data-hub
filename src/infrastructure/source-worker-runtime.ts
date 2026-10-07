@@ -5,6 +5,8 @@ import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
 import { createSnapshotBuildCapability } from "./snapshot-build-capability.ts";
 import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
+import { OPERATIONAL_EXECUTOR_TOPICS, handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../modules/operations-control/worker.ts";
+import { OPERATIONAL_ACTION_TOPICS } from "../modules/operations-control/index.ts";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 import { createSourceExecutionServer } from "../modules/ingestion-core/server.ts";
 import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, PgBossSourceJobQueue,
@@ -77,6 +79,7 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   try { await clearSourceWorkerHeartbeat(options.workerId); } catch { throw new Error("SOURCE_READINESS_CLEAR_FAILED"); }
   const boss = await getPgBoss();
   let terminalCursor = "";
+  const operationalTerminalCursors = new Map<string, string>();
   try { return await runSourceWorkerWithDependencies(options, { boss, resolveStorage,
     readiness: {
       probe: async () => { if (!await boss.getQueue(SOURCE_IMPORT_QUEUE)) throw new Error("SOURCE_QUEUE_NOT_READY"); },
@@ -89,10 +92,16 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       const events = await listDeadLetterOutboxEvents(SOURCE_MANUAL_REQUEST_TOPIC, terminalCursor);
       await settleTerminalSourceManualRequests(events);
       terminalCursor = events.length === 100 ? events.at(-1)!.id : "";
+      for (const topic of Object.values(OPERATIONAL_ACTION_TOPICS)) {
+        const terminal = await listDeadLetterOutboxEvents(topic, operationalTerminalCursors.get(topic) ?? "");
+        await settleTerminalOperationalRequests(terminal);
+        operationalTerminalCursors.set(topic, terminal.length === 100 ? terminal.at(-1)!.id : "");
+      }
     },
     outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC,
-      ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
+      ...OPERATIONAL_EXECUTOR_TOPICS, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
       handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
-        : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event) : handleDefaultOutboxEvent(event) } }); }
+        : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
+          : OPERATIONAL_EXECUTOR_TOPICS.includes(event.topic) ? handleOperationalOutboxEvent(event, signal) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

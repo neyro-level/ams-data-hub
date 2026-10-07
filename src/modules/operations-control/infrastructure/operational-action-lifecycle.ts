@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
-import { lockOperationalOutboxLease } from "../../platform-operations/server.ts";
+import { lockOperationalOutboxLease, lockOperationalOutboxTerminal } from "../../platform-operations/server.ts";
 import type { ClaimedReliabilityEvent } from "../../platform-operations/index.ts";
 import { OPERATIONAL_ACTION_TOPICS, operationalActionIntentSchema } from "../contracts.ts";
 
@@ -13,6 +13,38 @@ export const rejectedRevisionResultSchema = z.object({
  * domain/result commit. No outside IO or nested/principal-switching transaction. */
 export class OperationalActionLifecycleRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
+
+  async settleDeadLetter(outboxEventId: string, rawIntent: unknown) {
+    const intent = operationalActionIntentSchema.parse(rawIntent);
+    const bound = await this.transaction.operationalActionRequest.findFirst({ where: {
+      id: intent.requestId, organizationId: intent.organizationId, projectId: intent.projectId,
+      action: intent.action, outboxEventId,
+    }, select: { id: true } });
+    if (!bound) return false; // Well-shaped orphan, not an accepted request.
+    const terminal = await lockOperationalOutboxTerminal(this.transaction, outboxEventId, {
+      organizationId: intent.organizationId, projectId: intent.projectId,
+      topic: OPERATIONAL_ACTION_TOPICS[intent.action], payload: intent,
+    });
+    if (!terminal) return false;
+    await this.transaction.$queryRaw(Prisma.sql`SELECT "id" FROM "OperationalActionRequest"
+      WHERE "id" = ${intent.requestId} AND "organizationId" = ${intent.organizationId}
+        AND "projectId" = ${intent.projectId} FOR UPDATE`);
+    const request = await this.transaction.operationalActionRequest.findFirst({ where: {
+      id: intent.requestId, organizationId: intent.organizationId, projectId: intent.projectId,
+      action: intent.action, outboxEventId,
+    } });
+    if (!request) throw new Error("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    // The domain commit can succeed before queue ACK is lost/exhausted. Never
+    // replace that durable success with an infrastructure failure.
+    if (request.status === "SUCCEEDED" || request.status === "FAILED") return false;
+    const finishedAt = new Date(Math.max(Date.now(), terminal.finishedAt.getTime(), request.startedAt?.getTime() ?? 0));
+    await this.transaction.operationalActionRequest.update({ where: { id: request.id }, data: {
+      status: "FAILED", safeErrorCode: "OPERATIONS_CONTROL_EXECUTION_FAILED", finishedAt,
+      startedAt: request.startedAt ?? terminal.startedAt, leaseJobRunId: terminal.id,
+      leaseAttempt: terminal.attempt, leaseWorkerId: terminal.workerId, leaseAcquiredAt: terminal.startedAt,
+    } });
+    return true;
+  }
 
   async read(lease: ClaimedReliabilityEvent) {
     const intent = operationalActionIntentSchema.parse(lease.payload);

@@ -60,10 +60,16 @@ runtime-function cases с настоящим local pg-boss, enabled/disabled/con
 Task Manager; production не обновлялся. Текущий участок — MP-08.1:
 durable operational requests/outbox и шесть реальных исполнителей.
 Foundation checkpoint не закрывает этот task и не означает исполнение запросов.
-Текущий следующий delta — fenced lifecycle и concrete SUSPICIOUS_REJECT:
+Текущий implemented delta — fenced lifecycle и concrete SUSPICIOUS_REJECT:
 review/audit/request success в одной транзакции, immutable replay и Last GOOD
-unchanged. Shared queue registration, terminal FAILED и остальные пять
-исполнителей ещё не завершены; task не закрыт.
+unchanged. Реальный rejection adapter подключён к общей очереди; остальные
+пять остаются reserved. Terminal FAILED сверяется с DEAD_LETTER/latest FAILED
+JobRun на старте и каждые 60 секунд; unresolved requests защищены от retention.
+Непривязанные/некорректные terminal intents не блокируют общий worker и не
+создают фиктивный FAILED. Native PostgreSQL/pg-boss — 48/48 PASS в пяти suites,
+включая actual combined-worker startup/restart и qualified/cleared heartbeat;
+28 scoped unit tests PASS. Остальные пять исполнителей и полный MP-08.1 DoD
+ещё не завершены; task не закрыт.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
