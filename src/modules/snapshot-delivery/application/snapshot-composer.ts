@@ -81,6 +81,7 @@ function composeDataset(dataset: SnapshotDatasetInput): SnapshotFileArtifact {
 }
 
 export function composeSnapshot(input: ComposeSnapshotInput): SnapshotComposition {
+  assertSnapshotDatasetIntegrity(input.datasets);
   const datasetIndex = indexDatasets(input.datasets);
   for (const kind of SNAPSHOT_DATASET_KINDS) {
     if (!input.datasets.some((dataset) => dataset.kind === kind)) {
@@ -115,6 +116,19 @@ export function composeSnapshot(input: ComposeSnapshotInput): SnapshotCompositio
     manifestPayload: canonicalJsonBytes(manifest as CanonicalJsonValue),
     files,
   };
+}
+
+/** Candidate assembly integrity; no signing or fresh publication admission. */
+export function assertSnapshotDatasetIntegrity(datasets: readonly SnapshotDatasetInput[]): void {
+  if (datasets.length !== SNAPSHOT_DATASET_KINDS.length || datasets.some((dataset) => !SNAPSHOT_DATASET_KINDS.includes(dataset.kind))) {
+    throw new SnapshotCompositionError("SNAPSHOT_DATASET_MISSING", "exact thirteen datasets required");
+  }
+  const index = indexDatasets(datasets);
+  for (const kind of SNAPSHOT_DATASET_KINDS) if (!datasets.some((dataset) => dataset.kind === kind)) {
+    throw new SnapshotCompositionError("SNAPSHOT_DATASET_MISSING", kind);
+  }
+  assertReferences(datasets, index);
+  for (const dataset of datasets) for (const record of dataset.records) assertSnapshotPrivacySafe(record.value);
 }
 
 export function snapshotManifestCanonicalJson(composition: SnapshotComposition): string {

@@ -13,13 +13,18 @@ import { projectPublicCoordinates } from "../domain/public-coordinates.ts";
 /** Captured metadata, not a substitute entity or a live registry lookup. */
 export interface SnapshotInventoryProjectionInput {
   fact: SnapshotGoodNormalizedFact;
-  profile: { identity: string; configuration: SourceProfileConfiguration | null; formatContract: SourceFormatContract | null };
+  profile: SnapshotInventoryProfile;
   identity: { uid: string; sourceId: string; externalOfferId: string; sourceHash: string; normalizedHash: string;
     factProfileIdentity: string; status: string; firstSeenAt: string; lastSeenAt: string;
     sourceCreatedAt: string | null; sourceUpdatedAt: string | null; createdAt: string; updatedAt: string };
   /** Persistent captured URL-entry association; never generated from the UID. */
   url: { entityType: "INVENTORY"; entityUid: string; publicUrlId: string };
   media: readonly MediaPublicV1[];
+}
+export interface SnapshotInventoryProfile {
+  identity: string;
+  configuration: Pick<SourceProfileConfiguration, "fieldMappings" | "unitAliases" | "pricePeriodAliases" | "dealStatusAliases" | "locationPolicy"> | null;
+  formatContract: Pick<SourceFormatContract, "family"> | null;
 }
 
 const absent = () => ({ state: "ABSENT" } as const);

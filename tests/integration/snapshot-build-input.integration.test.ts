@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
-import { captureSnapshotInput, createSnapshotMediaProjectionServer, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotCandidateAssemblyServer, createSnapshotMediaProjectionServer, PrismaSnapshotInputRepository, runInSnapshotInputTransaction } from "../../src/modules/snapshot-delivery/server.ts";
 import {
   SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotInputHash,
   snapshotInputRequestHashes, snapshotInputRequestSchema,
   projectSnapshotCatalog,
   projectSnapshotProjectState,
   projectSnapshotInventory,
+  composeSnapshot, SNAPSHOT_DATASET_KINDS,
   type SnapshotInventoryProjectionInput,
 } from "../../src/modules/snapshot-delivery/index.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction,
@@ -121,21 +122,26 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-private-actor", consentBasis: "synthetic-private-basis", photoMediaId: asset.id } });
       const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sourceKey: "synthetic-command", name: "Synthetic command", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
-        profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+        profileKey: "vladis-vt24-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
       const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
       const inventoryUid = createUlid(); const image = "https://private.example.invalid/captured.jpg";
+      const draft = { externalId: "captured", sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+        title: "Synthetic public inventory", address: "Synthetic City, house 9", areaM2: 60, currency: "RUB", price: 12345,
+        imageUrls: [image, image], contactPhones: ["synthetic-private-phone"], provenance: {} };
+      const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: "2", attributes: {}, children: {} }] } };
+      const recordHash = normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields });
       const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
         profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
       await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId: "captured",
-        inventoryUid, recordHash: "b".repeat(64), orderKey: "6361707475726564",
-        payload: { schemaVersion: 1, draft: { imageUrls: [image, image], contactPhones: ["synthetic-private-phone"] }, rawRecord: { private: true } } } });
+        inventoryUid, recordHash, orderKey: "6361707475726564",
+        payload: { schemaVersion: 1, draft, fields, rawRecord: { private: true } } } });
       await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
         rawStorageKey: "synthetic-private-raw", rawArtifactHash: "c".repeat(64), rawByteCount: 1,
-        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+        normalizedContentHash: recordHash, completedAt: new Date() } });
       await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
       await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
-      await tx.inventoryIdentity.create({ data: { ...where, uid: inventoryUid, externalOfferId: "captured", normalizedHash: "b".repeat(64),
+      await tx.inventoryIdentity.create({ data: { ...where, uid: inventoryUid, externalOfferId: "captured", normalizedHash: recordHash,
         sourceHash: "c".repeat(64), status: "ACTIVE", firstSeenAt: new Date(), lastSeenAt: new Date() } });
       await tx.mediaSource.create({ data: { ...where, sourceRevisionId: revision.id, entityType: "INVENTORY", entityUid: inventoryUid,
         kind: "LISTING_IMAGE", position: 999, sourceUrl: image, canonicalSourceUrl: image, status: "MIRRORED", assetId: asset.id,
@@ -148,6 +154,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         firstSeenAt: new Date(), lastAttemptAt: new Date(), mirroredAt: new Date() } });
       await tx.priceObservation.create({ data: { ...where, developmentUid, externalId: "synthetic-price", observedAt: new Date(), amount: "12345.67", currency: "RUB", basis: "TOTAL" } });
       const projectScope = { organizationId: scope.organizationId, projectId: scope.projectId };
+      const inventoryReservation = await tx.publicUrlIdReservation.create({ data: { ...projectScope,
+        subjectType: "INVENTORY", subjectUid: inventoryUid, publicUrlId: "2345678901234567" } });
+      await tx.projectUrlEntry.create({ data: { ...projectScope, entityType: "INVENTORY", entityUid: inventoryUid,
+        reservationId: inventoryReservation.id, slug: "synthetic-captured", canonicalPath: "/inventory/synthetic-captured" } });
       const reservation = await tx.publicUrlIdReservation.create({ data: { ...projectScope,
         subjectType: "AGENT", subjectUid: agentUid, publicUrlId: "1234567890123456" } });
       const entry = await tx.projectUrlEntry.create({ data: { ...projectScope, entityType: "AGENT", entityUid: agentUid,
@@ -166,7 +176,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         { ...projectScope, inventoryUid, type: "INACTIVATED", occurredAt: new Date("2026-01-01T00:00:00.000Z") },
         { ...projectScope, inventoryUid, type: "REACTIVATED", occurredAt: new Date("2026-02-01T00:00:00.000Z") },
       ] });
-      return { assetId: asset.id, inventoryUid };
+      return { assetId: asset.id, inventoryUid, sourceId: source.id };
     });
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     let workerTransactions = 0;
@@ -196,6 +206,25 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const projectMedia = createSnapshotMediaProjectionServer({ organizationId: scope.organizationId, projectId: scope.projectId, storage: { head } });
       const publicMedia = await projectMedia(first);
       expect(head).toHaveBeenCalledOnce();
+      const assemble = createSnapshotCandidateAssemblyServer({ organizationId: scope.organizationId, projectId: scope.projectId, storage: { head } });
+      const lookup = { idempotencyKeyHash: first.idempotencyKeyHash, requestHash: first.requestHash };
+      const assembled = await assemble(principal, lookup);
+      expect(assembled.datasets).toHaveLength(13);
+      expect(new Set(assembled.datasets.map((dataset) => dataset.kind))).toEqual(new Set(SNAPSHOT_DATASET_KINDS));
+      expect(assembled.datasets.find((dataset) => dataset.kind === "inventory")!.records[0]!.value).toMatchObject({
+        uid: fixture.inventoryUid, facts: { rooms: { state: "VALUE", value: 2 } },
+        media: [{ ref: "a".repeat(64), kind: "IMAGE", position: 0 }, { ref: "a".repeat(64), kind: "IMAGE", position: 1 }] });
+      const compose = (datasets: typeof assembled.datasets) => composeSnapshot({ schemaMinor: first.schemaMinor,
+        projectId: first.projectId, publishSequence: first.publishSequence, generatedAt: first.capturedAt.toISOString(),
+        publishedAt: first.capturedAt.toISOString(), catalogRevision: first.catalogRevision,
+        sourceRevisions: [...new Set(first.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload)
+          .flatMap((row) => row && typeof row === "object" && !Array.isArray(row) && typeof row.factRevisionId === "string" ? [row.factRevisionId] : []))],
+        keyId: "synthetic-unsigned-key", requiresProjectContact: true, datasets });
+      const composition = compose(assembled.datasets);
+      expect(composition.files.map((file) => file.manifest.kind)).toEqual(SNAPSHOT_DATASET_KINDS);
+      expect(JSON.stringify(assembled.datasets)).not.toMatch(/synthetic-private|storageKey|sourceId|normalizedHash|rawRecord|contactPhones/u);
+      await expect(assemble(createProjectJobPrincipal({ organizationId: scope.organizationId,
+        projectId: scope.foreignProjectId, jobName: "snapshot-input" }), lookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
       expect(publicMedia.dataset.records.map((record) => record.key).sort()).toEqual([
         `AGENT/${agentUid}/0`, `DEVELOPMENT/${developmentUid}/0`, `INVENTORY/${fixture.inventoryUid}/0`, `INVENTORY/${fixture.inventoryUid}/1`,
       ].sort());
@@ -203,7 +232,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(projectSnapshotProjectState(first, publicMedia.agentMedia)[0]!.records[0]!.value).toMatchObject({
         uid: agentUid, media: [{ ref: "a".repeat(64), kind: "IMAGE", position: 0 }] });
       expect(JSON.stringify(publicMedia.dataset)).not.toMatch(/private|storageKey|sourceId|relationId|assetId/u);
-      expect(publicProjectState.map((dataset) => dataset.records.length)).toEqual([1, 1, 1, 2, 1, 4]);
+      expect(publicProjectState.map((dataset) => dataset.records.length)).toEqual([1, 1, 1, 4, 1, 4]);
       expect(publicProjectState[0]!.records[0]!.value).toMatchObject({ uid: agentUid, fullName: "Synthetic consented agent", media: [] });
       expect(publicProjectState[1]!.records[0]!.value).toMatchObject({ phone: "+70000000001" });
       expect(publicProjectState[2]!.records[0]!.value).toMatchObject({ description: "Captured public copy" });
@@ -227,6 +256,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(values("media").filter((row) => typeof row === "object" && row && "inventoryUid" in row)).toHaveLength(2);
       expect(JSON.stringify(first.parts)).not.toMatch(/https:|synthetic-private|rawRecord|contactPhones|originalFileName|consentBasis|consentConfirmedBy/u);
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.source.update({ where: { id: fixture.sourceId }, data: { enabled: false, profileKey: "default-v1", version: { increment: 1 } } });
         await tx.development.update({ where: { uid: developmentUid }, data: { name: "Changed development", normalizedName: "changed development", version: { increment: 1 } } });
         await tx.projectPublicContact.update({ where: { organizationId_projectId: { organizationId: scope.organizationId,
           projectId: scope.projectId } }, data: { phone: "+70000000002", version: { increment: 1 } } });
@@ -234,7 +264,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         await tx.mediaAsset.update({ where: { id: fixture.assetId }, data: { storageKey: "synthetic-wrong-object-key" } });
         await tx.entityEditorial.updateMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId },
           data: { description: "Changed live editorial", version: { increment: 1 } } });
-        await tx.projectUrlEntry.updateMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId },
+        await tx.projectUrlEntry.updateMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId, entityType: "AGENT" },
           data: { slug: "changed", canonicalPath: "/agents/changed", version: { increment: 1 } } });
         await tx.projectCatalogSubscription.delete({ where: { organizationId_projectId: { organizationId: scope.organizationId, projectId: scope.projectId } } });
       });
@@ -245,7 +275,9 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(projectSnapshotCatalog(replay)).toEqual(publicCatalog);
       expect(projectSnapshotProjectState(replay)).toEqual(publicProjectState);
       expect(await projectMedia(replay)).toEqual(publicMedia);
-      expect(head).toHaveBeenCalledTimes(2);
+      expect(await assemble(principal, lookup)).toEqual(assembled);
+      expect(compose((await assemble(principal, lookup)).datasets)).toEqual(composition);
+      expect(head).toHaveBeenCalledTimes(5);
       await expect(captureSnapshotInput(principal, { ...request, schemaMinor: 1 })).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
       await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-rollback" })).rejects.toThrow("SHARED_CATALOG_SUBSCRIPTION_NOT_FOUND");
       await worker(scope, async (tx) => {
@@ -280,6 +312,87 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       });
       expect(workerTransactions).toBeGreaterThanOrEqual(10);
     } finally { role.mockRestore(); }
+  }, 60_000);
+
+  it("assembles historical GOOD public facts in bounded pages after producer-off without loading a live profile", async () => {
+    const scope = await setup(); const uids = Array.from({ length: 201 }, () => createUlid());
+    const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: "2", attributes: {}, children: {} }] } };
+    const draft = (externalId: string) => ({ externalId, sourceFormat: "YRL_2010", propertyType: "APARTMENT", transactionType: "SALE",
+      title: "Synthetic historical public inventory", address: "Synthetic City, house 9", imageUrls: [], contactPhones: [], provenance: {} });
+    const hashes = uids.map((_, index) => normalizedContentHash({ draft: { ...draft(`kept-${index}`), provenance: undefined }, fields }));
+    const sourceId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        mode: "ALL_SHARED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-paged-good", name: "Synthetic historical source", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+        profileKey: "vladis-vt24-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      const revision = async (sequence: number, historical: boolean) => {
+        const row = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
+          adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: historical ? 201 : 1 } });
+        await tx.sourceRevisionRecord.createMany({ data: historical ? uids.map((uid, index) => ({ ...where, revisionId: row.id,
+          externalId: `kept-${index}`, inventoryUid: uid, recordHash: hashes[index]!, orderKey: Buffer.from(`kept-${index}`).toString("hex"),
+          payload: { schemaVersion: 1, draft: draft(`kept-${index}`), fields } })) : [{ ...where, revisionId: row.id,
+          externalId: "new-only", inventoryUid: createUlid(), recordHash: normalizedContentHash({ draft: { ...draft("new-only"), provenance: undefined }, fields }),
+          orderKey: "6e65772d6f6e6c79", payload: { schemaVersion: 1, draft: draft("new-only"), fields } }] });
+        await tx.sourceRevision.update({ where: { id: row.id }, data: { status: "STAGED", sequence,
+          rawStorageKey: `synthetic-private/${sequence}`, rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+          normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+        await tx.sourceRevision.update({ where: { id: row.id }, data: { status: "GOOD" } });
+        return row.id;
+      };
+      await revision(1, true); const head = await revision(2, false);
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: head } });
+      await tx.inventoryIdentity.createMany({ data: uids.map((uid, index) => ({ ...where, uid, externalOfferId: `kept-${index}`,
+        normalizedHash: hashes[index]!, sourceHash: "c".repeat(64), status: "ACTIVE", firstSeenAt: new Date(), lastSeenAt: new Date(),
+        missingGoodRuns: 1, missingSince: new Date() })) });
+      const projectScope = { organizationId: scope.organizationId, projectId: scope.projectId };
+      await tx.publicUrlIdReservation.createMany({ data: uids.map((uid, index) => ({ ...projectScope, subjectType: "INVENTORY",
+        subjectUid: uid, publicUrlId: `3${String(index).padStart(15, "0")}` })) });
+      const reservations = await tx.publicUrlIdReservation.findMany({ where: { ...projectScope, subjectType: "INVENTORY" } });
+      await tx.projectUrlEntry.createMany({ data: reservations.map((reservation) => ({ ...projectScope, entityType: "INVENTORY",
+        entityUid: reservation.subjectUid, reservationId: reservation.id, slug: `synthetic-${reservation.publicUrlId}`,
+        canonicalPath: `/inventory/synthetic-${reservation.publicUrlId}` })) });
+      return source.id;
+    });
+    const captured = await captureWithWorkerRole({ organizationId: scope.organizationId,
+      projectId: scope.projectId }, "synthetic-paged-assembly");
+    const pins = captured.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload);
+    expect(pins).toHaveLength(201);
+    expect(pins.every((pin) => pin && typeof pin === "object" && !Array.isArray(pin)
+      && pin.factRevisionSequence === 1 && pin.approvedHeadSequence === 2)).toBe(true);
+    const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+    const originalTransaction = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((context, execute, options) =>
+      originalTransaction(context, async (tx) => {
+        if (context.actorId === "snapshot-input") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+        }
+        return execute(tx);
+      }, options));
+    const sizes: number[] = []; const originalResolver = sourceFacade.createSnapshotGoodFactResolver;
+    const resolver = vi.spyOn(sourceFacade, "createSnapshotGoodFactResolver").mockImplementation((tx) => {
+      const resolve = originalResolver(tx);
+      return (target, page, profiles) => { sizes.push(page.length); return resolve(target, page, profiles); };
+    });
+    const head = vi.fn();
+    try {
+      const assemble = createSnapshotCandidateAssemblyServer({ organizationId: scope.organizationId, projectId: scope.projectId, storage: { head } });
+      const lookup = { idempotencyKeyHash: captured.idempotencyKeyHash, requestHash: captured.requestHash };
+      const first = await assemble(principal, lookup);
+      expect(sizes).toEqual([200, 1]); expect(first.datasets).toHaveLength(13);
+      const inventory = first.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+      expect(inventory).toHaveLength(201);
+      expect(inventory.every((record) => typeof record.value === "object" && record.value !== null
+        && !Array.isArray(record.value) && record.value.title === "Synthetic historical public inventory")).toBe(true);
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.update({ where: { id: sourceId },
+        data: { enabled: false, profileKey: "default-v1", version: { increment: 1 } } }));
+      expect(await assemble(principal, lookup)).toEqual(first);
+      expect(sizes).toEqual([200, 1, 200, 1]); expect(head).not.toHaveBeenCalled();
+    } finally { role.mockRestore(); resolver.mockRestore(); }
   }, 60_000);
 
   it("captures 4100 inventory pins with page-bounded SQL inside the actual worker timeout", async () => {

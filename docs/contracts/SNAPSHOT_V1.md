@@ -93,6 +93,19 @@ invented GOOD pins. Unsupported shared kinds are explicit finite omissions.
 Missing/invalid objects produce value-free diagnostics, never producer fallbacks.
 Fresh consent/rights/publication admission remains a separate pre-publication gate.
 
+`createSnapshotCandidateAssemblyServer` accepts a matching snapshot-input
+project-job principal and persisted receipt lookup hashes, not caller-supplied
+entities/receipt JSON. It loads the scoped immutable input, validates required
+ACTIVE inventory profiles and persistent URL entries, closes the read transaction
+before media HEAD, then resolves GOOD pages ≤200 in a separate scoped read
+transaction and immediately projects public records. No live Source/profile or
+LastGood substitution is allowed. All thirteen actual projectors are invoked;
+exact kinds, declared references and privacy are verified. Aggregate uncompressed
+canonical dataset arrays are capped at 32 MiB including brackets and separators
+across pages. This candidate result does not claim fresh rights/consent/cohort
+admission, complete source-fact coverage, inferred agent linkage, signing or
+publication. Later plan steps must supply those proofs.
+
 The strict public `media` attachment row is `{entityType, entityUid, media}`,
 where `media` is `MediaPublicV1` and entityType is INVENTORY, AGENT, DEVELOPMENT or
 BUILDING. Record keys are `ENTITY_TYPE/uid/position`; AGENT uses position 0.

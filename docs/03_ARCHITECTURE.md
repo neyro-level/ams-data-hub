@@ -212,7 +212,13 @@ remediation program preserves these boundaries while connecting them:
   inventory pins, agent assignment/consent and shared ownership before sequential
   project-bound HEAD outside DB. A build-local metadata-conflict-safe cache
   retains repeated positions; strict opaque attachments reference their owners.
-  Receipt orchestration and confirmed agent linkage remain unfinished steps;
+  Server-owned candidate assembly now loads only persisted scoped receipts under
+  the snapshot-input principal, preflights captured inventory URL/profile settings,
+  performs HEAD outside DB, resolves immutable GOOD in pages of at most 200 and
+  immediately projects public records. Exact thirteen-dataset references/privacy
+  are checked; aggregate canonical array work is capped at 32 MiB including
+  brackets and page-spanning separators. This is not signing/publication;
+  complete fact preservation and confirmed agent linkage remain unfinished steps;
   fresh consent/rights/publication admission is not replaced by captured replay.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw

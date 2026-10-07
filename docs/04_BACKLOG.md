@@ -49,7 +49,8 @@ MP-07 доставлен PR #24 после exact-head RISKY Gate #243, merge
 `e5e3c960a1591c286156dab927f96cdbba70a2bf`: bounded snapshot verifier,
 84 scoped unit tests и Linux build PASS; публичное GitHub mirror совпадает.
 Текущий участок — MP-05 assembly. MP-05.1 закрыт implementation ledger
-на pushed checkpoint `a074033`; MP-05.2 — IN_PROGRESS:
+на pushed checkpoint `a074033`; MP-05.2 — projector DoD подтверждён,
+фактический implementation/delivery статус принадлежит Task Manager:
 полный private DB capture command, immutable input persistence и allocator
 прошли native NOBYPASS PostgreSQL proof: 18 sections, replay после изменения
 живых фактов, concurrent same-key capture, rollback и 4100 объектов/8200 media
@@ -77,8 +78,11 @@ inventory/media assembly ещё требуют реализации.
 проверены. Следующий candidate projector преобразует verified GOOD facts в
 InventoryEntity/public DTO: exact identity/profile pins, variant sparse facts,
 captured unit/period policy, STREET coordinates, persistent URL и media references,
-safe-HTML source-code cleanup. Receipt orchestration,
-подтверждённый agent linkage и полный 13-dataset build ещё остаются в работе;
+safe-HTML source-code cleanup. Серверная candidate assembly теперь связывает
+persisted receipt, captured profiles/URLs, HEAD вне DB и GOOD pages ≤200 с
+реальными 13 projectors; strict reference/privacy и aggregate 32 MiB canonical
+array budget включают brackets/commas. Полнота source facts, подтверждённый
+agent linkage и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
 после Source disable/profile change; targeted units — 31/31. Capture 4100/8200

@@ -234,6 +234,34 @@ Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
 
 ### Active implementation contract: MP-05.2
 
+Unified candidate assembly extension: load only a persisted scoped receipt under
+the snapshot-input project-job principal; validate captured inventory/URL/profile
+inputs before object IO; perform HEAD outside database transactions; resolve
+immutable GOOD facts in pages of at most 200 and immediately project each page
+to public records. Compose the five catalog, six project-state, inventory and
+media datasets with exact-kind/reference/privacy checks and bounded public work.
+No raw page accumulation, live profile/Source lookup, inferred agent identity,
+signing or publication. Verification must use actual persisted capture/resolver
+with synthetic NOBYPASS PostgreSQL, all thirteen datasets and replay after live
+edits; partial helpers alone do not close this task. Existing production, secret,
+PII and historical-migration stop conditions remain unchanged.
+
+Unified candidate proof now uses actual persisted capture with normalized GOOD
+draft/fields and recomputed record hashes, persistent inventory URL, all thirteen
+real datasets and unsigned deterministic composition. Native replay remains
+identical after live Source/profile/catalog/contact/editorial/agent/media edits.
+A separate 201-record historical grace case verifies fact sequence 1 under
+captured head sequence 2, real resolver pages `[200, 1]`, producer-off/reprofile
+replay and no object HEAD for absent media. The final two native suites PASS
+20/20; unchanged 4100/8200 capture takes 13.1 seconds under the original 30-second
+worker limit. Final units PASS 59/59; full static checks PASS (383 modules/1170
+dependencies), with final test TypeScript/lint after the strict-scope fixture
+correction. Docs/secrets/diff checks are recorded in Task Manager. Synthetic
+object transport is not a live-provider proof. Cohort/policy composition, complete
+source-fact preservation, confirmed listing-agent binding and fresh admission,
+signing/publication remain subsequent implementation work, not proved by this
+candidate checkpoint.
+
 Compose all 13 public dataset projectors from the immutable captured input and
 its exact scoped GOOD references. Reuse existing domain-owned public DTO/media,
 contact, editorial and URL mappings; never pass raw Prisma rows to the composer.
