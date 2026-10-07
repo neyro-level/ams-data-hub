@@ -741,14 +741,44 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
   });
 
   it("advances missing grace only on safe GOOD runs and preserves inventory across broken runs", async () => {
-    const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,
       deactivationEnabled: true, inactiveAfterMissingHours: 0, inactiveAfterMissingGoodRuns: 2 });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let snapshotCuts = 0;
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => {
+        if (principal.principalKind === "project-job") {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+            .toEqual([{ rolbypassrls: false, rolsuper: false }]); snapshotCuts++;
+        }
+        return execute(tx);
+      }, options));
     try {
       const all = [1, 2, 3, 4, 5].map((id) => offer(String(id)));
       context.provide(feed(...all));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
       const initial = await context.read();
       const missingUid = initial.identities.find((item) => item.externalOfferId === "5")!.uid;
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED",
+          cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
+        for (const [index, row] of initial.identities.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: row.uid, publicUrlId: `123456789012345${index}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: row.uid,
+            reservationId: reservation.id, slug: `lifecycle-${index}`, canonicalPath: `/inventory/lifecycle-${index}` } });
+        }
+      });
+      const snapshotJob = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      async function build(key: string) {
+        const receipt = await captureSnapshotInput(snapshotJob, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+        const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+        return { lookup, result: await assemble(snapshotJob, lookup) };
+      }
       context.provide(feed(...all.slice(0, 4)));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
       const grace = await context.read();
@@ -769,13 +799,27 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       expect(inactive.identities).toHaveLength(5);
       expect(inactive.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "INACTIVE", missingGoodRuns: 2 });
       expect(inactive.events).toMatchObject([{ inventoryUid: missingUid, type: "INACTIVATED" }]);
+      const inactiveSnapshot = await build("lifecycle-inactive");
+      expect(inactiveSnapshot.result.datasets.find((dataset) => dataset.kind === "inventory")!.records.map((row) => row.key)).not.toContain(missingUid);
+      const inactiveLifecycle = inactiveSnapshot.result.datasets.find((dataset) => dataset.kind === "lifecycle")!.records.map((row) => row.value);
+      expect(inactiveLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-state", inventoryUid: missingUid, status: "INACTIVE" }));
+      expect(inactiveLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-event", inventoryUid: missingUid,
+        type: "INACTIVATED", occurredAt: inactive.events[0]!.occurredAt.toISOString() }));
       context.provide(feed(...all));
       expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 4 });
       const reactivated = await context.read();
       expect(reactivated.identities.find((item) => item.uid === missingUid)).toMatchObject({ status: "ACTIVE", missingGoodRuns: 0, missingSince: null });
       expect(reactivated.events.map((event) => event.type)).toEqual(["INACTIVATED", "REACTIVATED"]);
-    } finally { context.cleanup(); }
-  });
+      const activeSnapshot = await build("lifecycle-reactivated");
+      expect(activeSnapshot.result.datasets.find((dataset) => dataset.kind === "inventory")!.records.map((row) => row.key)).toContain(missingUid);
+      const activeLifecycle = activeSnapshot.result.datasets.find((dataset) => dataset.kind === "lifecycle")!.records.map((row) => row.value);
+      for (const event of reactivated.events) expect(activeLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-event",
+        inventoryUid: missingUid, type: event.type, occurredAt: event.occurredAt.toISOString() }));
+      expect(activeLifecycle).toContainEqual(expect.objectContaining({ factType: "inventory-state", inventoryUid: missingUid, status: "ACTIVE" }));
+      expect(await assemble(snapshotJob, inactiveSnapshot.lookup)).toEqual(inactiveSnapshot.result);
+      expect(head).not.toHaveBeenCalled(); expect(snapshotCuts).toBeGreaterThan(3);
+    } finally { snapshotRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
 
   it("preserves pre-revision identities on baseline and requires both run and elapsed-time grace", async () => {
     const context = await setup("default-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY,

@@ -114,4 +114,19 @@ describe("captured project-state public projectors", () => {
     expect(datasets[5]!.records.map((record) => record.value)).toContainEqual(expect.objectContaining({ factType: "url-tombstone", publicUrlId: data.publicUrlId }));
     expect(datasets[5]!.records.filter((record) => record.key.startsWith("event:"))[0]!.references).toEqual([]);
   });
+  it("retains persistent paths after relink without exporting or recomputing consumer SEO policy", () => {
+    const data = fixture(); const entry = data.facts.urls![0] as Record<string, CanonicalJsonValue>;
+    const relinkedUid = createUlid();
+    const facts = { ...data.facts,
+      "url-policy": [{ policyKey: "private-policy", pathTemplates: [{ entityType: "AGENT", template: "/different/{slug}" }],
+        reservedNamespaces: ["api"], robots: "noindex", sitemap: false }],
+      urls: [{ ...entry, entityUid: relinkedUid, seoTitle: "private-seo", canonicalHost: "https://private.example.invalid",
+        indexability: false }, data.facts.urls![1]!] };
+    const datasets = projectSnapshotProjectState(input(facts));
+    expect(datasets[3]!.records).toContainEqual(expect.objectContaining({ key: `entry:${data.publicUrlId}`,
+      value: expect.objectContaining({ entityUid: relinkedUid, canonicalPath: entry.canonicalPath, publicUrlId: data.publicUrlId }) }));
+    expect(datasets[3]!.records).toContainEqual(expect.objectContaining({ key: `reservation:${data.publicUrlId}`,
+      value: expect.objectContaining({ entityUid: data.hidden }) }));
+    expect(JSON.stringify(datasets)).not.toMatch(/private-policy|different|pathTemplates|reservedNamespaces|robots|sitemap|seoTitle|canonicalHost|indexability|private-seo/u);
+  });
 });

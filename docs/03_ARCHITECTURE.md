@@ -196,8 +196,8 @@ remediation program preserves these boundaries while connecting them:
   the profile registry do not replace pinned data. A SQL 4-MiB page guard splits
   oversized pages before transfer, and malformed components return marker-only
   failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
-  and coordinates still need the captured location policy. Full inventory/media
-  projection and captured-profile orchestration are not yet complete.
+  and coordinates use the captured location policy in the candidate projector
+  described below. Full signed build/publication orchestration remains unfinished.
   GOOD resolution now excludes raw `draft.address` and private apartment fields
   from its result. Optional `addressPublic` passes bounded NFKC-aware unit
   redaction: explicit RU/EN unit components and exact captured apartment markers

@@ -135,11 +135,20 @@ foreign denial до HEAD, actual all-bound optional composition и immutable rep
 точные scope/hash/latest GOOD/RLS условия. Повторный capture4100/8200 — 25,605s,
 project-state phase — 41ms; лимит 30s не изменён. Full quick + final delta types/
 lint/architecture, docs/secrets/diff — PASS. Exact pushed closure ledger — Beads.
+MP-05.8 implementation proof: actual NOBYPASS URL commands → captured input →
+public projectors → thirteen-dataset composer сохраняют reservation/publicUrlId
+при rename/relink, canonical paths, 301 redirects, GONE/tombstones и независимые
+reservations. Source pipeline доказывает actual INACTIVATED/REACTIVATED events,
+включая history без ACTIVE inventory; old receipt replay неизменен. URL-policy и
+consumer SEO fields не публикуются; assembler отвергает SEO overrides. Native
+baseline — 31/31 в трёх suites; final URL fixture после последнего assertion —
+1/1; project-state/composer units — 24/24; full verify:quick и final fixture
+types/lint — PASS. Consumer HTTP/SEO и signed publication этим не заявлены.
 Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
-после Source disable/profile change; targeted units — 31/31. Capture 4100/8200
-сохраняет лимит 30 секунд (13,9 секунды в последнем прогоне).
+после Source disable/profile change; targeted units — 31/31. Актуальный capacity
+proof MP-05.7 выше сохраняет лимит 30 секунд для capture4100/8200.
 Медиа-контур теперь включает receipt-only pin/consent/assignment admission,
 server-owned project-bound HEAD вне DB, build-local cache и strict opaque
 owner/position attachments с взаимными references. Missing/invalid mirrors

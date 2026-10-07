@@ -1,5 +1,14 @@
 # Snapshot V1 contract
 
+URL/lifecycle datasets transfer persistent Hub state, not consumer SEO policy.
+They preserve independent publicUrlId reservations, entries after legitimate
+relink, stored canonical paths, factual/presentation lifecycle, immutable 301
+history and GONE tombstones. Inactive inventory state/events survive without an
+ACTIVE inventory dataset row. Neither catalog selection nor current Agent gate
+prunes URL history; replay never recalculates paths from slug/templates or live
+state. Templates/reserved namespaces and robots/indexability/sitemap/title/host
+policy are excluded. Consumer HTTP redirect/410 and SEO behavior are separate.
+
 `@ams-data-hub/snapshot-verifier` is the canonical server-side consumer for a
 Hub snapshot. A site must keep its last-good state until every gate passes.
 

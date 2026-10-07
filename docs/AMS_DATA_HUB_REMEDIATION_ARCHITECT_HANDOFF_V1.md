@@ -10,6 +10,24 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.8 implementation proof — 2026-10-07
+
+Task base `b0c4346`; existing persistent-state transfer is reused, not redesigned.
+Native URL commands run under NOBYPASS web role and snapshot capture/assembly
+under NOBYPASS worker: publish, rename with 301, relink with stable publicUrlId,
+registered REDIRECTED target, GONE/tombstone and reservation without entry.
+The strict thirteen-dataset composer receives captured state; old input replay
+does not change after live lifecycle mutation. Source-runtime proof additionally
+captures actual INACTIVATED/REACTIVATED events and state, retaining inactive
+history without an ACTIVE inventory row. No templates/reserved namespaces or
+consumer SEO policy enter the public result; injected assembler SEO overrides
+are rejected by the strict lookup contract. Native baseline: 31/31 in source
+runtime, URL lifecycle and URL registry suites; final URL fixture rerun after
+the override assertion: 1/1. Project-state/composer units: 24/24. Full
+verify:quick passed (389 modules, 1197 dependencies); final fixture types/lint
+passed. Exact pushed checkpoint and closure ledger belong to Task Manager.
+This is not consumer HTTP/410/sitemap implementation or epic delivery.
+
 ### MP-05.7 implementation proof — 2026-10-07
 
 Task base `8c13e69`. Canon §30/§32A defines existing listing fallback flow:
