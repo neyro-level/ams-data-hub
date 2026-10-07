@@ -8,8 +8,8 @@ import { Prisma } from "../../src/generated/prisma/client.ts";
 import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server.ts";
 import { validateSnapshotInput } from "../../src/modules/snapshot-delivery/index.ts";
 import { snapshotRequiresProjectContact } from "../../src/modules/snapshot-delivery/application/snapshot-project-contact.ts";
-import { prepareSnapshotPublicationProjectAnchors } from "../../src/modules/project-state/index.ts";
-import { createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
+import { prepareSnapshotPublicationProjectAnchors, prepareSnapshotRollbackAgentContactPins } from "../../src/modules/project-state/index.ts";
+import { createSnapshotPublicationProjectReader, createSnapshotRollbackProjectReader } from "../../src/modules/project-state/server.ts";
 import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
@@ -17,7 +17,7 @@ import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, 
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 
 const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-project-admission", correlationId: randomUUID() };
-async function fixture(bound = true, contact = true) {
+async function fixture(bound = true, contact = true, agentContacts = false) {
   const setup = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
     const suffix = randomUUID().slice(0, 8);
     const org = await tx.organization.create({ data: { name: "Synthetic project admission", slug: `admit-${suffix}` } });
@@ -29,7 +29,9 @@ async function fixture(bound = true, contact = true) {
     await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
     if (contact) await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000000", messengers: [] } });
     const agent = await tx.agent.create({ data: { ...scope, uid: createUlid(), slug: "synthetic-published", fullName: "Synthetic published Agent",
-      showOnSite: true, status: "ACTIVE", consentConfirmedAt: new Date("2026-10-07T01:02:03.789Z") } });
+      showOnSite: true, status: "ACTIVE", consentConfirmedAt: new Date("2026-10-07T01:02:03.789Z"),
+      workPhone: agentContacts ? "+70000000000" : null, workEmail: agentContacts ? "synthetic@example.test" : null,
+      messengers: agentContacts ? ["https://example.test/synthetic-агент"] : [] } });
     const other = await tx.agent.create({ data: { ...scope, uid: createUlid(), slug: "synthetic-unpublished", fullName: "Synthetic unpublished", showOnSite: false } });
     const source = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-admission", name: "Synthetic admission",
       adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
@@ -49,7 +51,8 @@ async function fixture(bound = true, contact = true) {
       normalizedHash: recordHash, sourceHash: "a".repeat(64), firstSeenAt: new Date(), lastSeenAt: new Date() } });
     const binding = bound ? await tx.listingAgentBinding.create({ data: { ...target, inventoryUid, sourceRevisionId: revision.id,
       recordHash, agentUid: agent.uid } }) : null;
-    return { scope, foreignId: foreign.id, agentUid: agent.uid, otherUid: other.uid, inventoryUid, bindingId: binding?.id };
+    return { scope, foreignId: foreign.id, agentUid: agent.uid, otherUid: other.uid, inventoryUid, bindingId: binding?.id,
+      sourceId: source.id, revisionId: revision.id, recordHash };
   });
   const receipt = await captureSnapshotInput(createProjectJobPrincipal({ ...setup.scope, jobName: "snapshot-input" }),
     { ...setup.scope, idempotencyKey: "synthetic-project-admission", schemaMinor: 0 });
@@ -59,7 +62,8 @@ async function fixture(bound = true, contact = true) {
   const anchors = prepareSnapshotPublicationProjectAnchors({ project: rows("project"), contacts: rows("contacts"), agents: rows("agents"),
     links: rows("listing-links"), publishedAgentUids: new Set([setup.agentUid]), publishedBindings: bindings,
     requiresContact: snapshotRequiresProjectContact([setup.inventoryUid], bindings) });
-  return { ...setup, anchors };
+  const contacts = prepareSnapshotRollbackAgentContactPins(rows("agents").filter((row) => row !== null && typeof row === "object" && !Array.isArray(row) && row.uid === setup.agentUid));
+  return { ...setup, anchors, contacts };
 }
 function publication<T>(scope: { organizationId: string; projectId: string }, execute: (tx: DatabaseTransaction) => Promise<T>,
   projects: readonly string[] | "*" = [scope.projectId], principalKind: "project-job" | "job" = "project-job", actorId = "snapshot-publication") {
@@ -72,6 +76,54 @@ function publication<T>(scope: { organizationId: string; projectId: string }, ex
   }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
 }
 describe("actual NOBYPASS publication project admission", () => {
+  it.each(["phone", "email", "messengers"])("rollback cannot resurrect withdrawn Agent %s with the same consent epoch", async (mode) => {
+    const s = await fixture(true, true, true);
+    await publication(s.scope, (tx) => createSnapshotRollbackProjectReader(tx)(s.scope, s.anchors, s.contacts));
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.agent.update({ where: { uid: s.agentUid }, data: {
+      ...(mode === "phone" ? { workPhone: null } : mode === "email" ? { workEmail: null } : { messengers: [] }), version: { increment: 1 },
+    } }));
+    await expect(publication(s.scope, (tx) => createSnapshotRollbackProjectReader(tx)(s.scope, s.anchors, s.contacts)))
+      .rejects.toThrow("SNAPSHOT_ROLLBACK_PROJECT_DENIED");
+  });
+  it.each(["same-person", "reassigned", "unassigned"])("rollback follows actual current GOOD fact assignment: %s", async (mode) => {
+    const s = await fixture();
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const source = await tx.source.findUniqueOrThrow({ where: { id: s.sourceId } });
+      const target = { ...s.scope, sourceId: s.sourceId }; const newHash = "c".repeat(64);
+      const analysis = analyzeImportSafety({ recordCount: 1, previousGoodRecordCount: 1, invalidRecordCount: 0, issues: [] }, BOOTSTRAP_SOURCE_SAFETY_POLICY);
+      const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+        baseLastGoodRevisionId: s.revisionId, adapterKey: source.adapterKey, adapterVersion: source.adapterVersion,
+        profileKey: source.profileKey, profileVersion: source.profileVersion, safetyPolicy: BOOTSTRAP_SOURCE_SAFETY_POLICY,
+        safetyAnalysis: JSON.parse(JSON.stringify(analysis)) as Prisma.InputJsonObject, recordCount: 1 } });
+      await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, externalId: "synthetic-private",
+        orderKey: "73796e746865746963", inventoryUid: s.inventoryUid, recordHash: newHash,
+        payload: { schemaVersion: 1, draft: { imageUrls: [] }, fields: {} } } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 2,
+        rawStorageKey: "private-synthetic/rollback-assignment", rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+        normalizedContentHash: newHash, completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: s.sourceId }, data: { lastGoodRevisionId: revision.id } });
+      await tx.inventoryIdentity.update({ where: { uid: s.inventoryUid }, data: { normalizedHash: newHash } });
+      if (mode !== "unassigned") await tx.listingAgentBinding.create({ data: { ...target, inventoryUid: s.inventoryUid,
+        sourceRevisionId: revision.id, recordHash: newHash, agentUid: mode === "same-person" ? s.agentUid : s.otherUid } });
+      // Historical GOOD1->A remains; it is not evidence of current permission.
+      expect(await tx.listingAgentBinding.count({ where: { ...target, sourceRevisionId: s.revisionId } })).toBe(1);
+    });
+    const read = publication(s.scope, (tx) => createSnapshotRollbackProjectReader(tx)(s.scope, s.anchors, s.contacts));
+    if (mode === "same-person") await read;
+    else await expect(read).rejects.toThrow("SNAPSHOT_ROLLBACK_PROJECT_DENIED");
+  });
+  it("rollback preserves old Agent content after cosmetic version changes without mutating capture", async () => {
+    const s = await fixture(); const original = structuredClone(s.anchors);
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.agent.update({ where: { uid: s.agentUid },
+      data: { fullName: "Synthetic newer Agent name", version: { increment: 1 } } }));
+    await expect(publication(s.scope, (tx) => createSnapshotPublicationProjectReader(tx)(s.scope, s.anchors)))
+      .rejects.toThrow("SNAPSHOT_PUBLICATION_PROJECT_STALE");
+    await publication(s.scope, (tx) => createSnapshotRollbackProjectReader(tx)(s.scope, s.anchors, s.contacts));
+    expect(s.anchors).toEqual(original);
+    await publication(s.scope, (tx) => expect(createSnapshotRollbackProjectReader(tx)(s.scope, s.anchors, s.contacts))
+      .rejects.toThrow("SNAPSHOT_ROLLBACK_PROJECT_ACCESS_DENIED"), "*");
+  });
   it("accepts exact captured bindings without whole project-version or new-agent enrichment", async () => {
     const setup = await fixture();
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -153,6 +205,10 @@ describe("actual NOBYPASS publication project admission", () => {
     const code = mode === "freeze" ? "SNAPSHOT_PUBLICATION_JOBS_FROZEN"
       : mode === "disabled" || mode === "suspended" ? "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED" : "SNAPSHOT_PUBLICATION_PROJECT_STALE";
     await expect(publication(setup.scope, (tx) => createSnapshotPublicationProjectReader(tx)(setup.scope, setup.anchors))).rejects.toThrow(code);
+    if (mode !== "version") {
+      const rollbackCode = mode.startsWith("binding-") ? "SNAPSHOT_ROLLBACK_PROJECT_DENIED" : code;
+      await expect(publication(setup.scope, (tx) => createSnapshotRollbackProjectReader(tx)(setup.scope, setup.anchors, setup.contacts))).rejects.toThrow(rollbackCode);
+    } else await publication(setup.scope, (tx) => createSnapshotRollbackProjectReader(tx)(setup.scope, setup.anchors, setup.contacts));
   });
   it("denies wildcard/multi-project/foreign scope before personal SELECTs", async () => {
     const setup = await fixture();

@@ -171,6 +171,15 @@ Startup revokes the previous exact-owner qualification before validating storage
 or capabilities. An invalid new configuration cannot leave a crashed process's
 fresh heartbeat reporting active until TTL; pre-aborted startup remains a no-op.
 
+Historical rollback now has an internal current-rights admission prerequisite,
+not an executable administrative action. It accepts old GOOD content after head
+advance but rejects current identity/consent/visibility/assignment/contact/media
+permission loss, EXCLUDE and disabled/SUSPENDED/frozen state. Agent contact
+fingerprints are value-free; assignment checks the current selected GOOD fact
+instead of any historical row. No ordinary PUBLISH gate or RLS grant is weakened.
+Durable request-bound rollback sequence/signature/stage, safe-key source recovery,
+full-lease atomic current/run/result and registered runtime remain to implement.
+
 ## Streaming raw artifacts — remediation foundation
 
 MP-02 separates `safeOutboundBuffered` (small files/media, maximum 50 MiB)

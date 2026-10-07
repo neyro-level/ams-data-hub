@@ -186,6 +186,21 @@ PASS. Local web-env CLI не является proof этого worker: стан�
 упирается в server-only condition, direct conditional import — в неполный local
 database environment. Local env/credentials не изменялись; web readiness не заявлена.
 
+Rollback получил отдельный snapshot-owned internal admission prerequisite:
+historical GOOD/fact attribution плюс действующие права, без exact current-head/
+whole-cohort equality. New GOOD и cosmetic Agent/subscription versions допустимы;
+current identity ACTIVE, consent epoch, фото, project contact, current selected
+GOOD assignment к тому же человеку, catalog EXCLUDE/lifecycle и media rights
+остаются обязательными. Agent contacts сравниваются по value-free SHA-256 pins
+в SQL, без передачи живых PII. Два P2 архитектора (historical binding вместо
+current fact assignment и восстановление удалённых контактов) исправлены.
+Native matrix — 123/123 PASS, 4 suites, 55 migrations, 65,31s, final reset;
+19 scoped units PASS. Actual capture/sign/stage + bounded GET attribution
+с непустым Agent/media доказывает admission без extra IO/current/run writes.
+Это prerequisite, не rollback execution: durable reservation/signature/stage,
+safe-key recovery, full-lease atomic current/run/result и runtime ещё открыты.
+MP-08.1 остаётся IN_PROGRESS, зарегистрированы только три из шести executors.
+
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
 MP-05.1 закрыт implementation ledger

@@ -3,7 +3,7 @@ import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
 import type { VerifySnapshotResult } from "@ams-data-hub/snapshot-verifier";
 import { prepareSnapshotPublicationSourceAnchors } from "../../ingestion-core/index.ts";
 import { prepareSnapshotPublicationMediaPins, selectSnapshotPublicationMediaAnchors } from "../../media-assets/index.ts";
-import { prepareSnapshotPublicationProjectAnchors } from "../../project-state/index.ts";
+import { prepareSnapshotPublicationProjectAnchors, prepareSnapshotRollbackAgentContactPins } from "../../project-state/index.ts";
 import { prepareSnapshotPublicationCatalogAnchors } from "../../shared-catalog/index.ts";
 import type { SnapshotBuildInputReceipt, SnapshotInputPartKind } from "./snapshot-build-input.ts";
 import { prepareSnapshotInventoryInput } from "./snapshot-inventory-input.ts";
@@ -77,5 +77,6 @@ export function prepareSelectedSnapshotAdmission(receipt: SnapshotBuildInputRece
   const projectAnchors = prepareSnapshotPublicationProjectAnchors({ project: rows("project"), contacts: rows("contacts"),
     agents: rows("agents"), links: rows("listing-links"), publishedAgentUids: eligibleAgents,
     publishedBindings: agents, requiresContact: requiresProjectContact });
-  return { sourceAnchors, catalogAnchors, projectAnchors, mediaAnchors, requiresProjectContact };
+  const rollbackAgentContacts = prepareSnapshotRollbackAgentContactPins(datasets.agents);
+  return { sourceAnchors, catalogAnchors, projectAnchors, mediaAnchors, requiresProjectContact, rollbackAgentContacts };
 }

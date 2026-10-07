@@ -63,6 +63,9 @@ import { readStagedSnapshotArtifacts } from "../../src/modules/snapshot-delivery
 import { inspectSelectedSnapshotStageServer, loadSelectedSnapshotCaptureServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-selected-stage.ts";
 import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-input-repository.ts";
 import { prepareSelectedSnapshotAdmission } from "../../src/modules/snapshot-delivery/application/snapshot-selected-admission.ts";
+import { admitHistoricalSnapshotRollback } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-admission.ts";
+import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
+import { createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -381,6 +384,26 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
       const omittedMedia = { ...result, datasets: { ...result.datasets, media: [], agents: [{ ...decodedAgent, media: [] }] } };
       expect(prepareSelectedSnapshotAdmission(captured.receipt, omittedMedia).mediaAnchors.attachments).toEqual([]);
+      const originalAdmission = structuredClone(admission);
+      const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-historical-admission", correlationId: randomUUID() };
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.agent.update({ where: { uid: decodedAgent.uid }, data: { fullName: "Synthetic newer public name", version: { increment: 1 } } });
+        await tx.projectCatalogSubscription.update({ where: { organizationId_projectId: setup.scope }, data: { version: { increment: 1 } } });
+      });
+      await observer(setup.scope, async (tx) => {
+        await lockSnapshotPublication(tx, setup.scope);
+        await expect(createSnapshotPublicationProjectReader(tx)(setup.scope, admission.projectAnchors))
+          .rejects.toThrow("SNAPSHOT_PUBLICATION_PROJECT_STALE");
+        await admitHistoricalSnapshotRollback(tx, setup.scope, admission);
+      });
+      // Actual persisted capture -> signed/bounded GET -> private attribution ->
+      // fresh permission-only admission. This seam does NOT publish a rollback.
+      expect(admission).toEqual(originalAdmission);
+      expect(result.datasets.agents[0]).toMatchObject({ fullName: "Synthetic public Agent" });
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.mediaAsset.update({ where: { id: setup.mediaId! }, data: { rightsBasis: "OWNED", license: null } }));
+      await expect(observer(setup.scope, async (tx) => {
+        await lockSnapshotPublication(tx, setup.scope); await admitHistoricalSnapshotRollback(tx, setup.scope, admission);
+      })).rejects.toThrow("SNAPSHOT_PUBLICATION_MEDIA_STALE");
       expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
       expect(wholeBody).not.toHaveBeenCalled(); expect(destroyed).toHaveBeenCalledTimes(14);
       trustSet.revokedKeyIds.push("synthetic-stage-key");

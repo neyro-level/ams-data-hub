@@ -1,5 +1,38 @@
 # Snapshot V1 contract
 
+## Historical rollback admission prerequisite
+
+MP-08 rollback means old approved content with a new higher publication sequence,
+not a new capture or mutation of an old receipt. A separate snapshot-owned
+internal admission seam checks historical GOOD head/fact attribution and current
+permissions under global -> scoped publication locks in ReadCommitted. New GOOD,
+new unrelated identities/sources and cosmetic versions alone do not forbid old
+content. Current Source dataset/sharing and published identity ACTIVE membership
+with the same source/external identity remain required. No producer payload is
+returned by these fresh reads.
+
+Published Agent permissions still require ACTIVE/showOnSite, the same consent
+epoch and photo assignments. Contact/version of captured project contact remains
+strict; this prevents reintroducing replaced project contact details. Agent
+version/name-only changes are allowed, but published workPhone/workEmail and
+ordered messenger values must match value-free SHA-256 pins. SQL compares these
+pins without returning contact values; nullable string prefixes and UTF-8 length
+framing distinguish null, empty, ordering and Unicode. Assignment must be to the
+same person in the current selected GOOD fact, not merely a retained historical
+ListingAgentBinding. A new GOOD assignment to a different person or no assignment
+denies the entire rollback, without rewriting old datasets.
+
+Selected old catalog entities must be allowed by the current bounded subscription
+and retain ACTIVE/unmerged and parent relationships; EXCLUDE denies them. Existing
+media permission/ownership/license/provenance checks are reused unchanged.
+This is an explicit conservative interpretation of rollback's current-rights
+requirement, not a relaxation of ordinary PUBLISH freshness. The seam is internal
+and requires pins from authenticated artifacts attributed to a persisted approved
+source capture. It does not itself authenticate approval, reserve a new sequence,
+sign/stage a rollback, publish current/run, settle an operational lease, or register
+an executor. Those durable rollback steps remain open; three of six operational
+executors are currently registered. No production capability is enabled.
+
 URL/lifecycle datasets transfer persistent Hub state, not consumer SEO policy.
 They preserve independent publicUrlId reservations, entries after legitimate
 relink, stored canonical paths, factual/presentation lifecycle, immutable 301
