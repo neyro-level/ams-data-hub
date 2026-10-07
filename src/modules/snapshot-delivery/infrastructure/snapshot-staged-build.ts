@@ -33,7 +33,8 @@ export async function inspectStagedSnapshotServer(principal: PrincipalContext,
     } });
     if (!receipt) return null;
     if (receipt.inputHash !== input.inputHash || receipt.publishSequence !== input.publishSequence
-      || receipt.idempotencyKeyHash !== lookup.idempotencyKeyHash) throw new Error("SNAPSHOT_STAGE_RECEIPT_INVALID");
+      || receipt.idempotencyKeyHash !== lookup.idempotencyKeyHash
+      || (receipt.requestHash !== null && receipt.requestHash !== lookup.requestHash)) throw new Error("SNAPSHOT_STAGE_RECEIPT_INVALID");
     return receipt;
   }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
 }
@@ -66,7 +67,7 @@ export function createSnapshotStagedBuildServer(bound: Parameters<typeof createS
         const receipt = await tx.snapshotArtifactStageReceipt.create({ data: { ...scope,
           buildInputId: staged.binding.buildInputId, inputHash: staged.binding.inputHash,
           publishSequence: staged.binding.publishSequence, manifestSha256: staged.binding.manifestSha256,
-          idempotencyKeyHash: lookup.idempotencyKeyHash,
+          idempotencyKeyHash: lookup.idempotencyKeyHash, requestHash: lookup.requestHash,
         } });
         checkCancelled(ownedSignal); // Late cancellation rolls back this receipt.
         return receipt;

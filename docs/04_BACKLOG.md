@@ -60,23 +60,30 @@ runtime-function cases с настоящим local pg-boss, enabled/disabled/con
 Task Manager; production не обновлялся. Текущий участок — MP-08.1:
 durable operational requests/outbox и шесть реальных исполнителей.
 Foundation checkpoint не закрывает этот task и не означает исполнение запросов.
-Текущий implemented delta — fenced lifecycle и concrete SUSPICIOUS_REJECT:
+Предыдущий verified checkpoint — fenced lifecycle и concrete SUSPICIOUS_REJECT:
 review/audit/request success в одной транзакции, immutable replay и Last GOOD
-unchanged. Реальный rejection adapter подключён к общей очереди; остальные
-пять остаются reserved. Terminal FAILED сверяется с DEAD_LETTER/latest FAILED
+unchanged. На том checkpoint rejection adapter подключён к общей очереди;
+остальные пять оставались reserved. Terminal FAILED сверяется с DEAD_LETTER/latest FAILED
 JobRun на старте и каждые 60 секунд; unresolved requests защищены от retention.
 Непривязанные/некорректные terminal intents не блокируют общий worker и не
 создают фиктивный FAILED. Native PostgreSQL/pg-boss — 48/48 PASS в пяти suites,
 включая actual combined-worker startup/restart и qualified/cleared heartbeat;
-28 scoped unit tests PASS. Остальные пять исполнителей и полный MP-08.1 DoD
-ещё не завершены; task не закрыт.
+28 scoped unit tests PASS. Этот checkpoint не закрывал полный MP-08.1 DoD;
+task остаётся открытым.
 
-Следующий groundwork BUILD отделяет completed staging от publication:
+Текущий delta BUILD отделяет completed staging от publication:
 immutable scoped stage receipt появляется только после settled artifact/manifest
 PUT и повторного четырёхстороннего admission. Replay не требует ключа или IO,
-а failed/cancelled staging не создаёт current/DeliveryRun. Это ещё не
-операционный BUILD-исполнитель: request-owned capture identity, fenced success
-и регистрация в общей очереди остаются продолжением MP-08.1.
+а failed/cancelled staging не создаёт current/DeliveryRun. Concrete BUILD adapter
+теперь привязывает capture к requestId, использует полный lease fence до IO и
+перед success и проверяет полный request hash в SQL. Он регистрируется в той же
+общей очереди при существующем SNAPSHOT_BUILD_ENABLED=true. Native runtime
+proof этого нового operational topic ещё требует проверки. Concrete adapter
+прошёл native normal/crash/takeover/wrong-minor сценарии в PostgreSQL: 70/70
+в пяти suites вместе с существующими lifecycle/rejection/delivery/runtime
+regressions. Эти runtime regressions не заменяют proof нового topic.
+35 scoped units, quick/types/lint/architecture PASS. Оставшиеся четыре
+исполнителя и полный MP-08.1 DoD не завершены.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

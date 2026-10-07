@@ -6,22 +6,28 @@ import type { ClaimedReliabilityEvent } from "../platform-operations/index.ts";
 import { operationalActionIntentSchema, OPERATIONAL_ACTION_TOPICS } from "./contracts.ts";
 import { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
 import { OperationalActionLifecycleRepository } from "./infrastructure/operational-action-lifecycle.ts";
+import type { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 
 export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
 
 /** No raw exception text, cancellation reason or arbitrary diagnostic code
  * reaches generic outbox persistence. Retry/defer is not request FAILED. */
-export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal) {
-  if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT) {
+export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal,
+  build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>) {
+  if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)) {
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED"), {
       code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
     });
   }
-  try { await executeSuspiciousRejection(event, signal); }
+  try {
+    if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build) await build(event, signal);
+    else await executeSuspiciousRejection(event, signal);
+  }
   catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (["DATA_SAFETY_JOBS_FROZEN", "SOURCE_OPERATION_REVIEW_BLOCKED", "OPERATIONS_CONTROL_EXECUTION_CANCELLED",
-      "OUTBOX_OPERATION_LEASE_LOST"].includes(message)) {
+      "OUTBOX_OPERATION_LEASE_LOST", "SNAPSHOT_INPUT_JOBS_FROZEN", "SNAPSHOT_INPUT_PROJECT_BLOCKED",
+      "SNAPSHOT_PUBLICATION_JOBS_FROZEN", "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED", "SNAPSHOT_PUBLICATION_CANCELLED"].includes(message)) {
       return { deferred: true as const, code: "OPERATIONS_CONTROL_EXECUTION_DEFERRED" as const };
     }
     // Unexpected infrastructure failures consume the existing bounded retry

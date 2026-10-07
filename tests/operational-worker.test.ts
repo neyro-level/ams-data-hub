@@ -31,11 +31,25 @@ describe("finite operational queue adapter", () => {
     await expect(handleOperationalOutboxEvent(event)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED",
       code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable: true });
   });
-  it("does not pretend the other five reserved adapters are implemented", async () => {
+  it("reserves BUILD when its concrete capability is absent", async () => {
     const before = executor.mock.calls.length;
     await expect(handleOperationalOutboxEvent({ ...event, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD })).rejects.toMatchObject({
       code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
     });
     expect(executor.mock.calls.length).toBe(before);
+  });
+  it("dispatches only the enabled operational BUILD adapter with its owned signal", async () => {
+    const buildEvent = { ...event, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD };
+    const build = vi.fn(async () => ({ action: "SNAPSHOT_BUILD" as const, buildInputId: "synthetic-input",
+      inputHash: "a".repeat(64), manifestSha256: "b".repeat(64), publishSequence: 1 }));
+    const signal = new AbortController().signal; const before = executor.mock.calls.length;
+    await expect(handleOperationalOutboxEvent(buildEvent, signal, build)).resolves.toBeUndefined();
+    expect(build).toHaveBeenCalledWith(buildEvent, signal); expect(executor.mock.calls.length).toBe(before);
+    build.mockRejectedValueOnce(new Error("SNAPSHOT_INPUT_JOBS_FROZEN"));
+    await expect(handleOperationalOutboxEvent(buildEvent, signal, build)).resolves.toEqual({
+      deferred: true, code: "OPERATIONS_CONTROL_EXECUTION_DEFERRED" });
+    build.mockRejectedValueOnce(Object.assign(new Error("Synthetic private signing diagnostic"), { code: "Synthetic private code" }));
+    await expect(handleOperationalOutboxEvent(buildEvent, signal, build)).rejects.toMatchObject({
+      message: "OPERATIONS_CONTROL_EXECUTION_FAILED", code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable: true });
   });
 });

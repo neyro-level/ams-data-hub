@@ -256,7 +256,15 @@ no public caller-metadata receipt writer. A failed or cancelled stage leaves
 no receipt/current/DeliveryRun, though the immutable pre-PUT binding may exist.
 Exact replay reads metadata without signing, storage IO or mutable admission;
 it proves the old BUILD, never authorizes a new PUBLISH. Operational BUILD
-request completion and its full lease fence remain a separate unfinished adapter.
+request completion now has a concrete two-cut adapter: full RUNNING lease fence
+before capture/IO, full success fence after staging, with the SQL guard requiring
+the same request-owned key and complete capture request hash (minor zero, input
+schema one, db-v1). New stage INSERTs pin that request hash against the input.
+The nullable additive column preserves older immutable non-operational receipts
+without backfill; a NULL legacy pin cannot satisfy operational BUILD success.
+Exact operational replay rechecks the scoped immutable result without config,
+capture or PUT. The combined queue registers BUILD only with the existing
+SNAPSHOT_BUILD_ENABLED capability; other four unimplemented actions stay reserved.
 
 The forward publication Source-read migration adds exact-purpose scoped SELECT
 policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with

@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
-import { createSnapshotBuildCapability } from "./snapshot-build-capability.ts";
+import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability } from "./snapshot-build-capability.ts";
 import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
 import { OPERATIONAL_EXECUTOR_TOPICS, handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../modules/operations-control/worker.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../modules/operations-control/index.ts";
@@ -75,6 +75,8 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   // Reject missing bindings before opening a queue or attempting any intake.
   const resolveStorage = createProjectObjectStorageResolver();
   const snapshotBuild = createSnapshotBuildCapability(resolveStorage);
+  const operationalBuild = createOperationalSnapshotBuildCapability(resolveStorage);
+  const operationalTopics = [...OPERATIONAL_EXECUTOR_TOPICS, ...(operationalBuild ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD] : [])];
   // Revoke any previous incarnation before queue startup/reconciliation.
   try { await clearSourceWorkerHeartbeat(options.workerId); } catch { throw new Error("SOURCE_READINESS_CLEAR_FAILED"); }
   const boss = await getPgBoss();
@@ -99,9 +101,9 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       }
     },
     outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC,
-      ...OPERATIONAL_EXECUTOR_TOPICS, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
+      ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
       handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
         : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
-          : OPERATIONAL_EXECUTOR_TOPICS.includes(event.topic) ? handleOperationalOutboxEvent(event, signal) : handleDefaultOutboxEvent(event) } }); }
+          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

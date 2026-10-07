@@ -10,7 +10,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
-      const snapshot = ["snapshot-input", "snapshot-publication", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
+      const snapshot = ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
       if (snapshot) {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
@@ -53,6 +53,12 @@ import { ReliabilityService } from "../../src/modules/platform-operations/applic
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { drainOutboxWithDependencies } from "../../src/modules/platform-operations/worker.ts";
+import { createOperationalSnapshotBuildExecutor, requestOperationalAction } from "../../src/modules/operations-control/server.ts";
+import { OPERATIONAL_ACTION_TOPICS } from "../../src/modules/operations-control/index.ts";
+import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
+import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
+import { snapshotInputRequestHashes } from "../../src/modules/snapshot-delivery/index.ts";
+import { settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -94,6 +100,103 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it.each(["success", "domain-commit-before-result", "takeover-during-put", "wrong-schema-minor"])("fences request-owned operational BUILD after %s", async (mode) => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-build", correlationId: randomUUID() };
+    const accepted = await requestOperationalAction(admin, { ...setup.scope, action: "SNAPSHOT_BUILD",
+      sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+    const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+      if (!row.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+      await tx.outboxEvent.update({ where: { id: row.outboxEventId }, data: { availableAt: new Date("1997-01-01T00:00:00Z") } });
+      return row.outboxEventId;
+    });
+    let now = new Date("1997-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    const lease = await reliability.claim(`synthetic-ops-build-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+    if (!lease || lease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+    let replacement: typeof lease | null = null;
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      if (mode === "takeover-during-put" && command instanceof PutObjectCommand && command.input.ContentType === "application/json") {
+        now = new Date("1997-01-01T00:06:00Z");
+        replacement = await reliability.claim("synthetic-ops-build-takeover", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+        expect(replacement?.outboxEventId).toBe(eventId); expect(replacement?.attempt).toBe(2);
+      }
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const resolveStage = vi.fn(() => ({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+      keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+      trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } }));
+    const execute = createOperationalSnapshotBuildExecutor({ resolveStage });
+    const completion = mode === "domain-commit-before-result" ? vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedStagedSnapshot")
+      .mockRejectedValueOnce(new Error("SYNTHETIC_RESULT_CRASH")) : null;
+    try {
+      if (mode === "wrong-schema-minor") {
+        await observer(setup.scope, (tx) => new OperationalActionLifecycleRepository(tx).begin(lease), "operations-executor");
+        const wrongRequest = { ...operationalSnapshotBuildRequest(setup.scope, accepted.requestId).request, schemaMinor: 1 };
+        await captureSnapshotInput(setup.principal, wrongRequest);
+        const wrong = await createSnapshotStagedBuildServer(resolveStage())(setup.principal, snapshotInputRequestHashes(wrongRequest));
+        await expect(observer(setup.scope, (tx) => tx.operationalActionRequest.update({ where: { id: accepted.requestId },
+          data: { status: "SUCCEEDED", finishedAt: new Date(), result: { action: "SNAPSHOT_BUILD", buildInputId: wrong.buildInputId,
+            inputHash: wrong.inputHash, publishSequence: wrong.publishSequence, manifestSha256: wrong.manifestSha256 } },
+        }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+        await expect(execute(lease)).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
+        expect(send).toHaveBeenCalledTimes(14);
+        await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe("RUNNING");
+          expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+          expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+        });
+        await reliability.fail(lease, "SYNTHETIC_WRONG_MINOR", false, 1);
+        await settleTerminalOperationalRequests([{ id: eventId, organizationId: setup.scope.organizationId, payload: lease.payload }]);
+        return;
+      }
+      const initial = execute(lease);
+      if (mode === "success") await expect(initial).resolves.toMatchObject({ action: "SNAPSHOT_BUILD", publishSequence: 2 });
+      else await expect(initial).rejects.toThrow(mode === "takeover-during-put" ? "OUTBOX_OPERATION_LEASE_LOST" : "SYNTHETIC_RESULT_CRASH");
+      completion?.mockRestore();
+      expect(send).toHaveBeenCalledTimes(14); expect(resolveStage).toHaveBeenCalledTimes(1);
+      if (mode === "domain-commit-before-result") {
+        // The receipt exists, but direct SQL cannot substitute another input or hash.
+        await expect(observer(setup.scope, (tx) => tx.operationalActionRequest.update({
+          where: { id: accepted.requestId }, data: { status: "SUCCEEDED", finishedAt: new Date(),
+            result: { action: "SNAPSHOT_BUILD", buildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash,
+              publishSequence: setup.receipt.publishSequence, manifestSha256: "e".repeat(64) } },
+        }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+      }
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        expect(row.status).toBe(mode === "success" ? "SUCCEEDED" : "RUNNING");
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", ""); resolveStage.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
+      if (!replacement) {
+        now = new Date("1997-01-01T00:06:00Z");
+        replacement = await reliability.claim("synthetic-ops-build-recovery", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+      }
+      if (!replacement) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      const replay = await execute(replacement);
+      expect(replay).toMatchObject({ action: "SNAPSHOT_BUILD", publishSequence: 2 });
+      expect(send).toHaveBeenCalledTimes(14); expect(resolveStage).toHaveBeenCalledTimes(1);
+      await reliability.complete(replacement);
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe("SUCCEEDED");
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+      });
+      const { lookup } = operationalSnapshotBuildRequest(setup.scope, accepted.requestId);
+      expect(await inspectStagedSnapshotServer(setup.principal, lookup)).toMatchObject({ publishSequence: 2 });
+    } finally { completion?.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
   it("recovers a concurrently committed stage after cancellation following the initial replay miss", async () => {
     const setup = await fixture(); const keys = generateKeyPairSync("ed25519"); const controller = new AbortController();
     vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
@@ -146,7 +249,7 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
       });
       const pins = { organizationId: receipt.organizationId, projectId: receipt.projectId, buildInputId: receipt.buildInputId,
-        inputHash: receipt.inputHash, idempotencyKeyHash: receipt.idempotencyKeyHash,
+        inputHash: receipt.inputHash, idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash,
         publishSequence: receipt.publishSequence, manifestSha256: receipt.manifestSha256 };
       await expect(observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.create({
         data: { ...pins, manifestSha256: "e".repeat(64) },

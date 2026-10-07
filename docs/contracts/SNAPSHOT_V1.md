@@ -142,7 +142,15 @@ Config-free exact replay precedes mutable admission and signer/storage IO,
 including concurrent committed-stage recovery after cancellation following an
 initial replay miss. Stage completion does not authorize later publication:
 PUBLISH must independently verify current trust, artifact integrity and fresh
-admission. The operational BUILD request adapter is not yet registered.
+admission. The operational BUILD adapter pins capture identity to the accepted
+request ID, records RUNNING before capture and succeeds only against the same
+stage receipt under the complete current lease. SQL checks both request-derived
+idempotency and complete minor-zero capture request hash. It recovers a stage
+committed before request success without configuration, new capture or PUT,
+even after freeze/suspension/key rotation. Stale attempt may leave private
+staging but cannot succeed the request. The combined worker registers this
+distinct topic only when the existing SNAPSHOT_BUILD_ENABLED capability is true;
+disabled mode reserves it. Manual BUILD never invokes the GOOD-intent publisher.
 
 The existing combined source-worker optionally registers `snapshot.build.request`
 when `SNAPSHOT_BUILD_ENABLED=true`; absent/false preserves old intake and reserved

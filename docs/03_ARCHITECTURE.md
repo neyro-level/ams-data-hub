@@ -324,7 +324,7 @@ remediation program preserves these boundaries while connecting them:
   privileges are reused, not widened. The concrete suspicious-rejection adapter
   commits revision review/audit and durable success together, preserves Last GOOD,
   and replays committed success before mutable admission. SQL bounds private
-  policy/analysis before transfer. Only this real adapter is registered in the
+  policy/analysis before transfer. This real adapter is registered in the
   combined queue. Terminal FAILED requires durable DEAD_LETTER and its latest
   full FAILED JobRun identity, not retry/defer; startup/60s reconciliation closes
   the crash gap without overwriting committed success. Retention preserves
@@ -334,8 +334,11 @@ remediation program preserves these boundaries while connecting them:
   or unbound terminal intents stay quarantined, never fabricate a result and do
   not block consumer startup. Manual BUILD groundwork adds a separate immutable
   stage receipt only after settled PUTs and fresh four-owner admission, with
-  config-free exact replay and no current/DeliveryRun. It is not yet a registered
-  operational executor or a PUBLISH permission. Other five adapters and HTTP discovery/delivery/ACK
+  config-free exact replay and no current/DeliveryRun. Its concrete BUILD adapter
+  uses request-owned capture identity and complete stage lookup pins with two
+  full lease fences surrounding capture/IO. The existing enabled snapshot
+  capability registers it in the same combined queue; it is never a PUBLISH
+  permission. Other four adapters and HTTP discovery/delivery/ACK
   remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.

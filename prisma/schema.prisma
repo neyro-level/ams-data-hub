@@ -558,6 +558,7 @@ model SnapshotArtifactStageReceipt {
   buildInputId      String
   inputHash         String @db.Char(64)
   idempotencyKeyHash String @db.Char(64)
+  requestHash       String? @db.Char(64)
   publishSequence   Int
   manifestSha256    String @db.Char(64)
   stagedAt          DateTime @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamptz(3)

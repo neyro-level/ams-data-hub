@@ -7,6 +7,7 @@ import { requestOperationalActionInputSchema, type RequestOperationalActionInput
 import { createOperationsActions } from "./application/operations-actions.ts";
 import { PrismaOperationsActionRepository } from "./infrastructure/prisma-operations-action-repository.ts";
 export { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
+export { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 
 const operationsActions = createOperationsActions({
   createRepository: (transaction) => new PrismaOperationsActionRepository(transaction),
