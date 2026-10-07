@@ -43,6 +43,8 @@ export const TENANT_OWNED_MODELS = [
   "SnapshotBuildInputPart",
   "SnapshotPublicationBinding",
   "SnapshotArtifactStageReceipt",
+  "SnapshotRollbackReservation",
+  "SnapshotRollbackBinding",
   "DeliveryRun",
   "ProjectAckCredential",
   "InventoryIdentity",

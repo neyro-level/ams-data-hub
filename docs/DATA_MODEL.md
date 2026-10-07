@@ -256,6 +256,28 @@ The forward binding migration also corrects ListingAgentBinding's read-policy
 name to the canonical `_rls` convention with identical predicates and grants.
 Binding/artifact staging is not current publication or fresh consent admission.
 
+`SnapshotRollbackReservation` records one immutable scoped operational rollback
+request, exact committed source run/sequence, root capture/hash, new reserved
+sequence, DB-generated time/transaction ID and initial full lease history. Its
+scoped FKs bind request/source sequence/root; the INSERT guard additionally binds
+exact source run ID/hash/key/time to completed normal stage or a prior rollback's
+staged binding and run. It cannot select an uncommitted stage as approval. Sequence
+allocation uses the common counter; SQL rejects rollback/capture collisions in
+both directions. No UPDATE/DELETE is granted, and valid retries never rewrite the
+initial lease or reallocate a sequence.
+
+`SnapshotRollbackBinding` pins immutable strict canonical manifest/SHA/key/new
+sequence to that reservation. Source content/descriptors must remain identical
+except the five publication-identity fields; both times equal reservation time.
+Only a one-time NULL -> DB-generated stagedAt and its full current lease tuple
+can be appended after the server's settled manifest PUT/fresh admission. Worker
+UPDATE grants name only those stage columns; all other metadata is immutable.
+Both tables have exact snapshot-publication FORCE RLS with narrow read/insert
+grants and no legacy broad job fallback. Every mutable step checks the current
+accepted rollback request and complete live OutboxEvent/JobRun tuple via a fixed
+same-scope actor bridge. These records do not create current/run, enable operational
+SUCCESS, or register runtime execution; the rollback facade remains required.
+
 `SnapshotArtifactStageReceipt` is the separate immutable metadata proof of
 completed BUILD staging, not of publication. It references the scoped binding
 and pins the input hash, captured idempotency hash, sequence and manifest hash;

@@ -514,6 +514,7 @@ model SnapshotBuildInput {
   project              Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
   parts                SnapshotBuildInputPart[]
   publicationBinding   SnapshotPublicationBinding?
+  rollbackRoots        SnapshotRollbackReservation[]
 
   @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectId, idempotencyKeyHash])
@@ -569,6 +570,54 @@ model SnapshotArtifactStageReceipt {
   @@unique([organizationId, projectId, idempotencyKeyHash])
 }
 
+model SnapshotRollbackReservation {
+  requestId                String @id
+  organizationId           String
+  projectId                String
+  sourceDeliveryRunId      String
+  sourcePublishSequence    Int
+  rootBuildInputId         String
+  inputHash                String @db.Char(64)
+  publishSequence          Int
+  initialLeaseJobRunId      String
+  initialLeaseAttempt      Int
+  initialLeaseWorkerId      String
+  initialLeaseAcquiredAt    DateTime @db.Timestamptz(3)
+  reservationTransactionId BigInt @default(dbgenerated("txid_current()"))
+  createdAt                DateTime @default(now()) @db.Timestamptz(3)
+  request                  OperationalActionRequest @relation(fields: [organizationId, projectId, requestId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  sourceRun                DeliveryRun @relation(fields: [organizationId, projectId, sourcePublishSequence], references: [organizationId, projectId, publishSequence], onDelete: Restrict, onUpdate: NoAction)
+  rootInput                SnapshotBuildInput @relation(fields: [organizationId, projectId, rootBuildInputId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  binding                  SnapshotRollbackBinding?
+
+  @@unique([organizationId, projectId, requestId])
+  @@unique([organizationId, projectId, publishSequence])
+}
+
+model SnapshotRollbackBinding {
+  organizationId       String
+  projectId            String
+  requestId            String
+  publishSequence      Int
+  keyId                String @db.VarChar(240)
+  manifestSha256       String @db.Char(64)
+  manifestCanonical    String @db.Text
+  leaseJobRunId        String
+  leaseAttempt         Int
+  leaseWorkerId        String
+  leaseAcquiredAt      DateTime @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @db.Timestamptz(3)
+  stagedAt             DateTime? @db.Timestamptz(3)
+  stageLeaseJobRunId    String?
+  stageLeaseAttempt    Int?
+  stageLeaseWorkerId   String?
+  stageLeaseAcquiredAt DateTime? @db.Timestamptz(3)
+  reservation          SnapshotRollbackReservation @relation(fields: [organizationId, projectId, requestId], references: [organizationId, projectId, requestId], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, requestId])
+  @@unique([organizationId, projectId, publishSequence])
+}
+
 model ProjectCurrentSnapshotManifest {
   organizationId  String
   projectId       String
@@ -604,6 +653,7 @@ model DeliveryRun {
   createdAt             DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime          @updatedAt @db.Timestamptz(3)
   project               Project           @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
+  rollbackSources       SnapshotRollbackReservation[]
 
   @@unique([organizationId, projectId, publishSequence])
   @@index([status, createdAt])
@@ -1168,6 +1218,7 @@ model OperationalActionRequest {
   sourceRevision        SourceRevision? @relation(fields: [organizationId, projectId, sourceId, sourceRevisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction, map: "OperationalActionRequest_revision_fkey")
   outboxEvent           OutboxEvent? @relation(fields: [outboxEventId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "OperationalActionRequest_outbox_fkey")
   selectedStage         SnapshotArtifactStageReceipt? @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, buildInputId], onDelete: Restrict, onUpdate: NoAction, map: "OperationalActionRequest_stage_fkey")
+  rollbackReservation   SnapshotRollbackReservation?
 
   @@unique([organizationId, projectId, id], map: "OperationalActionRequest_scope_id_key")
   @@index([projectId, status, createdAt], map: "OperationalActionRequest_project_status_created_idx")

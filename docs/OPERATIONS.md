@@ -177,8 +177,12 @@ advance but rejects current identity/consent/visibility/assignment/contact/media
 permission loss, EXCLUDE and disabled/SUSPENDED/frozen state. Agent contact
 fingerprints are value-free; assignment checks the current selected GOOD fact
 instead of any historical row. No ordinary PUBLISH gate or RLS grant is weakened.
-Durable request-bound rollback sequence/signature/stage, safe-key source recovery,
-full-lease atomic current/run/result and registered runtime remain to implement.
+Durable request-bound sequence/time/source identity and immutable signed binding
+with a one-time stage marker are implemented in the snapshot-private repository.
+Each mutable step validates the full current accepted lease; valid takeover keeps
+the original reserved identity. These metadata APIs are not an executor or proof
+of external IO. Source archival-key authentication, safe-key restart/staging
+facade, full-lease atomic current/run/result and registered runtime remain work.
 
 ## Streaming raw artifacts — remediation foundation
 

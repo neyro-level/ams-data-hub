@@ -1,6 +1,6 @@
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { canonicalJson, canonicalJsonBytes, createUlid, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 
 const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
@@ -39,7 +39,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
   createSnapshotStagedBuildServer, inspectStagedSnapshotServer, createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer,
-  PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
+  PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository, createEd25519SecretRefSigner } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { calculateObjectSha256, createMediaKey, createProjectSnapshotKey } from "../../src/platform/storage/object-storage.ts";
@@ -66,6 +66,10 @@ import { prepareSelectedSnapshotAdmission } from "../../src/modules/snapshot-del
 import { admitHistoricalSnapshotRollback } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-admission.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 import { createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
+import { PrismaSnapshotRollbackRepository, type SnapshotRollbackLease } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
+import { composeRollbackSnapshot } from "../../src/modules/snapshot-delivery/application/snapshot-rollback.ts";
+import { signSnapshotManifest, verifySnapshotSignatureCandidate } from "../../src/modules/snapshot-delivery/application/snapshot-signing.ts";
+import { snapshotManifestV1Schema, type SnapshotComposition } from "../../src/modules/snapshot-delivery/contracts.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -107,6 +111,197 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it.each(["takeover", "identity", "collision", "concurrent", "content", "canonical", "late-failure", "scope", "overflow", "prior-rollback"])("durable request-bound rollback identity: %s", async (mode) => {
+    const setup = await fixture(); const { scope } = setup;
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-rollback-identity", correlationId: randomUUID() };
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_ROLLBACK_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const trustSet = { currentKeyId: "synthetic-rollback-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-rollback-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const objects = new Map<string, Uint8Array>(); let puts = 0;
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof PutObjectCommand) { puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array)); return {} as never; }
+      if (command instanceof GetObjectCommand) { const body = objects.get(command.input.Key!); if (!body) throw new Error("SYNTHETIC_OBJECT_MISSING");
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } as never; }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-rollback", client });
+    let now = new Date("1996-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    let activeLease: Awaited<ReturnType<typeof reliability.claim>> = null;
+    const ownedLeases = new Map<string, NonNullable<Awaited<ReturnType<typeof reliability.claim>>>>();
+    const accept = async (sequence: number) => {
+      const accepted = await requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: sequence,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        await tx.outboxEvent.update({ where: { id: request.outboxEventId! }, data: { availableAt: new Date("1996-01-01T00:00:00Z") } });
+      });
+      const claimed = await reliability.claim(`synthetic-rollback-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+      if (!claimed || (claimed.payload as { requestId: string }).requestId !== accepted.requestId) throw new Error("SYNTHETIC_ROLLBACK_CLAIM_INVALID");
+      activeLease = claimed;
+      ownedLeases.set(claimed.outboxEventId, claimed);
+      await observer(scope, async (tx) => {
+        await lockSnapshotPublication(tx, scope); await new PrismaSnapshotInputRepository(tx).lockProject(scope.organizationId, scope.projectId);
+        await new OperationalActionLifecycleRepository(tx).begin(claimed);
+      }, "operations-executor");
+      const lease: SnapshotRollbackLease = { ...scope, requestId: accepted.requestId, sourcePublishSequence: sequence,
+        jobRunId: claimed.jobRunId, attempt: claimed.attempt, workerId: claimed.workerId, leaseAcquiredAt: claimed.leaseAcquiredAt };
+      return lease;
+    };
+    const cut = <T>(execute: (repo: PrismaSnapshotRollbackRepository, tx: DatabaseTransaction) => Promise<T>) =>
+      observer(scope, (tx) => execute(new PrismaSnapshotRollbackRepository(tx), tx));
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-rollback-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") })(setup.principal, setup.lookup);
+      const sourceManifest = await observer(scope, async (tx) => snapshotManifestV1Schema.parse(JSON.parse((await tx.snapshotPublicationBinding.findUniqueOrThrow({
+        where: { organizationId_projectId_buildInputId: { ...scope, buildInputId: stage.buildInputId } } })).manifestCanonical)));
+      const lease = await accept(stage.publishSequence);
+      // Completed signed staging alone is NOT approval to roll back.
+      await expect(cut((repo) => repo.reserve(lease))).rejects.toThrow("SNAPSHOT_ROLLBACK_SOURCE_NOT_APPROVED");
+      const publishSource = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
+      const sourceRun = await observer(scope, publishSource);
+      expect(puts).toBe(14);
+      if (mode === "scope") {
+        for (const projects of ["*", [], [scope.projectId, setup.foreignId], [setup.foreignId]] as const) {
+          await expect(observer(scope, (tx) => new PrismaSnapshotRollbackRepository(tx).reserve(lease), "snapshot-publication", projects))
+            .rejects.toThrow("SNAPSHOT_ROLLBACK_ACCESS_DENIED");
+        }
+      }
+      if (mode === "overflow") {
+        await observer(scope, (tx) => tx.projectSnapshotSequence.update({ where: { organizationId_projectId: scope }, data: { lastReservedSequence: 2_147_483_647 } }), "snapshot-input");
+        await expect(cut((repo) => repo.reserve(lease))).rejects.toThrow("SNAPSHOT_SEQUENCE_EXHAUSTED");
+        expect(await cut((_repo, tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(0); return;
+      }
+      if (mode === "late-failure") {
+        await expect(cut(async (repo) => { await repo.reserve(lease); throw new Error("SYNTHETIC_AFTER_RESERVE"); })).rejects.toThrow("SYNTHETIC_AFTER_RESERVE");
+        expect(await cut((_repo, tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(0);
+      }
+      let concurrentCaptureSequence: number | null = null;
+      const concurrent = { capture: null as ReturnType<typeof captureSnapshotInput> | null };
+      const reservation = mode === "concurrent" ? await cut(async (repo, tx) => {
+        const reserved = await repo.reserve(lease);
+        concurrent.capture = captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-concurrent-rollback-capture", schemaMinor: 0 });
+        const deadline = Date.now() + 1500; let waiting = false;
+        while (Date.now() < deadline) {
+          const blocked = await tx.$queryRaw<{ pid: number }[]>(Prisma.sql`
+            SELECT w.pid FROM pg_locks w JOIN pg_locks owner ON w.locktype=owner.locktype AND w.database=owner.database
+              AND w.classid=owner.classid AND w.objid=owner.objid AND w.objsubid=owner.objsubid
+            WHERE owner.pid=pg_backend_pid() AND owner.locktype='advisory' AND owner.granted AND NOT w.granted`);
+          if (blocked.length) { waiting = true; break; } await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(waiting).toBe(true); return reserved;
+      }) : await cut((repo) => repo.reserve(lease));
+      if (concurrent.capture) concurrentCaptureSequence = (await concurrent.capture).publishSequence;
+      expect(reservation).toMatchObject({ sourceDeliveryRunId: sourceRun.deliveryRunId, sourcePublishSequence: sourceRun.publishSequence,
+        rootBuildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash });
+      if (mode === "concurrent") expect([reservation.publishSequence, concurrentCaptureSequence].sort()).toEqual([sourceRun.publishSequence + 1, sourceRun.publishSequence + 2]);
+      else expect(reservation.publishSequence).toBe(sourceRun.publishSequence + 1);
+      expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation);
+      if (mode === "identity") {
+        const { createdAt: _created, reservationTransactionId: _txid, ...data } = reservation; void _created; void _txid;
+        for (const change of [{ sourceDeliveryRunId: "synthetic-wrong-run" }, { rootBuildInputId: "synthetic-wrong-root" },
+          { inputHash: "f".repeat(64) }, { publishSequence: sourceRun.publishSequence }]) {
+          await expect(cut((_repo, tx) => tx.snapshotRollbackReservation.create({ data: { ...data, ...change } })))
+            .rejects.toThrow("SNAPSHOT_ROLLBACK_RESERVATION_INVALID");
+        }
+        for (const change of [{ initialLeaseJobRunId: "synthetic-wrong-job" }, { initialLeaseAttempt: data.initialLeaseAttempt + 1 },
+          { initialLeaseWorkerId: "synthetic-wrong-worker" }, { initialLeaseAcquiredAt: new Date("1996-01-01T00:00:02Z") }]) {
+          await expect(cut((_repo, tx) => tx.snapshotRollbackReservation.create({ data: { ...data, ...change } })))
+            .rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+        }
+      }
+      if (mode === "takeover") {
+        const stale = { ...lease }; now = new Date("1996-01-01T00:06:00Z");
+        const replacement = await reliability.claim(`synthetic-takeover-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+        if (!replacement || (replacement.payload as { requestId: string }).requestId !== lease.requestId) throw new Error("SYNTHETIC_TAKEOVER_INVALID");
+        activeLease = replacement;
+        ownedLeases.set(replacement.outboxEventId, replacement);
+        await observer(scope, async (tx) => {
+          await lockSnapshotPublication(tx, scope); await new PrismaSnapshotInputRepository(tx).lockProject(scope.organizationId, scope.projectId);
+          await new OperationalActionLifecycleRepository(tx).begin(replacement);
+        }, "operations-executor");
+        Object.assign(lease, { jobRunId: replacement.jobRunId, attempt: replacement.attempt, workerId: replacement.workerId, leaseAcquiredAt: replacement.leaseAcquiredAt });
+        await expect(cut((repo) => repo.reserve(stale))).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+        expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation);
+        expect(reservation.initialLeaseAttempt).toBe(1); expect(lease.attempt).toBe(2);
+      }
+      if (mode === "collision") {
+        // Forge a normal capture at the last reserved rollback counter without
+        // advancing it: the new inverse SQL guard rejects the collision.
+        await expect(observer(scope, (tx) => tx.snapshotBuildInput.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          idempotencyKeyHash: "d".repeat(64), requestHash: "e".repeat(64), inputSchemaVersion: 1, projectorVersion: "db-v1", schemaMinor: 0,
+          publishSequence: reservation.publishSequence, projectStateRevision: setup.receipt.projectStateRevision, catalogRevision: setup.receipt.catalogRevision,
+          inputHash: "f".repeat(64), capturedAt: new Date() } }), "snapshot-input")).rejects.toThrow("SNAPSHOT_ROLLBACK_SEQUENCE_COLLISION");
+        const newer = await captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-after-rollback-reserve", schemaMinor: 0 });
+        expect(newer.publishSequence).toBe(reservation.publishSequence + 1);
+        expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation); // Never reallocate.
+      }
+      const { signature: _signature, ...unsigned } = sourceManifest; void _signature;
+      const source: SnapshotComposition = { manifest: unsigned, manifestPayload: canonicalJsonBytes(unsigned as CanonicalJsonValue),
+        files: sourceManifest.files.map((manifest) => ({ manifest, body: objects.get(createProjectSnapshotKey(scope.projectId, manifest.sha256))! })) };
+      const composition = composeRollbackSnapshot({ source, currentPublishSequence: reservation.publishSequence - 1,
+        generatedAt: reservation.createdAt.toISOString(), publishedAt: reservation.createdAt.toISOString(), keyId: "synthetic-rollback-key" });
+      expect(composition.files.map((row) => row.body)).toEqual(source.files.map((row) => row.body));
+      const manifest = await signSnapshotManifest(composition, createEd25519SecretRefSigner({ keyId: "synthetic-rollback-key", privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") }));
+      expect(verifySnapshotSignatureCandidate({ manifest, trustSet, lastGood: { projectId: scope.projectId, schemaMajor: 1, publishSequence: sourceRun.publishSequence } }).accepted).toBe(true);
+      if (mode === "content") await expect(cut((repo) => repo.bind(lease, { ...manifest, catalogRevision: "f".repeat(64) })))
+        .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_INVALID");
+      const binding = await cut((repo) => repo.bind(lease, manifest));
+      expect(await cut((repo) => repo.bind(lease, manifest))).toEqual(binding);
+      if (mode === "canonical") {
+        const altered = JSON.stringify(manifest, null, 2);
+        const otherLease = await accept(sourceRun.publishSequence);
+        const otherReservation = await cut((repo) => repo.reserve(otherLease));
+        const other = { ...manifest, publishSequence: otherReservation.publishSequence,
+          generatedAt: otherReservation.createdAt.toISOString(), publishedAt: otherReservation.createdAt.toISOString() };
+        const raw = JSON.stringify(other, null, 2);
+        await expect(cut((_repo, tx) => tx.snapshotRollbackBinding.create({ data: { ...scope, requestId: otherLease.requestId,
+          publishSequence: otherReservation.publishSequence, keyId: other.keyId, manifestCanonical: raw,
+          manifestSha256: calculateObjectSha256(new TextEncoder().encode(raw)), leaseJobRunId: otherLease.jobRunId,
+          leaseAttempt: otherLease.attempt, leaseWorkerId: otherLease.workerId, leaseAcquiredAt: new Date(otherLease.leaseAcquiredAt) } })))
+          .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_INVALID");
+        expect(altered).not.toBe(binding.manifestCanonical);
+        if (activeLease) { await reliability.complete(activeLease); ownedLeases.delete(activeLease.outboxEventId); }
+        activeLease = null;
+      }
+      // Durable identity alone has no rollback PUT/current/run/result effect.
+      expect(puts).toBe(14);
+      expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+      await observer(scope, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: lease.requestId } })).status).toBe("RUNNING");
+      }, "operations-executor");
+      await expect(cut((repo) => repo.markStaged({ ...lease, attempt: lease.attempt + 1 }))).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+      await storage.put({ key: createProjectSnapshotKey(scope.projectId, binding.manifestSha256), body: new TextEncoder().encode(binding.manifestCanonical), contentType: "application/json", sha256: binding.manifestSha256 });
+      const captured = await loadSelectedSnapshotCaptureServer(setup.principal, { buildInputId: stage.buildInputId });
+      const verified = await readStagedSnapshotArtifacts({ projectId: scope.projectId, storage, trustSet, lastGood: null,
+        binding: { projectId: scope.projectId, publishSequence: sourceRun.publishSequence, keyId: sourceManifest.keyId,
+          manifestSha256: stage.manifestSha256, manifestCanonical: canonicalJson(sourceManifest as CanonicalJsonValue) } });
+      const anchors = prepareSelectedSnapshotAdmission(captured.receipt, verified);
+      const staged = await cut(async (repo, tx) => { await repo.fence(lease); await admitHistoricalSnapshotRollback(tx, scope, anchors); return repo.markStaged(lease); });
+      expect(staged.stagedAt).toBeInstanceOf(Date); expect(puts).toBe(15);
+      expect(await cut((repo) => repo.markStaged(lease))).toEqual(staged);
+      await expect(cut((_repo, tx) => tx.snapshotRollbackBinding.update({ where: { organizationId_projectId_requestId: { ...scope, requestId: lease.requestId } }, data: { stagedAt: null } })))
+        .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_IMMUTABLE");
+      await expect(cut((_repo, tx) => tx.$executeRaw(Prisma.sql`UPDATE "SnapshotRollbackReservation" SET "publishSequence"="publishSequence"+1 WHERE "requestId"=${lease.requestId}`)))
+        .rejects.toThrow(); // Worker has no reservation UPDATE grant.
+      if (mode === "prior-rollback") {
+        const rollbackRun = await cut((_repo, tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...scope,
+          publishSequence: reservation.publishSequence, manifestSha256: binding.manifestSha256, manifestKey: createProjectSnapshotKey(scope.projectId, binding.manifestSha256), publishedAt: reservation.createdAt }));
+        const followup = await accept(rollbackRun.publishSequence);
+        const next = await cut((repo) => repo.reserve(followup));
+        expect(next).toMatchObject({ sourceDeliveryRunId: rollbackRun.deliveryRunId, rootBuildInputId: setup.receipt.id,
+          inputHash: setup.receipt.inputHash, sourcePublishSequence: reservation.publishSequence, publishSequence: reservation.publishSequence + 1 });
+      }
+    } finally {
+      // Fixture queue cleanup only, NOT operational success or executor proof.
+      for (const lease of ownedLeases.values()) await reliability.complete(lease);
+      send.mockRestore(); client.destroy(); vi.unstubAllEnvs();
+    }
+  }, 60_000);
   it.each(["success", "late-failure", "late-cancel", "takeover", "project", "trust"])("atomic operational selected PUBLISH: %s", async (mode) => {
     const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
     const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-publish", correlationId: randomUUID() };

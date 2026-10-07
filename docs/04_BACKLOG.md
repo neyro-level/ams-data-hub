@@ -197,8 +197,18 @@ current fact assignment и восстановление удалённых ко�
 Native matrix — 123/123 PASS, 4 suites, 55 migrations, 65,31s, final reset;
 19 scoped units PASS. Actual capture/sign/stage + bounded GET attribution
 с непустым Agent/media доказывает admission без extra IO/current/run writes.
-Это prerequisite, не rollback execution: durable reservation/signature/stage,
-safe-key recovery, full-lease atomic current/run/result и runtime ещё открыты.
+Этот admission prerequisite дополнен durable rollback identity: immutable
+request-owned reservation связывает approved delivery run с root capture,
+общим project counter и DB timestamp; signed canonical binding и stage marker
+защищены live full lease и exact-purpose RLS. Lease takeover сохраняет initial
+history и не меняет sequence/signature identity. Forward migration не переписывает
+старые capture; collision guards действуют в обе стороны. Native final matrix —
+80/80 PASS, 2 suites, 56 migrations, 113,61s, final reset, включая наблюдаемое
+pg_locks contention, stale lease, malformed canonical bytes, source/root/lease
+forgery, scope NULL/empty denial, overflow и prior-rollback ancestry. Architecture
+428/1447, RLS coverage 53 models, docs и secrets PASS. Это internal repository
+proof, не rollback execution: safe-key recovery, owned manifest-only staging,
+full-lease atomic current/run/result и operational runtime ещё открыты.
 MP-08.1 остаётся IN_PROGRESS, зарегистрированы только три из шести executors.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;

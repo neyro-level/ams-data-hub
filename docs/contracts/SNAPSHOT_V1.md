@@ -30,8 +30,43 @@ requirement, not a relaxation of ordinary PUBLISH freshness. The seam is interna
 and requires pins from authenticated artifacts attributed to a persisted approved
 source capture. It does not itself authenticate approval, reserve a new sequence,
 sign/stage a rollback, publish current/run, settle an operational lease, or register
-an executor. Those durable rollback steps remain open; three of six operational
-executors are currently registered. No production capability is enabled.
+an executor. The separate durable metadata prerequisite is described below;
+three of six operational executors remain registered. No production capability
+is enabled.
+
+Rollback's snapshot-private repository now persists a request-owned immutable
+`SnapshotRollbackReservation`: exact scoped committed source DeliveryRun,
+source sequence, root capture/hash, allocated new sequence, database-minted time
+and initial lease history. Only exact matching completed normal stage/binding/run
+or a previously staged rollback binding/run qualifies as source. Stage alone,
+binding alone, foreign/mismatched root/hash/run do not qualify. Source consumer
+ACK status is not a new approval criterion. Reserved identity survives valid
+takeover without changing its initial lease tuple, sequence or timestamps.
+
+Allocation reuses the existing counter under global -> publication -> input
+locks, before request rows, with a fixed same-scope actor-only bridge. SQL denies
+collisions in both directions between normal capture and rollback reservations;
+overflow fails closed and a failed transaction rolls reservation/counter back
+together. Current full accepted rollback request + IDs-only outbox + actual
+RUNNING JobRun lease tuple is required for reserve, bind and stage marker writes.
+
+`SnapshotRollbackBinding` pins strict canonical manifest bytes/SHA before IO.
+Only sequence, generatedAt/publishedAt, keyId and signature may differ from the
+approved source manifest; all thirteen file descriptors and attribution metadata
+remain unchanged. Both times equal the immutable reservation time. A signature
+or key change cannot overwrite an existing binding. Only NULL -> database-minted
+stagedAt plus its current lease history can be appended, never reversed/rewritten.
+The server may mark staged only after owned manifest PUT settles and fresh
+historical permission admission; SQL proves identity/lease, not external IO.
+These new tables use exact-purpose FORCE RLS and minimal insert/read/stage-column
+grants. No normal binding/capture or operational success guard is relaxed.
+
+This repository is internal, not a registered executable rollback. Source GET
+authentication with retained archival public key, safe current-key signing/restart
+facade, bounded unchanged-file reuse, atomic current/run/request success and runtime
+registration remain required. Synthetic tests compose the actual signer and
+storage/domain repositories to prove the metadata boundary, not a completed
+operational executor or provider/production activation.
 
 URL/lifecycle datasets transfer persistent Hub state, not consumer SEO policy.
 They preserve independent publicUrlId reservations, entries after legitimate
