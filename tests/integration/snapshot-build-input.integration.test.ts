@@ -26,6 +26,16 @@ import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import * as mediaFacade from "../../src/modules/media-assets/server.ts";
 import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
+import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
+
+// Explicit fixture policy permits the deliberate large historical/head count
+// changes used below; production policy/approval predicates are unchanged.
+function syntheticSafety(recordCount: number, previousGoodRecordCount: number | null = null) {
+  const policy = { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, maxDropPercent: 100, requireManualApprovalAboveDrop: false };
+  return { safetyPolicy: policy, safetyAnalysis: JSON.parse(JSON.stringify(analyzeImportSafety({
+    recordCount, previousGoodRecordCount, invalidRecordCount: 0, issues: [],
+  }, policy))) as Prisma.InputJsonObject };
+}
 
 const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-input-admin", correlationId: "synthetic-input" };
 async function setup() {
@@ -102,6 +112,37 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it.each(["forged", "oversized"])("rejects a GOOD label with %s immutable safety analysis before saving a receipt", async (mode) => {
+    const scope = await setup();
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectCatalogSubscription.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+      const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sourceKey: "synthetic-forged-approval", name: "Synthetic approval", adapterKey: "yrl-realty-2010",
+        adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const target = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      const safety = syntheticSafety(1);
+      const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+        profileVersion: source.profileVersion, ...safety, recordCount: 1,
+        safetyAnalysis: mode === "oversized" ? { ...safety.safetyAnalysis, review: { reason: "x".repeat(8192) } }
+          : { ...safety.safetyAnalysis, disposition: "REJECTED" } } });
+      await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id,
+        externalId: "synthetic-approval", orderKey: "73796e746865746963", inventoryUid: createUlid(),
+        recordHash: "b".repeat(64), payload: { schemaVersion: 1, draft: { externalId: "synthetic-approval" }, fields: {} } } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawStorageKey: "private-synthetic/forged-approval", rawArtifactHash: "a".repeat(64), rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+    });
+    await expect(captureWithWorkerRole({ organizationId: scope.organizationId, projectId: scope.projectId }, "synthetic-forged-approval"))
+      .rejects.toThrow("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID");
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.snapshotBuildInput.count({ where: { organizationId: scope.organizationId, projectId: scope.projectId } })).toBe(0);
+    });
+  });
   it("runs the complete command and replays its immutable input after live facts change", async () => {
     const scope = await setup();
     const developerUid = createUlid(); const developmentUid = createUlid(); const agentUid = createUlid();
@@ -132,7 +173,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const recordHash = normalizedContentHash({ draft: { ...draft, provenance: undefined }, fields });
       const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
+        profileVersion: source.profileVersion, ...syntheticSafety(1), recordCount: 1 } });
       await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId: "captured",
         inventoryUid, recordHash, orderKey: "6361707475726564",
         payload: { schemaVersion: 1, draft, fields, rawRecord: { private: true } } } });
@@ -348,7 +389,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const where = { ...target, sourceId: source.id };
       const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 2 } });
+        profileVersion: source.profileVersion, ...syntheticSafety(2), recordCount: 2 } });
       const fields = { text: "", attributes: {}, children: { "|rooms": [{ text: "2", attributes: {}, children: {} }] } };
       for (const [index, uid] of inventoryUids.entries()) {
         const externalId = `selection-${index}`;
@@ -468,10 +509,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         sourceKey: "synthetic-paged-good", name: "Synthetic historical source", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
         profileKey: "vladis-vt24-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
       const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      let previousRevisionId: string | null = null; let previousRecordCount: number | null = null;
       const revision = async (sequence: number, historical: boolean) => {
         const row = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
           adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: historical ? 201 : 1 } });
+          profileVersion: source.profileVersion, baseLastGoodRevisionId: previousRevisionId,
+          ...syntheticSafety(historical ? 201 : 1, previousRecordCount), recordCount: historical ? 201 : 1 } });
         await tx.sourceRevisionRecord.createMany({ data: historical ? uids.map((uid, index) => ({ ...where, revisionId: row.id,
           externalId: `kept-${index}`, inventoryUid: uid, recordHash: hashes[index]!, orderKey: Buffer.from(`kept-${index}`).toString("hex"),
           payload: { schemaVersion: 1, draft: draft(`kept-${index}`), fields } })) : [{ ...where, revisionId: row.id,
@@ -481,6 +524,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           rawStorageKey: `synthetic-private/${sequence}`, rawArtifactHash: "a".repeat(64), rawByteCount: 1,
           normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
         await tx.sourceRevision.update({ where: { id: row.id }, data: { status: "GOOD" } });
+        previousRevisionId = row.id; previousRecordCount = historical ? 201 : 1;
         return row.id;
       };
       await revision(1, true); const head = await revision(2, false);
@@ -548,7 +592,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
       const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: identities.length } });
+        profileVersion: source.profileVersion, ...syntheticSafety(identities.length), recordCount: identities.length } });
       for (let offset = 0; offset < identities.length; offset += 200) {
         const page = identities.slice(offset, offset + 200);
         await tx.sourceRevisionRecord.createMany({ data: page.map((identity) => ({ ...where, revisionId: revision.id,
@@ -597,10 +641,11 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         const elapsedMs = Math.round(performance.now() - startedAt);
         expect(elapsedMs).toBeLessThan(30_000);
         expect(capturedIdentities).toBe(4100);
-        expect(queries).toHaveBeenCalledTimes(64);
+        // One additional SQL byte guard for the cached head/fact approval.
+        expect(queries).toHaveBeenCalledTimes(65);
         expect(relations).not.toHaveBeenCalled();
         expect(sink).toHaveBeenCalledExactlyOnceWith("media", []);
-        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=64 elapsed_ms=${elapsedMs}`);
+        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=65 elapsed_ms=${elapsedMs}`);
       } finally { queries.mockRestore(); relations.mockRestore(); }
     });
     const images = ["https://private.example.invalid/a.jpg", "https://private.example.invalid/b.jpg"];
@@ -614,7 +659,8 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         originalFileName: "synthetic-private-filename", source: "synthetic-private-source", rightsBasis: "OWNED", uploadedBy: "synthetic" } });
       const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-        profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: identities.length } });
+        profileVersion: source.profileVersion, baseLastGoodRevisionId: source.lastGoodRevisionId,
+        ...syntheticSafety(identities.length, identities.length), recordCount: identities.length } });
       for (let offset = 0; offset < identities.length; offset += 200) {
         const page = identities.slice(offset, offset + 200);
         await tx.sourceRevisionRecord.createMany({ data: page.map((identity) => ({ ...where, revisionId: revision.id,
@@ -762,10 +808,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
         datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
       const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      let previousRevisionId: string | null = null;
       async function good(sequence: number, externalId: string, inventoryUid: string, imageUrls: string[]) {
         const revision = await tx.sourceRevision.create({ data: { ...where, sourceVersion: source.version,
           adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1 } });
+          profileVersion: source.profileVersion, baseLastGoodRevisionId: previousRevisionId,
+          ...syntheticSafety(1, previousRevisionId ? 1 : null), recordCount: 1 } });
         await tx.sourceRevisionRecord.create({ data: { ...where, revisionId: revision.id, externalId, inventoryUid,
           orderKey: Buffer.from(externalId).toString("hex"), recordHash: "b".repeat(64),
           payload: { schemaVersion: 1, draft: { imageUrls, contactPhones: ["synthetic-private-phone"] }, rawRecord: { private: true } } } });
@@ -773,6 +821,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           rawStorageKey: `synthetic-private/${sequence}`, rawArtifactHash: "a".repeat(64), rawByteCount: 1,
           normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
         await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        previousRevisionId = revision.id;
         return revision.id;
       }
       const historical = await good(1, "kept", uid, urls);
@@ -1206,10 +1255,12 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         schedulePolicy: { mode: "MANUAL_ONLY" }, enabled: true,
       } });
       const target = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+      let previousRevisionId: string | null = null;
       const good = async (sequence: number, externalId: string, inventoryUid: string, recordHash: string) => {
         const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
           adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
-          profileVersion: source.profileVersion, safetyPolicy: {}, recordCount: 1,
+          profileVersion: source.profileVersion, baseLastGoodRevisionId: previousRevisionId,
+          ...syntheticSafety(1, previousRevisionId ? 1 : null), recordCount: 1,
         } });
         await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id,
           externalId, orderKey: Buffer.from(externalId).toString("hex"), inventoryUid, recordHash,
@@ -1220,6 +1271,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           normalizedContentHash: recordHash, sequence, completedAt: new Date(),
         } });
         await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        previousRevisionId = revision.id;
         return revision.id;
       };
       const historical = await good(1, "kept", uid, historicalHash);
@@ -1246,7 +1298,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       });
       expect(inventory).toHaveLength(1);
       expect(inventory[0]).toMatchObject({ uid, approvedHeadId: fixtures.head, approvedHeadSequence: 2,
-        factRevisionId: fixtures.historical, factRevisionSequence: 1, factProfileIdentity: "vladis-vt24-v1@1.0.0" });
+        factRevisionId: fixtures.historical, factRevisionSequence: 1, factProfileIdentity: "vladis-vt24-v1@1.0.0",
+        factApproval: { disposition: "SAFE", sourceId: fixtures.sourceId, revisionId: fixtures.historical,
+          sequence: 1, baseRevisionId: null, previousGoodRecordCount: null } });
+      expect(sources).toEqual(expect.arrayContaining([expect.objectContaining({ entityType: "source",
+        approvedHead: expect.objectContaining({ id: fixtures.head, approval: expect.objectContaining({
+          disposition: "SAFE", sourceId: fixtures.sourceId, revisionId: fixtures.head, sequence: 2,
+          baseRevisionId: fixtures.historical, previousGoodRecordCount: 1 }) }) })]));
       expect(sources.filter((value) => typeof value === "object" && value !== null && !Array.isArray(value)
         && value.entityType === "profile")).toHaveLength(1);
       expect(JSON.stringify({ inventory, sources })).not.toMatch(/rawRecord|contactPhones|rawStorageKey|synthetic-private-only/u);

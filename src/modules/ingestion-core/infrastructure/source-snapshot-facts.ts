@@ -2,6 +2,7 @@ import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { adapterProfileRegistry } from "../domain/adapter-profile-registry.ts";
+import { createSnapshotRevisionApprovalReader } from "./snapshot-revision-approval.ts";
 
 const PAGE = 200;
 export type SourceSnapshotFactSink = (kind: "sources" | "inventory", records: CanonicalJsonValue[]) => void;
@@ -21,6 +22,7 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
     async capture(scope: SourceSnapshotFactScope, sink: SourceSnapshotFactSink,
       visitInventoryPage?: (rows: readonly SourceSnapshotInventoryFact[]) => Promise<void>): Promise<void> {
       const profiles = new Set<string>();
+      const approve = createSnapshotRevisionApprovalReader(transaction, scope);
       const pinProfile = (key: string, version: string) => {
         const identity = `${key}@${version}`;
         if (!profiles.has(identity)) {
@@ -38,11 +40,13 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
           select: { id: true, enabled: true, version: true, datasetType: true, sharingPolicy: true,
             lastGoodRevisionId: true, lastGoodRevision: { select: {
               id: true, status: true, sequence: true, sourceVersion: true, adapterKey: true, adapterVersion: true,
-              profileKey: true, profileVersion: true, safetyPolicy: true, safetyPolicyVersion: true,
+              profileKey: true, profileVersion: true, safetyPolicyVersion: true,
               normalizedContentHash: true, recordCount: true, invalidRecordCount: true, completedAt: true,
             } } },
         });
         if (!rows.length) break;
+        const headApprovals = await approve(rows.flatMap((row) => row.lastGoodRevision?.sequence
+          ? [{ sourceId: row.id, revisionId: row.lastGoodRevision.id, sequence: row.lastGoodRevision.sequence }] : []));
         sink("sources", rows.map((row) => {
           const revision = row.lastGoodRevision;
           if (row.lastGoodRevisionId && (!revision || revision.status !== "GOOD" || !revision.sequence)) {
@@ -51,7 +55,7 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
           const profileIdentity = revision ? pinProfile(revision.profileKey, revision.profileVersion) : null;
           return JSON.parse(JSON.stringify({ entityType: "source", sourceId: row.id, enabled: row.enabled, sourceVersion: row.version,
             datasetType: row.datasetType, sharingPolicy: row.sharingPolicy,
-            approvedHead: revision, profileIdentity })) as CanonicalJsonValue;
+            approvedHead: revision ? { ...revision, approval: headApprovals.get(revision.id) } : null, profileIdentity })) as CanonicalJsonValue;
         }));
         after = rows.at(-1)!.id;
       }
@@ -87,10 +91,13 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
         for (const row of rows) if (row.status === "ACTIVE" && !row.factRevisionId) {
           throw new Error("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
         }
+        const factApprovals = await approve(rows.flatMap((row) => row.status === "ACTIVE" && row.factRevisionId && row.factRevisionSequence
+          ? [{ sourceId: row.sourceId, revisionId: row.factRevisionId, sequence: row.factRevisionSequence }] : []));
         sink("inventory", rows.map((row) => {
           const factProfileIdentity = row.factProfileKey && row.factProfileVersion
             ? pinProfile(row.factProfileKey, row.factProfileVersion) : null;
-          return JSON.parse(JSON.stringify({ ...row, factProfileIdentity })) as CanonicalJsonValue;
+          return JSON.parse(JSON.stringify({ ...row, factProfileIdentity,
+            factApproval: row.status === "ACTIVE" ? factApprovals.get(row.factRevisionId!) : null })) as CanonicalJsonValue;
         }));
         if (visitInventoryPage) await visitInventoryPage(rows);
         after = rows.at(-1)!.uid;

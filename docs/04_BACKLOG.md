@@ -92,13 +92,21 @@ MP-05.3 scoped native proof от 2026-10-07: 21/21 в двух suites, targeted 
 provider proof. Это implementation checkpoint, не завершение MP-05 delivery.
 MP-05.4 в работе: ACTIVE inventory preflight проверяет unique captured Source и
 exact approved head ID/sequence, допускает исторический GOOD и producer-OFF.
-Apply safety predicate вынесен в общий helper; его подключение к capture и
-value-free policy-approved provenance ещё не закончены.
+Apply safety predicate подключён к capture head и исторических ACTIVE facts:
+точный scoped GOOD baseline, immutable policy/analysis/counts и private hashes.
+SQL byte guard ограничивает policy/analysis до 4096 bytes каждый до передачи;
+preflight сверяет provenance, public DTO proof не содержит. Старые receipts без
+proof требуют нового capture, без live enrichment или переписывания hash.
 Первый MP-05.4 checkpoint от 2026-10-07: native 44/44 в трёх suites подтверждают
 actual two-source runtime → persisted capture → assembly, source-scoped UID,
 broken-run preservation, historical grace и replay под NOBYPASS. Units 26/26,
-quick/types/lint/docs/secrets — PASS. Это не закрывает pending capture approval
-proof и не доказывает live provider или production delivery.
+quick/types/lint/docs/secrets — PASS. В том checkpoint capture approval proof
+ещё отсутствовал; его последующий delta проверяется отдельно. Эти проверки не
+доказывают live provider или production delivery.
+Capture approval checkpoint от 2026-10-07: native 46/46 в трёх suites — PASS,
+включая forged/oversized approval denial до receipt save и исторический baseline
+proof. Capture 4100/8200 — 12,498 секунды при неизменном лимите 30; targeted
+units 14/14, verify:quick, docs/secrets/diff — PASS. MP-05 epic delivery ещё открыт.
 Полнота source facts, подтверждённый
 agent linkage и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.

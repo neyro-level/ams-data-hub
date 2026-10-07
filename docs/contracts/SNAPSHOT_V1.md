@@ -114,8 +114,19 @@ ACTIVE inventory additionally requires a unique captured Source with matching
 approved-head ID/sequence. A historical fact must precede that head; equal
 sequence requires the same revision ID. Source without a head and without ACTIVE
 inventory contributes no rows. Producer-OFF does not remove captured GOOD.
-This head-membership check is not yet captured policy-approval proof: ingestion's
-shared SAFE approval predicate still requires capture integration.
+Capture reuses ingestion's actual SAFE policy/count/analysis predicate for both
+the head and each selected historical fact. The baseline is the exact scoped GOOD
+`baseLastGoodRevisionId`, from the same source and preceding GOOD sequence; its
+record count is read from the immutable row, not trusted from analysis metrics.
+Each private proof contains version, SAFE disposition, source/revision/sequence,
+policy/analysis hashes, baseline ID and previous GOOD count. Preflight correlates
+these pins and equal-head proofs before object IO; none enters public DTOs.
+The per-cut cache bounds each lookup to 200 pins. SQL rejects policy or analysis
+JSON over 4096 bytes each before transfer; no raw policy/analysis is captured.
+Earlier input-v1 receipts lacking this proof fail closed and require a new capture
+with a new idempotency key. They must not be supplemented from live state or have
+their immutable hash rewritten. This is a tightened private admission contract,
+not a public snapshot schema change.
 This candidate result does not claim fresh rights/consent/cohort
 admission, complete source-fact coverage, inferred agent linkage, signing or
 publication. Later plan steps must supply those proofs.

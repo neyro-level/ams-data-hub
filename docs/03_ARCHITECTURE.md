@@ -227,8 +227,13 @@ remediation program preserves these boundaries while connecting them:
   Inventory preflight also requires unique captured Source rows and exact
   approved-head ID/sequence membership. Historical GOOD facts may be older than
   the head but never newer; a missing/inconsistent head fails before object IO.
-  The ingestion apply SAFE policy/count/baseline/hash predicate is now a shared
-  application helper; capture approval-proof wiring remains an unfinished gate.
+  Capture reuses ingestion's shared apply SAFE policy/count/baseline/hash predicate
+  for heads and selected historical facts. Baselines are exact scoped immutable
+  GOOD rows, same source and adjacent GOOD sequence. Per-cut cached lookups use
+  pages of at most 200 pins; SQL rejects policy/analysis JSON above 4096 bytes each
+  before transfer. Private value-free approval pins/hashes are correlated during
+  preflight and excluded from public DTOs. Older receipts without this proof fail
+  closed and require new capture, never live enrichment or hash rewriting.
   This is not signing/publication;
   complete fact preservation and confirmed agent linkage remain unfinished steps;
   fresh consent/rights/publication admission is not replaced by captured replay.

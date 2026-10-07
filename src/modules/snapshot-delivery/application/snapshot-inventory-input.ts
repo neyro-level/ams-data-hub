@@ -22,15 +22,21 @@ const configuration = z.object({ fieldMappings: z.array(mapping).max(200), unitA
     districtOverrideAllowedFor: z.array(property).max(11) }).strict() });
 const profile = z.object({ identity: z.string().max(257), configuration: configuration.nullable(),
   formatContract: z.object({ family: z.enum(["YRL_2010", "AVITO_V3", "CIAN_V2"]) }).nullable() });
+const approval = z.object({ version: z.literal(1), disposition: z.literal("SAFE"), sourceId: id, revisionId: id,
+  sequence: z.number().int().positive(), policyHash: hash, analysisHash: hash,
+  baseRevisionId: id.nullable(), previousGoodRecordCount: z.number().int().nonnegative().nullable() }).strict()
+  .refine((row) => row.baseRevisionId === null ? row.sequence === 1 && row.previousGoodRecordCount === null
+    : row.sequence > 1 && row.previousGoodRecordCount !== null);
 const inventory = z.object({ uid: ulidSchema, sourceId: id, externalOfferId: z.string().min(1).max(240), status: z.literal("ACTIVE"),
   normalizedHash: hash, sourceHash: hash, factProfileIdentity: z.string().min(1).max(257), factProfileKey: id,
   factProfileVersion: z.string().regex(/^[A-Za-z0-9_.-]{1,128}$/u), factRevisionId: id, factRevisionSequence: z.number().int().positive(),
   approvedHeadId: id, approvedHeadSequence: z.number().int().positive(),
+  factApproval: approval,
   firstSeenAt: date, lastSeenAt: date, sourceCreatedAt: date.nullable(), sourceUpdatedAt: date.nullable(), createdAt: date, updatedAt: date });
 const url = z.object({ factType: z.literal("entry"), entityType: z.literal("INVENTORY"), entityUid: ulidSchema,
   reservation: z.object({ publicUrlId: publicUrlIdSchema }) });
 const source = z.object({ entityType: z.literal("source"), sourceId: id,
-  approvedHead: z.object({ id, status: z.literal("GOOD"), sequence: z.number().int().positive() }).nullable() });
+  approvedHead: z.object({ id, status: z.literal("GOOD"), sequence: z.number().int().positive(), approval }).nullable() });
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("SNAPSHOT_INVENTORY_INPUT_INVALID");
   return value as Record<string, unknown>;
@@ -55,6 +61,9 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
       if (value.entityType === "source") {
         const parsed = source.safeParse(value);
         if (!parsed.success || sources.has(parsed.data.sourceId)) throw new Error("SNAPSHOT_SOURCE_COMPOSITION_INVALID");
+        const head = parsed.data.approvedHead;
+        if (head && (head.approval.sourceId !== parsed.data.sourceId || head.approval.revisionId !== head.id
+          || head.approval.sequence !== head.sequence)) throw new Error("SNAPSHOT_SOURCE_COMPOSITION_INVALID");
         sources.set(parsed.data.sourceId, parsed.data); continue;
       }
       if (value.entityType !== "profile" || typeof value.identity !== "string" || !factProfiles.has(value.identity)) continue;
@@ -93,11 +102,18 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
     if (!head || row.approvedHeadId !== head.id || row.approvedHeadSequence !== head.sequence
       || row.factRevisionSequence > head.sequence
       || (row.factRevisionSequence === head.sequence && row.factRevisionId !== head.id)
-      || (row.factRevisionSequence < head.sequence && row.factRevisionId === head.id)) {
+      || (row.factRevisionSequence < head.sequence && row.factRevisionId === head.id)
+      || row.factApproval.sourceId !== row.sourceId || row.factApproval.revisionId !== row.factRevisionId
+      || row.factApproval.sequence !== row.factRevisionSequence
+      || (row.factRevisionId === head.id && (row.factApproval.policyHash !== head.approval.policyHash
+        || row.factApproval.analysisHash !== head.approval.analysisHash
+        || row.factApproval.baseRevisionId !== head.approval.baseRevisionId
+        || row.factApproval.previousGoodRecordCount !== head.approval.previousGoodRecordCount))) {
       throw new Error("SNAPSHOT_SOURCE_COMPOSITION_INVALID");
     }
     seen.add(row.uid);
-    const { factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence, approvedHeadId, approvedHeadSequence, ...identity } = row;
+    const { factProfileKey, factProfileVersion, factRevisionId, factRevisionSequence, approvedHeadId, approvedHeadSequence, factApproval, ...identity } = row;
+    void factApproval;
     void approvedHeadId; void approvedHeadSequence; // Head pins are private preflight inputs, not DTO identity fields.
     rows.push({ identity, profile: projectionProfile, url: association, pin: { uid: row.uid, sourceId: row.sourceId,
       externalOfferId: row.externalOfferId, normalizedHash: row.normalizedHash,

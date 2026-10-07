@@ -249,7 +249,14 @@ agent binding or signing/publication in this task. Required checks: targeted
 units, types/lint/quick, actual scoped native proof, docs/secrets/diff and exact
 pushed checkpoint ledger. Current first delta adds head-membership preflight and
 shared apply approval predicate. The first native multi-source proof below is
-PASS; capture approval-proof wiring remains unfinished, so MP-05.4 is not complete.
+PASS. Subsequent capture wiring now validates head and historical fact approval
+against exact scoped immutable GOOD baselines and emits private value-free proof.
+SQL byte guards reject policy/analysis JSON above 4096 bytes each before transfer;
+the initial head read no longer transfers raw policy. Per-cut approval cache and
+200-pin lookups preserve bounded access. Receipt preflight correlates proof pins
+and equal-head hashes; older proof-less receipts require fresh capture, not live
+enrichment/hash rewriting. Final regression evidence and pushed ledger are still
+required before MP-05.4 closure.
 
 First checkpoint evidence (2026-10-07): actual same-project Source pipelines use
 the NOBYPASS worker, real spool/S3 adapter and synthetic external transport. A's
@@ -262,6 +269,18 @@ wrappers and exact UID sets prevent false-positive proofs. Native three suites
 Targeted units 26/26, verify:quick, final test types/focused lint, docs/secrets/diff
 PASS. Architect findings in fixture fixed and reviewed with no new findings.
 No real provider/import data, signing, publication, merge or production claim.
+
+Capture approval checkpoint evidence (2026-10-07): scoped PostgreSQL NOBYPASS
+three-suite regression 46/46 PASS (78.88 seconds). Forged SAFE analysis and
+oversized private review siblings reject before receipt persistence; historical
+fact/head baseline proof is explicitly asserted. The actual two-source runtime
+and thirteen-dataset assembly/replay remain green. Original 4100/8200 complete
+capture takes 12.498 seconds within the unchanged 30-second boundary; cached
+head/fact approval adds one SQL byte guard (page seam 65 raw queries, not 64).
+Targeted approval/preflight units 14/14, verify:quick (386 modules, 1187
+dependencies), docs canon, secret scan and diff checks PASS. Architect byte-read
+finding and native fixture setup errors were fixed, not bypassed. This is
+implementation evidence only; MP-05 epic Gate/merge and publication remain pending.
 
 ### Active implementation contract: MP-05.3
 

@@ -6,6 +6,9 @@ import { SNAPSHOT_INPUT_PART_KINDS, SnapshotInputPartsBuilder, snapshotBuildInpu
   type SnapshotBuildInputReceipt } from "../src/modules/snapshot-delivery/index.ts";
 
 const uid = createUlid(); const date = "2026-10-07T00:00:00.000Z";
+const approval = (revisionId = "synthetic-good", sequence = 1) => ({ version: 1, disposition: "SAFE", sourceId: "synthetic-source",
+  revisionId, sequence, policyHash: "c".repeat(64), analysisHash: "d".repeat(64),
+  baseRevisionId: sequence === 1 ? null : "synthetic-good", previousGoodRecordCount: sequence === 1 ? null : 1 });
 function fixture() {
   return { sources: [{ entityType: "profile", identity: "vladis-vt24-v1@1.0.0",
     configuration: structuredClone(vladisVt24Configuration), formatContract: null as unknown }],
@@ -13,11 +16,12 @@ function fixture() {
     sourceHash: "a".repeat(64), normalizedHash: "b".repeat(64), factProfileIdentity: "vladis-vt24-v1@1.0.0",
     factProfileKey: "vladis-vt24-v1", factProfileVersion: "1.0.0", factRevisionId: "synthetic-good", factRevisionSequence: 1,
     approvedHeadId: "synthetic-good", approvedHeadSequence: 1,
+    factApproval: approval(),
     firstSeenAt: date, lastSeenAt: date, sourceCreatedAt: null, sourceUpdatedAt: null, createdAt: date, updatedAt: date }],
   urls: [{ factType: "entry", entityType: "INVENTORY", entityUid: uid, reservation: { publicUrlId: "1234567890123456" } }] };
 }
 const capturedSource = () => ({ entityType: "source", sourceId: "synthetic-source",
-  approvedHead: { id: "synthetic-good", status: "GOOD", sequence: 1 } });
+  approvedHead: { id: "synthetic-good", status: "GOOD", sequence: 1, approval: approval() } });
 function receipt(data: ReturnType<typeof fixture>, sources: unknown[] = [capturedSource()]): SnapshotBuildInputReceipt {
   const builder = new SnapshotInputPartsBuilder();
   for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind, JSON.parse(JSON.stringify([
@@ -39,11 +43,21 @@ describe("captured inventory preflight", () => {
       const data = fixture(); Object.assign(data.inventory[0]!, patch);
       expect(() => prepareSnapshotInventoryInput(receipt(data))).toThrow("SOURCE_COMPOSITION_INVALID");
     }
-    const historical = fixture(); const head = capturedSource(); head.approvedHead = { id: "synthetic-new-head", status: "GOOD", sequence: 2 };
+    const historical = fixture(); const head = capturedSource(); head.approvedHead = { id: "synthetic-new-head", status: "GOOD", sequence: 2,
+      approval: approval("synthetic-new-head", 2) };
     Object.assign(historical.inventory[0]!, { approvedHeadId: "synthetic-new-head", approvedHeadSequence: 2 });
     expect(prepareSnapshotInventoryInput(receipt(historical, [head])).rows[0]!.pin.factRevisionId).toBe("synthetic-good");
     historical.inventory[0]!.factRevisionId = "synthetic-new-head";
     expect(() => prepareSnapshotInventoryInput(receipt(historical, [head]))).toThrow("SOURCE_COMPOSITION_INVALID");
+  });
+  it("requires finite matching head/fact approval and never passes proof fields to identity", () => {
+    const data = fixture(); const source = capturedSource(); source.approvedHead.approval.sourceId = "foreign-source";
+    expect(() => prepareSnapshotInventoryInput(receipt(data, [source]))).toThrow("SOURCE_COMPOSITION_INVALID");
+    data.inventory[0]!.factApproval.analysisHash = "e".repeat(64);
+    expect(() => prepareSnapshotInventoryInput(receipt(data))).toThrow("SOURCE_COMPOSITION_INVALID");
+    const missing = fixture(); delete (missing.inventory[0] as Record<string, unknown>).factApproval;
+    expect(() => prepareSnapshotInventoryInput(receipt(missing))).toThrow("INVENTORY_INPUT_INVALID");
+    expect(prepareSnapshotInventoryInput(receipt(fixture())).rows[0]!.identity).not.toHaveProperty("factApproval");
   });
   it("keeps producer-off GOOD and permits an empty source without an approved head", () => {
     const source = { ...capturedSource(), enabled: false };
