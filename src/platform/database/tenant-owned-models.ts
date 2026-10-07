@@ -30,6 +30,7 @@ export const TENANT_OWNED_MODELS = [
   "SourceRevisionRecord",
   "ListingDevelopmentLink",
   "Agent",
+  "ListingAgentBinding",
   "AgentExternalIdentity",
   "AgentSourceEvidence",
   "AgentMatchReview",

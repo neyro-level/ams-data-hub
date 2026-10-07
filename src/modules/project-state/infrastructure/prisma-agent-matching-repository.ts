@@ -5,11 +5,42 @@ import type {
   AgentMatchingRepository,
 } from "../application/ports/agent-matching-repository.ts";
 import { normalizeAgentFullName, type NormalizedAgentEvidence } from "../domain/agent-matching.ts";
+import { assertMutatingJobsAllowed, PrismaDataSafetyRepository } from "../../platform-operations/server.ts";
 
 export class PrismaAgentMatchingRepository implements AgentMatchingRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
 
+  async readGoodOffers(scope: AgentEvidenceScope, externalIds: readonly string[]) {
+    const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: scope.sourceId };
+    if (await this.transaction.sourceRevision.count({ where: { ...where, id: scope.sourceRevisionId, status: "GOOD" } }) !== 1) {
+      throw new Error("AGENT_MATCHING_GOOD_FACT_INVALID");
+    }
+    const output: { externalId: string; inventoryUid: string; recordHash: string }[] = [];
+    for (let offset = 0; offset < externalIds.length; offset += 200) {
+      const page = externalIds.slice(offset, offset + 200);
+      const rows = await this.transaction.sourceRevisionRecord.findMany({ where: { ...where,
+        revisionId: scope.sourceRevisionId, externalId: { in: [...page] } }, take: 201,
+      select: { externalId: true, inventoryUid: true, recordHash: true } });
+      if (rows.length !== page.length) throw new Error("AGENT_MATCHING_GOOD_FACT_INVALID");
+      output.push(...rows);
+    }
+    return output;
+  }
+
+  async replaceListingBindings(scope: AgentEvidenceScope,
+    bindings: readonly { inventoryUid: string; recordHash: string; agentUid: string }[]) {
+    const where = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: scope.sourceId,
+      sourceRevisionId: scope.sourceRevisionId };
+    await this.transaction.listingAgentBinding.deleteMany({ where });
+    for (let offset = 0; offset < bindings.length; offset += 200) {
+      await this.transaction.listingAgentBinding.createMany({ data: bindings.slice(offset, offset + 200)
+        .map((binding) => ({ ...where, ...binding })) });
+    }
+  }
+
   async lockProject(organizationId: string, projectId: string): Promise<void> {
+    await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
+    await assertMutatingJobsAllowed(new PrismaDataSafetyRepository(this.transaction));
     await this.transaction.$executeRaw(Prisma.sql`
       select pg_advisory_xact_lock(hashtextextended(${`${organizationId}:${projectId}:agent-matching`}, 0))
     `);

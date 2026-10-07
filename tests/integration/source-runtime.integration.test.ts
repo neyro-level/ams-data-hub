@@ -4,6 +4,20 @@ import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import type { S3Client } from "@aws-sdk/client-s3";
 const gateway = vi.hoisted(() => vi.fn());
+const matchingRuntime = vi.hoisted(() => ({ cuts: 0 }));
+// defineCommand captures its runner at module construction, before later spies.
+vi.mock("../../src/platform/database/transaction.ts", async (original) => {
+  const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
+  const run: typeof actual.runInPrincipalDatabaseTransaction = (principal, execute) => actual.runInPrincipalDatabaseTransaction(principal, async (tx) => {
+    if (principal.kind === "project-job" && principal.jobName === "agent-matching") {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]); matchingRuntime.cuts++;
+    }
+    return execute(tx);
+  });
+  return { ...actual, runInPrincipalDatabaseTransaction: run };
+});
 vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
   return { ...actual, safeOutboundStream: gateway };
@@ -24,6 +38,9 @@ import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infras
 import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
+import { createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { feedAgentMatchingCommands } from "../../src/modules/project-state/server.ts";
+import { extractVladisAgentEvidence, type YrlRawOffer } from "../../src/modules/ingestion-core/index.ts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -176,6 +193,132 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         lookup(nextReceipt))).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
       expect(head).not.toHaveBeenCalled(); expect(workerCuts).toBeGreaterThan(10); expect(sourceWorkerCuts).toBeGreaterThan(10);
     } finally { role.mockRestore(); principalRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
+
+  it("captures a real confirmed GOOD agent binding, gates personal data and preserves immutable replay", async () => {
+    matchingRuntime.cuts = 0;
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let workerCuts = 0;
+    async function lower(tx: DatabaseTransaction) {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]); workerCuts++;
+    }
+    const sourceRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => { if (principal.kind === "project-job") await lower(tx); return execute(tx); }));
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => { if (principal.principalKind === "project-job") await lower(tx); return execute(tx); }, options));
+    try {
+      context.provide(feed(offer("one").replace("</offer>",
+        "<sales-agent><name>Синтетический Агент</name><phone>+79590000001</phone></sales-agent></offer>"),
+      ...["z2", "z3", "z4", "z5"].map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read(); const identity = state.identities[0]!; const revision = state.revisions[0]!;
+      const record = state.records.find((row) => row.inventoryUid === identity.uid)!;
+      const raw = (record.payload as unknown as { rawRecord: YrlRawOffer["element"] }).rawRecord;
+      const extracted = extractVladisAgentEvidence({ line: 0, column: 0, element: raw })!;
+      expect(extracted).toMatchObject({ fullNameRaw: "Синтетический Агент", offerExternalId: "one" });
+      const { offerExternalId, ...evidence } = extracted;
+      const matchingJob = createProjectJobPrincipal({ ...scope, jobName: "agent-matching" });
+      const request = { ...scope, sourceId: context.target.sourceId, sourceRevisionId: revision.id,
+        observedAt: new Date().toISOString(), evidence: [{ ...evidence, offerExternalIds: [offerExternalId] }] };
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [{ ...evidence, offerExternalIds: Array.from({ length: 50_000 }, () => offerExternalId) }] }))
+        .rejects.toThrow("AGENT_MATCHING_LIMIT_EXCEEDED");
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request, sourceRevisionId: "missing-good" }))
+        .rejects.toThrow("AGENT_MATCHING_GOOD_FACT_INVALID");
+      const foreignJob = createProjectJobPrincipal({ ...scope, projectId: "synthetic-foreign", jobName: "agent-matching" });
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(foreignJob, request))
+        .rejects.toThrow("AGENT_MATCHING_PROJECT_JOB_REQUIRED");
+      const matched = await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
+      const agentUid = matched.bindings[0]!.agentUid!; expect(agentUid).toBeTruthy();
+      expect((await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request)).bindings[0]!.agentUid).toBe(agentUid);
+      expect(await runInPrincipalDatabaseTransaction(foreignJob, (tx) => tx.listingAgentBinding.findMany({ where: scope }))).toEqual([]);
+      // A second unresolved claim vetoes the durable assignment; full replay restores it.
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request,
+        evidence: [...request.evidence, { fullNameRaw: "Синтетический Неподтвержденный", phoneRaw: "invalid",
+          offerExternalIds: [offerExternalId] }] });
+      expect(await runInPrincipalDatabaseTransaction(matchingJob, (tx) => tx.listingAgentBinding.findMany({ where: scope }))).toEqual([]);
+      await feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request);
+      await expect(runInPrincipalDatabaseTransaction(matchingJob, (tx) => tx.listingAgentBinding.create({ data: {
+        ...scope, sourceId: context.target.sourceId, sourceRevisionId: revision.id, inventoryUid: identity.uid,
+        recordHash: "f".repeat(64), agentUid } }))).rejects.toThrow("LISTING_AGENT_FACT_INVALID");
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        expect(await tx.listingAgentBinding.findMany({ where: scope })).toEqual([expect.objectContaining({
+          inventoryUid: identity.uid, sourceRevisionId: revision.id, recordHash: record.recordHash, agentUid })]);
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        await tx.projectPublicContact.create({ data: { ...scope, phone: "+70000000077", messengers: [] } });
+        for (const [index, listing] of state.identities.entries()) {
+          const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+            subjectUid: listing.uid, publicUrlId: `123456789012345${index}` } });
+          await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: listing.uid,
+            reservationId: reservation.id, slug: `synthetic-gated-${index}`, canonicalPath: `/inventory/synthetic-gated-${index}` } });
+        }
+        const asset = await tx.mediaAsset.create({ data: { ...scope, sha256: "a".repeat(64),
+          storageKey: createMediaKey("a".repeat(64)), contentType: "image/jpeg", byteSize: 100,
+          originalFileName: "synthetic-private.jpg", source: "https://private.example.invalid/synthetic-photo",
+          rightsBasis: "LICENSED", license: "synthetic-license",
+          uploadedBy: "synthetic-admin" } });
+        await tx.agent.update({ where: { uid: agentUid }, data: { photoMediaId: asset.id } });
+      });
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      expect(await runInPrincipalDatabaseTransaction(principal, (tx) => tx.listingAgentBinding.deleteMany({ where: scope })))
+        .toMatchObject({ count: 0 });
+      const head = vi.fn(async (key: string) => ({ key, sha256: "a".repeat(64), contentType: "image/jpeg",
+        contentLength: 100, etag: null, lastModifiedAt: new Date(0) }));
+      const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      async function build(key: string) {
+        const receipt = await captureSnapshotInput(principal, { ...scope, idempotencyKey: key, schemaMinor: 0 });
+        const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+        return { result: await assemble(principal, lookup), lookup };
+      }
+      function assertOmitted(result: Awaited<ReturnType<typeof assemble>>) {
+        expect(result.datasets.find((row) => row.kind === "agents")!.records).toEqual([]);
+        const listing = result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid)!;
+        expect(listing.value).toMatchObject({ uid: identity.uid });
+        expect(listing.value).not.toHaveProperty("agentUid");
+        expect(result.datasets.find((row) => row.kind === "media")!.records.filter((row) => row.key.startsWith("AGENT/"))).toEqual([]);
+        expect(result.datasets.find((row) => row.kind === "project/contacts")!.records[0]!.value).toMatchObject({ phone: "+70000000077" });
+      }
+      assertOmitted((await build("agent-no-consent")).result);
+      expect(head).not.toHaveBeenCalled();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.agent.update({ where: { uid: agentUid },
+        data: { showOnSite: true, consentConfirmedAt: new Date(), consentConfirmedBy: "synthetic-admin", consentBasis: "synthetic" } }));
+      const eligible = await build("agent-eligible");
+      expect(eligible.result.datasets.find((row) => row.kind === "agents")!.records).toHaveLength(1);
+      expect(eligible.result.datasets.find((row) => row.kind === "media")!.records.map((row) => row.key)).toContain(`AGENT/${agentUid}/0`);
+      expect(eligible.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid)).toMatchObject({
+        value: { uid: identity.uid, agentUid }, references: expect.arrayContaining([{ kind: "agents", key: agentUid }]) });
+      // One missing GOOD run retains the listing and its exact historical assignment.
+      context.provide(feed(...["z2", "z3", "z4", "z5"].map((externalId) => offer(externalId))));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 2 });
+      const grace = await build("agent-historical-grace");
+      expect(grace.result.datasets.find((row) => row.kind === "inventory")!.records.find((row) => row.key === identity.uid))
+        .toMatchObject({ value: { uid: identity.uid, agentUid } });
+      context.provide(feed()); expect((await context.runtime.run(context.target)).state).toBe("FAILED");
+      const rejected = (await context.read()).revisions.at(-1)!; expect(rejected.status).toBe("REJECTED");
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, { ...request, sourceRevisionId: rejected.id }))
+        .rejects.toThrow("AGENT_MATCHING_GOOD_FACT_INVALID");
+      for (const [index, patch] of [{ status: "HIDDEN" as const }, { status: "DEPARTED" as const },
+        { status: "ACTIVE" as const, showOnSite: false }, { status: "ACTIVE" as const, showOnSite: true, consentConfirmedAt: null }].entries()) {
+        await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.agent.update({ where: { uid: agentUid }, data: patch }));
+        const beforeHeads = head.mock.calls.length;
+        assertOmitted((await build(`agent-gated-${index}`)).result);
+        expect(head.mock.calls).toHaveLength(beforeHeads);
+      }
+      expect(await assemble(principal, eligible.lookup)).toEqual(eligible.result);
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      await expect(feedAgentMatchingCommands.reconcileFeedAgents(matchingJob, request)).rejects.toThrow("DATA_SAFETY_JOBS_FROZEN");
+      expect(workerCuts).toBeGreaterThan(10);
+      expect(matchingRuntime.cuts).toBeGreaterThan(2);
+    } finally {
+      sourceRole.mockRestore(); snapshotRole.mockRestore();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: false } }));
+      context.cleanup();
+    }
   }, 60_000);
 
   it.each([

@@ -16,6 +16,8 @@ export interface AgentEvidenceScope {
 }
 
 export interface AgentMatchingRepository {
+  readGoodOffers(scope: AgentEvidenceScope, externalIds: readonly string[]): Promise<readonly { externalId: string; inventoryUid: string; recordHash: string }[]>;
+  replaceListingBindings(scope: AgentEvidenceScope, bindings: readonly { inventoryUid: string; recordHash: string; agentUid: string }[]): Promise<void>;
   lockProject(organizationId: string, projectId: string): Promise<void>;
   sourceExists(scope: Pick<AgentEvidenceScope, "organizationId" | "projectId" | "sourceId">): Promise<boolean>;
   findCandidates(organizationId: string, projectId: string, phoneNorm: string): Promise<AgentMatchCandidate[]>;

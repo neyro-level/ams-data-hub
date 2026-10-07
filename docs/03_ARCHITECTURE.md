@@ -235,7 +235,19 @@ remediation program preserves these boundaries while connecting them:
   preflight and excluded from public DTOs. Older receipts without this proof fail
   closed and require new capture, never live enrichment or hash rewriting.
   This is not signing/publication;
-  complete fact preservation and confirmed agent linkage remain unfinished steps;
+  MP-05.6 adds project-state-owned `ListingAgentBinding`: exact scoped GOOD
+  revision, inventory UID and record hash, plus scoped Agent UID. The canonical
+  `agent-matching` command replaces the complete revision assignment set in one
+  transaction, not incremental pages. It accepts only trusted server evidence,
+  bounds aggregate evidence/offer claims to 50000, and checks global DataSafety
+  freeze under its mutation lock before the project matching lock. GOOD fact
+  membership is checked in pages of 200; database trigger and scoped FKs reject
+  foreign or forged pins. Snapshot capture is SELECT-only for these bindings.
+  Captured exact-fact assignments publish `agentUid` and an agents reference only
+  when the captured Agent passes ACTIVE/showOnSite/consent. An unresolved or
+  ambiguous claim omits assignment; failed publication gate preserves inventory
+  and omits the personal block/photo. Existing project contacts remain available.
+  This does not automatically wire Source GOOD to matching or enable publication;
   fresh consent/rights/publication admission is not replaced by captured replay.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw

@@ -20,6 +20,7 @@ export interface SnapshotInventoryProjectionInput {
   /** Persistent captured URL-entry association; never generated from the UID. */
   url: { entityType: "INVENTORY"; entityUid: string; publicUrlId: string };
   media: readonly MediaPublicV1[];
+  agentUid?: string;
 }
 export interface SnapshotInventoryProfile {
   identity: string;
@@ -57,7 +58,7 @@ const formatPeriodsV1 = [{ source: "day", target: "DAY" }, { source: "month", ta
 export function projectSnapshotInventory(scope: { organizationId: string; projectId: string },
   inputs: readonly SnapshotInventoryProjectionInput[]): SnapshotDatasetInput {
   const seen = new Set<string>();
-  const records = inputs.map(({ fact, identity, profile, url, media }) => {
+  const records = inputs.map(({ fact, identity, profile, url, media, agentUid }) => {
     if (identity.uid !== fact.inventoryUid || url.entityType !== "INVENTORY" || url.entityUid !== identity.uid
       || identity.sourceId !== fact.sourceId || identity.externalOfferId !== fact.externalOfferId
       || identity.normalizedHash !== fact.normalizedHash || identity.factProfileIdentity !== fact.factProfileIdentity
@@ -145,6 +146,7 @@ export function projectSnapshotInventory(scope: { organizationId: string; projec
       organizationId: scope.organizationId, projectId: scope.projectId, sourceId: identity.sourceId, externalId: identity.externalOfferId,
       propertyType: fact.draft.propertyType, facts, transactionType: fact.draft.transactionType === "SALE" ? "SALE" : "RENT",
       ...(dealKind === undefined || dealKind === "UNKNOWN" ? {} : { dealKind }),
+      ...(agentUid === undefined ? {} : { agentUid }),
       ...(orderRaw === undefined ? {} : { isImageOrderChangeAllowed: orderRaw === "true" }),
       status: identity.status, firstSeenAt: identity.firstSeenAt, lastSeenAt: identity.lastSeenAt,
       ...(identity.sourceCreatedAt === null ? {} : { sourceCreatedAt: identity.sourceCreatedAt }),
@@ -160,6 +162,7 @@ export function projectSnapshotInventory(scope: { organizationId: string; projec
     const publicValue = JSON.parse(serializePublicDto(toPublicInventoryDto(entity, media))) as CanonicalJsonValue;
     assertSnapshotPrivacySafe(publicValue);
     return { key: identity.uid, value: publicValue, references: [{ kind: "urls" as const, key: `entry:${url.publicUrlId}` },
+      ...(agentUid === undefined ? [] : [{ kind: "agents" as const, key: agentUid }]),
       ...media.map((item) => ({ kind: "media" as const, key: `INVENTORY/${identity.uid}/${item.position}` }))] };
   });
   return { kind: "inventory", records: records.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0) };

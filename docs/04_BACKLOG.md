@@ -114,8 +114,18 @@ PASS (все 11 property variants); actual four-profile Source → GOOD → capt
 native 27/27 PASS. Quick/types/lint/architecture/docs/secrets/diff — PASS.
 Exact pushed closure ledger принадлежит Task Manager. Это не speculative full
 producer-fact mapping, agent gate или epic delivery.
-Полнота source facts, подтверждённый
-agent linkage и весь build/sign/publication executor ещё остаются в работе;
+MP-05.6 implementation proof: durable scoped GOOD/hash → Agent assignment и captured
+publication gate реализованы; отсутствие consent/showOnSite/ACTIVE сохраняет
+listing и project contacts без personal block. Reconcile заменяет полный набор
+одной revision, не incremental pages; ambiguous/unresolved claim vetoes binding.
+Final native — 52/52 PASS в четырёх suites: assigned photo/HEAD omission,
+foreign scope, forged pin, unresolved claim/retry, actual REJECTED denial,
+historical grace и freeze. Capture 4100/8200 — 27,548 секунды при лимите 30;
+units 25/25, verify:quick (388 modules/1193 dependencies), final fixture types/lint
+и docs/secrets/diff — PASS. Exact pushed closure ledger хранится в Task Manager.
+Automatic ingestion matching,
+mandatory contact flag и fresh publication admission этим checkpoint не заявлены.
+Полнота source facts и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.
 Native 18/18 подтверждает captured GOOD → public inventory и неизменный replay
 после Source disable/profile change; targeted units — 31/31. Capture 4100/8200

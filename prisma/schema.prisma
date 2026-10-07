@@ -620,6 +620,7 @@ model Agent {
   updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
   project               Project                    @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   externalIdentities    AgentExternalIdentity[]
+  listingBindings       ListingAgentBinding[]
   sourceEvidence        AgentSourceEvidence[]
   consentBatch          AgentConsentBatch?         @relation(fields: [organizationId, projectId, consentBatchId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: Cascade)
 
@@ -964,6 +965,7 @@ model SourceRevision {
   project                Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: NoAction, onUpdate: NoAction)
   lastGoodFor            Source[] @relation("SourceLastGood")
   records                SourceRevisionRecord[]
+  agentBindings          ListingAgentBinding[]
 
   @@unique([organizationId, projectId, sourceId, id])
   @@unique([sourceId, sequence])
@@ -1010,11 +1012,30 @@ model InventoryIdentity {
   project         Project                   @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade, onUpdate: Cascade)
   source          Source                    @relation(fields: [organizationId, projectId, sourceId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Cascade)
   lifecycleEvents InventoryLifecycleEvent[]
+  agentBindings   ListingAgentBinding[]
 
   @@unique([organizationId, projectId, sourceId, externalOfferId])
   @@unique([organizationId, projectId, uid])
   @@index([projectId, sourceId, status])
   @@index([sourceId, missingSince])
+}
+
+model ListingAgentBinding {
+  id               String @id @default(cuid())
+  organizationId   String
+  projectId        String
+  sourceId         String
+  sourceRevisionId String
+  inventoryUid     String @db.VarChar(26)
+  recordHash       String @db.Char(64)
+  agentUid         String @db.VarChar(26)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+  revision         SourceRevision @relation(fields: [organizationId, projectId, sourceId, sourceRevisionId], references: [organizationId, projectId, sourceId, id], onDelete: NoAction, onUpdate: NoAction)
+  inventory        InventoryIdentity @relation(fields: [organizationId, projectId, inventoryUid], references: [organizationId, projectId, uid], onDelete: NoAction, onUpdate: NoAction)
+  agent            Agent @relation(fields: [organizationId, projectId, agentUid], references: [organizationId, projectId, uid], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([organizationId, projectId, sourceRevisionId, inventoryUid])
+  @@index([organizationId, projectId, id])
 }
 
 model InventoryLifecycleEvent {

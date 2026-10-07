@@ -19,6 +19,20 @@ Prisma schema is the runtime source of truth.
 - Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
   JSON with recursively sorted object keys.
 
+## Confirmed listing-agent assignments
+
+`ListingAgentBinding` is owned by project-state. It binds scoped Source/GOOD
+revision, inventory UID and immutable record hash to a scoped Agent UID. Composite
+foreign keys enforce tenant ownership; a trigger verifies actual GOOD record
+membership. The forward migration is additive and does not backfill inferred
+assignments. Missing bindings omit public agent linkage, not inventory.
+The `agent-matching` project job alone writes the complete revision set in the
+existing command transaction, after DataSafety admission. Snapshot input reads
+only; worker is NOBYPASS with FORCE RLS. Public datasets expose only eligible
+`agentUid`, never private binding IDs, source pins, hashes or matching evidence.
+Rollback means disabling this new consumer/writer and forward-fixing; no
+production migration or destructive rollback is performed during remediation.
+
 ## Shared catalog geography
 
 `Region → City → District` is the global, reusable geography tree owned by the

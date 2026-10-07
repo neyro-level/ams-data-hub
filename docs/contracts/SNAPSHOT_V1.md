@@ -127,9 +127,18 @@ Earlier input-v1 receipts lacking this proof fail closed and require a new captu
 with a new idempotency key. They must not be supplemented from live state or have
 their immutable hash rewritten. This is a tightened private admission contract,
 not a public snapshot schema change.
-This candidate result does not claim fresh rights/consent/cohort
-admission, complete source-fact coverage, inferred agent linkage, signing or
-publication. Later plan steps must supply those proofs.
+Confirmed assignment is captured as a private value-free `agent-binding` in
+listing-links: inventory UID, Source, exact selected GOOD revision/hash and Agent
+UID. Preflight rejects foreign, duplicate, orphan or mismatched pins; it never
+infers linkage from phones. Only captured ACTIVE/showOnSite/consent-approved
+agents admit inventory `agentUid` with a declared agents reference. Otherwise
+the listing remains without the personal block/photo; captured project contacts
+remain available. This uses durable project-state assignment, not caller pins.
+The trusted server matching command replaces the full assignment set for one
+GOOD revision atomically; it is not an incremental reconciliation API.
+This candidate result does not claim fresh rights/consent/cohort admission,
+automatic ingestion-to-matching orchestration, mandatory contact enforcement,
+signing or publication. Later plan steps must supply those proofs.
 
 The strict public `media` attachment row is `{entityType, entityUid, media}`,
 where `media` is `MediaPublicV1` and entityType is INVENTORY, AGENT, DEVELOPMENT or

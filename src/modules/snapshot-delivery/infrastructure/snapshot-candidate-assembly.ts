@@ -11,6 +11,7 @@ import { projectSnapshotCatalog } from "../application/snapshot-catalog-projecto
 import { selectSnapshotCatalog } from "../application/snapshot-catalog-selection.ts";
 import { assertSnapshotDatasetIntegrity } from "../application/snapshot-composer.ts";
 import { prepareSnapshotInventoryInput } from "../application/snapshot-inventory-input.ts";
+import { prepareSnapshotAgentBindings } from "../application/snapshot-agent-bindings.ts";
 import { projectSnapshotInventory } from "../application/snapshot-inventory-projector.ts";
 import { projectSnapshotProjectState } from "../application/snapshot-project-state-projector.ts";
 import { PrismaSnapshotInputRepository } from "./prisma-snapshot-input-repository.ts";
@@ -36,7 +37,9 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
     const captured = prepareSnapshotInventoryInput(receipt);
     const selection = selectSnapshotCatalog(receipt);
     const catalog = projectSnapshotCatalog(receipt, selection);
-    projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before any object IO.
+    const preview = projectSnapshotProjectState(receipt, new Map(), selection); // Admission validation before object IO.
+    const agents = prepareSnapshotAgentBindings(receipt, captured.rows,
+      new Set(preview.find((dataset) => dataset.kind === "agents")!.records.map((record) => record.key)));
     const media = await projectMedia(receipt, selection); // No transaction remains open here.
     const projectState = projectSnapshotProjectState(receipt, media.agentMedia, selection);
     const budget = new SnapshotAssemblyBudget();
@@ -47,6 +50,7 @@ export function createSnapshotCandidateAssemblyServer(bound: { organizationId: s
         const page = captured.rows.slice(offset, offset + SNAPSHOT_INPUT_PAGE_SIZE);
         const facts = await resolve(scope, page.map((row) => row.pin), captured.factProfiles);
         const projected = projectSnapshotInventory(scope, page.map((row, index) => ({ ...row, fact: facts[index]!,
+          ...(agents.has(row.pin.uid) ? { agentUid: agents.get(row.pin.uid)! } : {}),
           media: media.inventoryMedia.get(row.pin.uid) ?? [] })));
         budget.add("inventory", projected.records); output.push(...projected.records);
       }

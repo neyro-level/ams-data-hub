@@ -1,5 +1,5 @@
 import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
-import type { ProjectEditorialEntityType } from "../../../generated/prisma/client.ts";
+import { Prisma, type ProjectEditorialEntityType } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 
 type Kind = "project" | "contacts" | "agents" | "editorial" | "media-order" | "url-policy"
@@ -98,6 +98,30 @@ export function createProjectStateSnapshotFactReader(transaction: DatabaseTransa
         if (row.developmentUid) linked.add(row.developmentUid);
         if (linked.size > 5000) throw new Error("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
       });
+      let afterInventory = "";
+      while (true) {
+        const bindings = await transaction.$queryRaw<{ inventoryUid: string; sourceId: string;
+          sourceRevisionId: string; recordHash: string; agentUid: string }[]>(Prisma.sql`
+          SELECT i."uid" AS "inventoryUid", b."sourceId", b."sourceRevisionId", b."recordHash", b."agentUid"
+          FROM "InventoryIdentity" i JOIN "Source" s ON s."id" = i."sourceId"
+            AND s."organizationId" = i."organizationId" AND s."projectId" = i."projectId"
+          JOIN "SourceRevision" h ON h."id" = s."lastGoodRevisionId" AND h."status" = 'GOOD'
+            AND h."organizationId" = i."organizationId" AND h."projectId" = i."projectId" AND h."sourceId" = i."sourceId"
+          JOIN LATERAL (SELECT r."revisionId" FROM "SourceRevisionRecord" r JOIN "SourceRevision" v ON v."id" = r."revisionId"
+            WHERE r."organizationId" = i."organizationId" AND r."projectId" = i."projectId" AND r."sourceId" = i."sourceId"
+              AND r."inventoryUid" = i."uid" AND r."externalId" = i."externalOfferId" AND r."recordHash" = i."normalizedHash"
+              AND v."status" = 'GOOD' AND v."sequence" <= h."sequence" ORDER BY v."sequence" DESC LIMIT 1) fact ON true
+          JOIN "ListingAgentBinding" b ON b."organizationId" = i."organizationId" AND b."projectId" = i."projectId"
+            AND b."sourceId" = i."sourceId" AND b."sourceRevisionId" = fact."revisionId"
+            AND b."inventoryUid" = i."uid" AND b."recordHash" = i."normalizedHash"
+          WHERE i."organizationId" = ${scope.organizationId} AND i."projectId" = ${scope.projectId}
+            AND i."status" = 'ACTIVE' AND i."uid" > ${afterInventory}
+          ORDER BY i."uid" LIMIT ${PAGE}
+        `);
+        if (!bindings.length) break;
+        sink("listing-links", bindings.map((row) => json({ entityType: "agent-binding", ...row })));
+        afterInventory = bindings.at(-1)!.inventoryUid;
+      }
       await scan("lifecycle", (cursor: string | undefined) => transaction.inventoryLifecycleEvent.findMany({
         where: { ...where, id: { gt: cursor ?? "" } }, orderBy: { id: "asc" }, take: PAGE,
         select: { id: true, inventoryUid: true, type: true, occurredAt: true },

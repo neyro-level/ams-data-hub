@@ -10,6 +10,28 @@ Audit baseline: `4f2224b4996bceabc1bb28ed139f68a94b67d48d`
 
 ## VERIFIED
 
+### MP-05.6 implementation proof — 2026-10-07
+
+Base checkpoint `408a077`; no closure or epic delivery claim. Project-state now
+owns an exact scoped GOOD/revision/hash → Agent binding. Canonical server-only
+matching replaces one full revision's assignments atomically, rejects aggregate
+claims above 50000, checks DataSafety under the global lock before project lock,
+and loads fact membership in pages of 200. Scoped FKs/GOOD trigger and FORCE RLS
+provide independent database checks. Capture is read-only for this assignment.
+Candidate assembly uses captured fact pins and captured eligible Agent rows;
+ambiguous/unresolved linkage is omitted, and failed ACTIVE/showOnSite/consent
+retains listing/contact fallback without personal block/photo. Immutable replay
+does not imply fresh publication approval. Automatic Source GOOD → matching,
+mandatory contact enforcement and signing/publication are not claimed here.
+Final native passed 52 tests in four suites with real command composition and
+explicit NOBYPASS matching runtime: assigned photo and all gate HEAD omissions,
+foreign scope, forged pin, cap, capture delete denial, unresolved veto/retry,
+historical GOOD grace, actual REJECTED revision denial, replay and DataSafety
+freeze. Capacity capture 4100/8200 took 27.548 seconds under the unchanged 30s
+limit. Units 25/25, full verify:quick (388 modules/1193 dependencies), final
+fixture types/lint and docs/secrets/diff passed. Exact checkpoint/closure pointer
+belongs to the Task Manager ledger; epic delivery remains open.
+
 The exact owner source was read in full. Inventory schema version 2 contains
 11 epics, 75 implementation tasks and 11 delivery tasks: 97 managed nodes.
 The existing Task Manager helper's Validate actually passed: coverage 11/11,
