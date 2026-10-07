@@ -232,7 +232,34 @@ private input-capture boundary, not 13-dataset projection, signing, publication
 or production capacity. Clean pushed implementation checkpoint and strict
 Task Manager evidence now close MP-05.1; MP-05 epic delivery remains pending.
 
-### Active implementation contract: MP-05.4
+### Verified implementation contract: MP-05.5
+
+Reuse the existing explicit `toPublicInventoryDto` allowlist and strict public
+schema after captured GOOD normalization; do not add a second mapper or spread
+Prisma rows. Task acceptance is the public DTO boundary, not speculative complete
+producer-field mapping. Missing/unsupported facts remain explicit ABSENT/INVALID.
+Prove all eleven property variants and the four approved actual Source pipelines
+through GOOD, persisted capture and thirteen-dataset assembly under NOBYPASS.
+Private raw/phone/apartment/source-code/media sentinels must be present upstream
+and absent downstream; public coordinates are coarsened and receipt replay must
+survive live Source/profile edits. Agent gates/fallback, signing/publication and
+production are out of scope. Targeted projector/preflight units 31/31 PASS,
+including all eleven property variants. Final native Source-runtime suite 27/27
+PASS (24.88 seconds) includes four actual profile pipelines, upstream private
+sentinels, strict public DTOs across thirteen datasets and immutable replay.
+Both source and snapshot transactions use independently asserted NOBYPASS roles.
+The geo proof requires exact persisted coordinates and finite public VALUE
+coordinates distinct from the exact pair, so ABSENT cannot manufacture PASS.
+Verify:quick, test types/lint/architecture, docs/secrets/diff PASS. Reused production
+mapper/resolver/projector unchanged; no speculative facts or second mapper.
+Task closure/exact pushed ledger is recorded in Task Manager; epic Gate/merge,
+agent binding/gates and publication remain separate unfinished work.
+
+### Implemented contract: MP-05.4
+
+MP-05.4 implementation is closed at `44150a403cbe3ca8c1ca4faa0336b7a105a13ac7`;
+the contract and checkpoint evidence below are retained as history. MP-05 epic
+delivery remains open until the remaining tasks and exact-head Gate/merge.
 
 Require captured Source membership and exact approved head ID/sequence for every
 ACTIVE inventory pin before object IO; historical fact sequence may be below the

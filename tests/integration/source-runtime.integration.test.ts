@@ -23,6 +23,7 @@ import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
 
 const namespace = "http://webmaster.yandex.ru/schemas/feed/realty/2010-06";
 const offer = (id: string, price = 1000) => `<offer internal-id="${id}"><category>квартира</category><type>продажа</type><price><value>${price}</value></price><location><address>Синтетический город</address></location></offer>`;
@@ -175,6 +176,89 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         lookup(nextReceipt))).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
       expect(head).not.toHaveBeenCalled(); expect(workerCuts).toBeGreaterThan(10); expect(sourceWorkerCuts).toBeGreaterThan(10);
     } finally { role.mockRestore(); principalRole.mockRestore(); context.cleanup(); }
+  }, 60_000);
+
+  it.each([
+    ["yrl-realty-2010", "vladis-vt24-v1", "YRL"],
+    ["yrl-realty-2010", "joywork-domclick-v1", "YRL"],
+    ["avito-xml-v3", "joywork-avito-v3", "AVITO"],
+    ["cian-xml-v2", "joywork-cian-v2", "CIAN"],
+  ])("assembles only PublicInventoryDTO from actual %s / %s GOOD with private sentinels", async (adapter, profile, family) => {
+    const context = await setup(profile, undefined, adapter);
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const address = "Синтетический город, дом 9, кв. 424242";
+    const description = "Код объекта: PRIVATE-DTO-CODE. Публичный текст";
+    const image = "https://private.example.invalid/PRIVATE-DTO-IMAGE.jpg";
+    const xml = family === "YRL" ? feed(`<offer internal-id="PRIVATE-DTO-ID"><category>квартира</category><type>продажа</type>
+      <price><value>1000</value></price><location><address>${address}</address><apartment>424242</apartment>
+      <latitude>55.751234</latitude><longitude>37.612345</longitude></location><description>${description}</description>
+      <sales-agent><phone>+70000000001</phone></sales-agent><picture>${image}</picture><private-test>PRIVATE-DTO-RAW</private-test></offer>`)
+      : family === "AVITO" ? `<Ads formatVersion="3" target="Avito.ru"><Ad><Id>PRIVATE-DTO-ID</Id><Category>Квартиры</Category>
+        <OperationType>Продам</OperationType><Price>1000</Price><Address>${address}</Address><Latitude>55.751234</Latitude>
+        <Longitude>37.612345</Longitude><Description>${description}</Description><ContactPhone>+70000000001</ContactPhone>
+        <Images><Image url="${image}"/></Images><PrivateTest>PRIVATE-DTO-RAW</PrivateTest></Ad></Ads>`
+        : `<Feed><Feed_Version>2</Feed_Version><Object><ExternalId>PRIVATE-DTO-ID</ExternalId><Category>flatSale</Category>
+          <Price>1000</Price><Address>${address}</Address><Coordinates><Lat>55.751234</Lat><Lng>37.612345</Lng></Coordinates>
+          <Description>${description}</Description><Phones><PhoneSchema><Number>+70000000001</Number></PhoneSchema></Phones>
+          <Photos><PhotoSchema><FullUrl>${image}</FullUrl></PhotoSchema></Photos><PrivateTest>PRIVATE-DTO-RAW</PrivateTest></Object></Feed>`;
+    const originalPrincipal = transactionRuntime.runInPrincipalDatabaseTransaction;
+    const originalAuthorized = transactionRuntime.runInAuthorizedDatabaseTransaction;
+    let sourceCuts = 0; let snapshotCuts = 0;
+    async function lower(tx: DatabaseTransaction) {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+    }
+    const sourceRole = vi.spyOn(transactionRuntime, "runInPrincipalDatabaseTransaction").mockImplementation((principal, execute) =>
+      originalPrincipal(principal, async (tx) => {
+        if (principal.kind === "project-job") { await lower(tx); sourceCuts++; }
+        return execute(tx);
+      }));
+    const snapshotRole = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation((principal, execute, options) =>
+      originalAuthorized(principal, async (tx) => {
+        if (principal.principalKind === "project-job") { await lower(tx); snapshotCuts++; }
+        return execute(tx);
+      }, options));
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read(); const identity = state.identities[0]!;
+      expect(JSON.stringify(state.records[0]!.payload)).toContain("PRIVATE-DTO-RAW");
+      expect(JSON.stringify(state.records[0]!.payload)).toContain("+70000000001");
+      expect(state.records[0]!.payload).toMatchObject({ draft: { latitude: 55.751234, longitude: 37.612345 } });
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.projectCatalogSubscription.create({ data: { ...scope, mode: "CURATED",
+          cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } });
+        const reservation = await tx.publicUrlIdReservation.create({ data: { ...scope, subjectType: "INVENTORY",
+          subjectUid: identity.uid, publicUrlId: "1234567890123456" } });
+        await tx.projectUrlEntry.create({ data: { ...scope, entityType: "INVENTORY", entityUid: identity.uid,
+          reservationId: reservation.id, slug: "synthetic-dto", canonicalPath: "/inventory/synthetic-dto" } });
+      });
+      const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const receipt = await captureSnapshotInput(principal, { ...scope, idempotencyKey: "synthetic-dto", schemaMinor: 0 });
+      const head = vi.fn(); const assemble = createSnapshotCandidateAssemblyServer({ ...scope, storage: { head } });
+      const lookup = { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash };
+      const result = await assemble(principal, lookup);
+      expect(result.datasets).toHaveLength(13);
+      const inventory = result.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+      expect(inventory).toHaveLength(1);
+      const dto = publicInventoryDtoSchema.parse(inventory[0]!.value);
+      expect(dto).toEqual(inventory[0]!.value);
+      expect(dto).toMatchObject({ uid: identity.uid, publicUrlId: "1234567890123456", locationPrecision: "STREET",
+        descriptionText: "Публичный текст", media: [] });
+      expect(dto.address.addressPublic).not.toContain("424242");
+      expect(dto.geo).toMatchObject({ latitude: { state: "VALUE", value: expect.any(Number) },
+        longitude: { state: "VALUE", value: expect.any(Number) } });
+      if (dto.geo.latitude.state !== "VALUE" || dto.geo.longitude.state !== "VALUE") throw new Error("SYNTHETIC_PUBLIC_GEO_MISSING");
+      expect(Number.isFinite(dto.geo.latitude.value) && Number.isFinite(dto.geo.longitude.value)).toBe(true);
+      expect(dto.geo).not.toEqual({ latitude: { state: "VALUE", value: 55.751234 }, longitude: { state: "VALUE", value: 37.612345 } });
+      expect(JSON.stringify(result.datasets)).not.toMatch(/PRIVATE-DTO|424242|70000000001|rawRecord|sourceHash|normalizedHash|sourceId|safetyPolicy|factApproval/u);
+      expect(head).not.toHaveBeenCalled();
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.source.update({ where: { id: context.target.sourceId },
+        data: { enabled: false, profileKey: "default-v1", version: { increment: 1 } } }));
+      expect(await assemble(principal, lookup)).toEqual(result);
+      expect(sourceCuts).toBeGreaterThan(0); expect(snapshotCuts).toBeGreaterThan(0);
+    } finally { sourceRole.mockRestore(); snapshotRole.mockRestore(); context.cleanup(); }
   }, 60_000);
 
   it.each([

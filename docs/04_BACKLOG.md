@@ -90,7 +90,7 @@ MP-05.3 scoped native proof от 2026-10-07: 21/21 в двух suites, targeted 
 41/41, verify:quick — PASS; capture 4100/8200 — 16,245 секунды при лимите 30.
 Доказан replay после live edits и непустая URL history; HEAD synthetic, не live
 provider proof. Это implementation checkpoint, не завершение MP-05 delivery.
-MP-05.4 в работе: ACTIVE inventory preflight проверяет unique captured Source и
+MP-05.4 implementation закрыт на `44150a4`: ACTIVE inventory preflight проверяет unique captured Source и
 exact approved head ID/sequence, допускает исторический GOOD и producer-OFF.
 Apply safety predicate подключён к capture head и исторических ACTIVE facts:
 точный scoped GOOD baseline, immutable policy/analysis/counts и private hashes.
@@ -107,6 +107,13 @@ Capture approval checkpoint от 2026-10-07: native 46/46 в трёх suites —
 включая forged/oversized approval denial до receipt save и исторический baseline
 proof. Capture 4100/8200 — 12,498 секунды при неизменном лимите 30; targeted
 units 14/14, verify:quick, docs/secrets/diff — PASS. MP-05 epic delivery ещё открыт.
+MP-05.5 implementation proof: reuse explicit PublicInventoryDTO mapper, strict
+public/facts schemas и приватный captured GOOD resolver. Targeted units — 31/31
+PASS (все 11 property variants); actual four-profile Source → GOOD → capture →
+13-dataset assembler, private sentinels, finite coarsened geo и immutable replay —
+native 27/27 PASS. Quick/types/lint/architecture/docs/secrets/diff — PASS.
+Exact pushed closure ledger принадлежит Task Manager. Это не speculative full
+producer-fact mapping, agent gate или epic delivery.
 Полнота source facts, подтверждённый
 agent linkage и весь build/sign/publication executor ещё остаются в работе;
 unitless heights — INVALID, unselected facts — ABSENT, без guessed defaults.

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { inventoryFactsByPropertySchema, publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
+import type { z } from "zod";
 import { vladisVt24Configuration, joyworkAvitoProfile, joyworkCianProfile, joyworkYandexRealtyProfile } from "../src/modules/ingestion-core/index.ts";
 import { projectSnapshotInventory, type SnapshotInventoryProjectionInput } from "../src/modules/snapshot-delivery/application/snapshot-inventory-projector.ts";
 import { composeSnapshot, SNAPSHOT_DATASET_KINDS } from "../src/modules/snapshot-delivery/index.ts";
@@ -31,10 +33,17 @@ describe("captured GOOD inventory projector", () => {
     expect(project().records[0]!.references).toEqual([{ kind: "urls", key: "entry:01j9zk8g7q5x6np3" }]);
     expect(project(row)).toEqual(project(row));
   });
-  it.each(["HOUSE", "LAND", "COMMERCIAL", "GARAGE_BOX", "OTHER"] as const)("creates only the %s variant fields", (propertyType) => {
+  it.each(["APARTMENT", "ROOM", "HOUSE", "HOUSE_PART", "LAND", "COTTAGE", "TOWNHOUSE", "GARAGE_BOX",
+    "NEW_BUILD_UNIT", "COMMERCIAL", "OTHER"] as const)("creates only the %s variant fields", (propertyType) => {
     const row = input(); row.fact.draft.propertyType = propertyType;
-    const facts = publicValue(row).facts as Record<string, unknown>;
-    expect(facts).not.toHaveProperty("videoReviewAvailable");
+    const projected = publicValue(row); const facts = projected.facts as Record<string, unknown>;
+    expect(publicInventoryDtoSchema.parse(projected)).toEqual(projected);
+    const variant = inventoryFactsByPropertySchema.options.find((option) => option.shape.propertyType.value === propertyType)!;
+    const factsSchema = variant.shape.facts as z.ZodObject;
+    expect(Object.keys(facts).sort()).toEqual(Object.keys(factsSchema.shape).sort());
+    expect(projected.propertyType).toBe(propertyType);
+    expect(JSON.stringify(projected)).not.toMatch(/PRIVATE-CODE|bad-private|externalId|sourceHash|normalizedHash|sourceId/u);
+    if (!Object.hasOwn(factsSchema.shape, "videoReviewAvailable")) expect(facts).not.toHaveProperty("videoReviewAvailable");
     if (propertyType === "LAND") expect(facts.cadastralValidationStatus).toBe("ABSENT");
   });
   it.each([joyworkYandexRealtyProfile, joyworkAvitoProfile, joyworkCianProfile])("supports format-only $key without a live registry", (descriptor) => {
