@@ -126,7 +126,17 @@ remediation program preserves these boundaries while connecting them:
   every fact in the one outer Repeatable Read cut. This needs two available
   pool connections; acquisition is bounded and failure rolls back capture.
   No SECURITY DEFINER function or worker state-mutation grant is introduced.
-  Remaining project-state/media facts and concrete command composition are
+  Project-state capture also pins scoped contact candidates, consented visible
+  agents, editorial/media-order policy and persisted URL reservations/history.
+  Catalog observation capture pins selected own-project prices as exact decimal
+  strings and shared-media metadata without producer URLs/license text. Global
+  catalog membership does not authorize foreign project observations.
+  An additive restrictive RLS layer denies INSERT/UPDATE/DELETE by the
+  `snapshot-input` job purpose on captured fact/publication-floor tables,
+  independently of scope shape. Receipt/parts/counter writes and other existing
+  job/admin purposes retain their previous policies. This closes legacy generic
+  project-job write permissions; adding a SELECT policy alone was insufficient.
+  Remaining media associations and concrete command composition are
   still pending; native fact-reader/admission proof is not full build proof.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw

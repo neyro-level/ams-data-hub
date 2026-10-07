@@ -171,6 +171,19 @@ data are not selected. These are private input facts, not public DTOs: media
 association capture, full resolver composition and its native replay proof
 remain required before MP-05.1 completion.
 
+Catalog candidate capture returns its bounded development UID closure. Own-project
+price/shared-media observations are selected only within that closure and pinned
+in the same cut; decimal values stay exact strings. Producer URLs are replaced
+by a private digest and license/attribution text by eligibility markers, not
+copied into the receipt. This metadata is not proof of a mirrored public asset.
+Legacy generic project-job policies were found to permit fact mutation under
+the capture purpose. A forward-only restrictive policy layer now denies fact
+and publication-floor INSERT/UPDATE/DELETE for `snapshot-input` (including its
+legacy job representation), even with wildcard/multiple/empty scopes. It does
+not remove existing legitimate import/mirror/admin policies or receipt/counter
+writes. Native denial and ordinary-workflow controls must pass before claiming
+the boundary fixed.
+
 Current runtime correctness and all 30 DoD remain unverified by this planning
 handoff. External provider/restore evidence must be revalidated for the final
 candidate/environment; old-plan closure is not a substitute. Concrete worker

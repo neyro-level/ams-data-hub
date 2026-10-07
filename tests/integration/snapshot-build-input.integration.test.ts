@@ -248,6 +248,122 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     });
   });
 
+  it("pins paged own-project price/media observations without importing foreign facts or producer URLs", async () => {
+    const scope = await setup();
+    const developmentUid = createUlid();
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const developerUid = createUlid();
+      const name = `Synthetic observation developer ${developerUid}`;
+      await tx.developer.create({ data: { uid: developerUid, name, normalizedName: name.toLowerCase() } });
+      await tx.development.create({ data: { uid: developmentUid, developerUid,
+        cityUid: "01M41T6Q04BADHXSERJHZFXKCH", name: "Observation cohort", normalizedName: "observation cohort" } });
+      for (const projectId of [scope.projectId, scope.foreignProjectId]) {
+        const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId,
+          sourceKey: "synthetic-observations", name: "Synthetic observations", adapterKey: "yrl-realty-2010",
+          adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+          datasetType: "NEW_BUILD", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+        await tx.priceObservation.createMany({ data: Array.from({ length: 202 }, (_, index) => ({
+          organizationId: scope.organizationId, projectId, sourceId: source.id, developmentUid,
+          externalId: `synthetic-${index}`, amount: "100.25", currency: "RUB", observedAt: new Date("2026-10-01T00:00:00Z"),
+        })) });
+        await tx.sharedMediaAsset.createMany({ data: Array.from({ length: 201 }, (_, position) => ({
+          organizationId: scope.organizationId, projectId, sourceId: source.id, developmentUid,
+          externalId: `synthetic-image-${position}`, position, sourceUrl: `https://example.invalid/private/${position}.jpg`,
+          canonicalSourceUrl: `https://example.invalid/private/${position}.jpg`, rightsBasis: "LICENSED" as const,
+          license: "synthetic-private-license", attribution: "synthetic-private-attribution", observedAt: new Date(),
+        })) });
+      }
+    });
+    await worker(scope, async (tx) => {
+      const capture = async () => {
+        const values = new Map<string, CanonicalJsonValue[]>();
+        await createCatalogSnapshotFactReader(tx).captureObservations(scope, [developmentUid], (kind, rows) => {
+          expect(rows.length).toBeLessThanOrEqual(200);
+          values.set(kind, [...(values.get(kind) ?? []), ...rows]);
+        });
+        return values;
+      };
+      const before = await capture();
+      expect(before.get("prices")).toHaveLength(202);
+      expect(before.get("shared-media")).toHaveLength(201);
+      expect(before.get("prices")![0]).toMatchObject({ amount: "100.25", currency: "RUB" });
+      expect(before.get("shared-media")![0]).toMatchObject({ hasLicense: true, hasAttribution: true,
+        canonicalUrlHash: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+      expect(JSON.stringify([...before])).not.toMatch(/https:|sourceUrl|canonicalSourceUrl|synthetic-private-license|synthetic-private-attribution/u);
+      expect(await tx.priceObservation.updateMany({ where: { developmentUid }, data: { amount: "1.00" } })).toMatchObject({ count: 0 });
+      expect(await tx.sharedMediaAsset.updateMany({ where: { developmentUid }, data: { position: 999 } })).toMatchObject({ count: 0 });
+      await runInPrincipalDatabaseTransaction(admin, (other) => other.priceObservation.updateMany({
+        where: { organizationId: scope.organizationId, projectId: scope.projectId }, data: { amount: "200.50" } }));
+      expect(await capture()).toEqual(before);
+      const foreign: CanonicalJsonValue[] = [];
+      await createCatalogSnapshotFactReader(tx).captureObservations({ organizationId: scope.organizationId,
+        projectId: scope.foreignProjectId }, [developmentUid], (_kind, rows) => foreign.push(...rows));
+      expect(foreign).toEqual([]);
+      await expect(createCatalogSnapshotFactReader(tx).captureObservations(scope,
+        Array.from({ length: 5001 }, () => developmentUid), () => undefined)).rejects.toThrow("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+    });
+    await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "source-import",
+      organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() }, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.priceObservation.updateMany({ where: { developmentUid }, data: { amount: "300.75" } })).toMatchObject({ count: 202 });
+    });
+    await expect(worker(scope, async (tx) => {
+      const existing = await tx.priceObservation.findFirstOrThrow({ where: { developmentUid },
+        orderBy: { id: "asc" }, select: { sourceId: true, externalId: true, observedAt: true, basis: true } });
+      const key = { organizationId: scope.organizationId, projectId: scope.projectId, ...existing };
+      return tx.priceObservation.upsert({ where: { organizationId_projectId_sourceId_externalId_observedAt_basis: key },
+        create: { ...key, developmentUid, amount: "999.00", currency: "RUB" }, update: { amount: "999.00" } });
+    })).rejects.toThrow();
+    await expect(worker(scope, (tx) => tx.priceObservation.deleteMany({ where: { developmentUid } }))).rejects.toThrow();
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.priceObservation.count({ where: { organizationId: scope.organizationId, projectId: scope.projectId,
+        developmentUid, amount: "300.75" } })).toBe(202);
+    });
+  });
+
+  it("enforces read-only fact purpose independently of scope shape and legacy job representation", async () => {
+    const scope = await setup();
+    const asset = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectCurrentSnapshotManifest.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, publishSequence: 1, manifestKey: "synthetic-current", manifestSha256: "a".repeat(64), publishedAt: new Date() } });
+      return tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+        sha256: "b".repeat(64), storageKey: "synthetic-private-media", contentType: "image/jpeg", byteSize: 100,
+        originalFileName: "synthetic.jpg", rightsBasis: "OWNED", source: "synthetic", uploadedBy: "synthetic-admin" } });
+    });
+    for (const principalKind of ["project-job", "job"] as const) {
+      for (const projectIds of [[scope.projectId], ["*"], [scope.projectId, scope.foreignProjectId], []]) {
+        await runInAuthorizedDatabaseTransaction({ principalKind, actorId: "snapshot-input",
+          organizationId: scope.organizationId, projectIds, correlationId: randomUUID() }, async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          expect(await tx.$queryRawUnsafe<{ allowed: boolean }[]>("SELECT snapshot_fact_write_allowed() AS allowed"))
+            .toEqual([{ allowed: false }]);
+          expect(await tx.projectCurrentSnapshotManifest.updateMany({ data: { publishSequence: 999 } })).toMatchObject({ count: 0 });
+        });
+      }
+    }
+    await expect(worker(scope, (tx) => tx.mediaAsset.updateMany({ where: { id: asset.id }, data: { byteSize: 999 } })))
+      .rejects.toThrow();
+    const deniedAsset = { organizationId: scope.organizationId,
+      projectId: scope.projectId, sha256: "c".repeat(64), storageKey: "synthetic-other-media", contentType: "image/jpeg",
+      byteSize: 100, originalFileName: "synthetic.jpg", rightsBasis: "OWNED" as const, source: "synthetic", uploadedBy: "synthetic-admin" };
+    await expect(worker(scope, (tx) => tx.mediaAsset.create({ data: deniedAsset }))).rejects.toThrow();
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.mediaAsset.findUnique({ where: { id: asset.id }, select: { byteSize: true } })).toEqual({ byteSize: 100 });
+      expect(await tx.mediaAsset.count({ where: { projectId: scope.projectId, sha256: deniedAsset.sha256 } })).toBe(0);
+      // The exact same valid input succeeds for its legitimate administrative owner.
+      expect(await tx.mediaAsset.create({ data: deniedAsset, select: { byteSize: true } })).toEqual({ byteSize: 100 });
+    });
+    await worker(scope, async (tx) => {
+      const policies = await tx.$queryRawUnsafe<{ tablename: string; cmd: string; permissive: string }[]>(
+        "SELECT tablename, cmd, permissive FROM pg_policies WHERE policyname LIKE '%_snapshot_fact_no_%'");
+      for (const table of ["PriceObservation", "SharedMediaAsset", "DevelopmentExternalIdentity", "MediaSource", "MediaAsset",
+        "InventoryIdentity", "InventoryLifecycleEvent", "ProjectCurrentSnapshotManifest", "DeliveryRun", "SourceRevisionRecord"]) {
+        expect(policies.filter((policy) => policy.tablename === table)).toEqual(expect.arrayContaining(
+          ["INSERT", "UPDATE", "DELETE"].map((cmd) => ({ tablename: table, cmd, permissive: "RESTRICTIVE" }))));
+      }
+    });
+  });
+
   it("pins the historical GOOD fact still backing an ACTIVE grace identity, without raw payload or write rights", async () => {
     const scope = await setup();
     const uid = createUlid();

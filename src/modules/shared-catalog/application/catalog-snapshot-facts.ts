@@ -1,4 +1,5 @@
 import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { createHash } from "node:crypto";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { SharedCatalogError } from "../domain/shared-catalog-error.ts";
 
@@ -7,13 +8,13 @@ const MAX_CANDIDATES = 5000;
 const aliases = { orderBy: { normalizedValue: "asc" as const }, take: 51,
   select: { value: true, normalizedValue: true } };
 export interface CatalogSnapshotFactScope { organizationId: string; projectId: string }
-export type CatalogSnapshotFactSink = (kind: "subscription" | "catalog", records: CanonicalJsonValue[]) => void;
+export type CatalogSnapshotFactSink = (kind: "subscription" | "catalog" | "prices" | "shared-media", records: CanonicalJsonValue[]) => void;
 
 /** Shares the caller's authorized MVCC transaction; never opens a second cut. */
 export function createCatalogSnapshotFactReader(transaction: DatabaseTransaction) {
   return {
     async captureCandidates(scope: CatalogSnapshotFactScope, linkedDevelopmentUids: readonly string[],
-      sink: CatalogSnapshotFactSink): Promise<void> {
+      sink: CatalogSnapshotFactSink): Promise<{ developmentUids: string[] }> {
       if (linkedDevelopmentUids.length > MAX_CANDIDATES) throw new SharedCatalogError("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
       const subscription = await transaction.projectCatalogSubscription.findUnique({
         where: { organizationId_projectId: { organizationId: scope.organizationId, projectId: scope.projectId } }, select: {
@@ -108,6 +109,41 @@ export function createCatalogSnapshotFactReader(transaction: DatabaseTransaction
       }
       // A genuinely empty candidate closure is explicit, not an unread section.
       sink("catalog", []);
+      return { developmentUids: [...developmentUids].sort() };
+    },
+
+    /** Global catalog membership never authorizes another project's observations. */
+    async captureObservations(scope: CatalogSnapshotFactScope, candidateUids: readonly string[],
+      sink: CatalogSnapshotFactSink): Promise<void> {
+      if (candidateUids.length > MAX_CANDIDATES) throw new SharedCatalogError("SNAPSHOT_INPUT_LIMIT_EXCEEDED");
+      const where = { organizationId: scope.organizationId, projectId: scope.projectId,
+        developmentUid: { in: [...new Set(candidateUids)].sort() } };
+      let after = "";
+      while (true) {
+        const rows = await transaction.priceObservation.findMany({ where: { ...where, id: { gt: after } },
+          orderBy: { id: "asc" }, take: PAGE, select: { id: true, sourceId: true, developmentUid: true,
+            buildingUid: true, externalId: true, observedAt: true, amount: true, currency: true,
+            basis: true, areaM2: true, roomCount: true } });
+        if (!rows.length) break;
+        sink("prices", rows.map((row) => JSON.parse(JSON.stringify(row)) as CanonicalJsonValue));
+        after = rows.at(-1)!.id;
+      }
+      sink("prices", []);
+      after = "";
+      while (true) {
+        const rows = await transaction.sharedMediaAsset.findMany({ where: { ...where, id: { gt: after } },
+          orderBy: { id: "asc" }, take: PAGE, select: { id: true, sourceId: true, developmentUid: true,
+            buildingUid: true, externalId: true, kind: true, position: true, rightsBasis: true,
+            canonicalSourceUrl: true, license: true, attribution: true, observedAt: true, updatedAt: true } });
+        if (!rows.length) break;
+        sink("shared-media", rows.map(({ canonicalSourceUrl, license, attribution, ...row }) =>
+          JSON.parse(JSON.stringify({ ...row,
+            canonicalUrlHash: createHash("sha256").update(canonicalSourceUrl).digest("hex"),
+            hasLicense: Boolean(license?.trim()), hasAttribution: Boolean(attribution?.trim()),
+          })) as CanonicalJsonValue));
+        after = rows.at(-1)!.id;
+      }
+      sink("shared-media", []);
     },
   };
 }
