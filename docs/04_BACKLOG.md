@@ -123,7 +123,11 @@ exact manifest/source pins, inventory cohort/URL/agent attribution, canonical
 multiset catalog/project checks и captured media slot/provenance anchors, без
 GOOD/HEAD/sign/PUT. Actual Agent/media native proof дополнен отрицательными
 metadata/project/media cases и допустимой omission без дополнительного IO.
-Nonempty inventory/catalog/history helper coverage ещё требуется. Final fresh
+Nonempty helper matrix — 13/13 PASS: authenticated captured inventory/catalog,
+historical GOOD/producer OFF, relink, duplicate public price/event history,
+cohort/URL/agent/catalog/contact mismatch, foreign receipt, manual photo priority
+и ambiguous listing slot. Decoded-value attacks проверяют attribution, не подпись
+изменённых values. Final fresh
 admission, trust/lease и atomic publication/request result ещё не реализованы;
 MP-08.1 остаётся открытым.
 

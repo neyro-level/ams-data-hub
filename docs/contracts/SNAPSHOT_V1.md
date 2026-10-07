@@ -193,8 +193,13 @@ This helper does not resolve GOOD facts, HEAD, sign, PUT, read fresh authorizati
 or publish. Factual inventory payload remains authenticated by immutable binding
 and signature, not reconstructed from metadata-only pins. Native coverage proves
 actual staged Agent/media attribution and metadata/project/media rejection plus
-valid media omission without extra IO; nonempty inventory/catalog/history helper
-cases remain required before claiming its complete targeted proof.
+valid media omission without extra IO. A separate 13-case helper suite composes,
+signs and verifies nonempty captured inventory/catalog artifacts, then tests
+cohort/URL/optional agent/catalog/contact mismatch, private-ID price/event
+multiplicity, historical GOOD with producer OFF, relinked reservations, foreign
+receipt, manual-over-feed photo selection and ambiguous listing-slot rejection.
+Decoded-value attacks test attribution only, not preservation of a changed
+signature. Final fresh admission/lease/atomic PUBLISH remains separate.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
