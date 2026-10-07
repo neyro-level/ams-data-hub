@@ -127,8 +127,8 @@ Nonempty helper matrix — 13/13 PASS: authenticated captured inventory/catalog,
 historical GOOD/producer OFF, relink, duplicate public price/event history,
 cohort/URL/agent/catalog/contact mismatch, foreign receipt, manual photo priority
 и ambiguous listing slot. Decoded-value attacks проверяют attribution, не подпись
-изменённых values. Final fresh
-admission, trust/lease и atomic publication/request result ещё не реализованы;
+изменённых values. Snapshot-owned final fresh admission/current trust теперь
+реализованы ниже; full Ops lease и atomic publication/request result ещё не завершены;
 MP-08.1 остаётся открытым.
 
 New PUBLISH request acceptance теперь сохраняет explicit buildInputId в
@@ -140,6 +140,17 @@ hashes сохранены byte-compatible; IDs-only queue и grants не рас�
 forward migrations. Проверены exact replay, target conflict, foreign/missing/
 unbound target и атомарный rollback audit/intent/request. Это acceptance proof,
 не executor/result/production proof; browser/visual form proof ещё не выполнен.
+
+Selected publication теперь предоставляет snapshot-owned finish closure:
+bounded GET и captured admission вне финальной транзакции, затем exact publication
+purpose, global→publication lock, committed replay, четыре fresh owner gates,
+текущая public trust/sequence и atomic current/DeliveryRun. Private capture/anchors
+не передаются Ops; signer, PUT и HEAD не вызываются. Native staging suite —
+42/42 PASS, включая 10 новых final-cut scenarios: success/replay, trust revocation
+после GET, project/source/catalog/media/freeze changes, wrong purpose, cancellation
+и rollback после actual pointer/run writes. PostgreSQL worker — NOBYPASSRLS;
+SDK transport synthetic. Это snapshot finish proof, не full operational PUBLISH:
+full lease/request SUCCESS и их общий rollback ещё требуют реализации.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

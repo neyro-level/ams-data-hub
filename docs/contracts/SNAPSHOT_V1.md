@@ -165,8 +165,8 @@ values remain valid. Private observation/event/redirect-target IDs are absent
 from public values: they are not reconstructed or claimed verified here.
 This reader does not sign, PUT, HEAD, assemble, mutate current/DeliveryRun or
 succeed an operational request. Scoped selected-stage loading is implemented
-separately below; final fresh admission, current trust/lease checks and atomic
-PUBLISH/result remain required;
+separately below; snapshot-owned final fresh admission/current trust are implemented
+below, while full Ops lease and atomic PUBLISH/result remain required;
 artifact verification alone cannot close MP-08.1.
 The internal selected-stage loader requires an explicit scoped buildInputId and
 matching immutable input header, completed stage receipt and publication binding.
@@ -199,7 +199,19 @@ cohort/URL/optional agent/catalog/contact mismatch, private-ID price/event
 multiplicity, historical GOOD with producer OFF, relinked reservations, foreign
 receipt, manual-over-feed photo selection and ambiguous listing-slot rejection.
 Decoded-value attacks test attribution only, not preservation of a changed
-signature. Final fresh admission/lease/atomic PUBLISH remains separate.
+signature. Full Ops lease/atomic request result remains separate.
+The selected-publication server seam performs bounded artifact IO and captured
+admission first, then returns a snapshot-owned finish closure for a caller-owned
+short ReadCommitted transaction. It exports no private capture or anchors. Finish
+requires exact publication purpose, acquires global→publication locks and checks
+committed replay before cancellation, trust or freshness. New publication repeats
+the four owner gates and current public trust/sequence policy, then atomically
+writes current and DeliveryRun. No signer, PUT, HEAD or reassembly is invoked.
+Native staging suite is 42/42 PASS, including ten final-cut scenarios for success,
+committed replay, post-GET revocation, owner/freeze changes, wrong purpose, abort
+and rollback after actual writes. The worker uses NOBYPASSRLS and SDK transport
+is synthetic. This seam does not own an Ops lease or persist request SUCCEEDED;
+that full atomic composition and its rollback proof remain required.
 New operational PUBLISH acceptance requires an explicit buildInputId, includes it
 in idempotency and audit identity, and persists a scoped FK to a completed stage.
 The INSERT guard rejects missing targets; FK validation rejects foreign, missing

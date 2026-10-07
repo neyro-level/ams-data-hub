@@ -38,7 +38,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInSystemJobDatabaseTransaction: system };
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
-  createSnapshotStagedBuildServer, inspectStagedSnapshotServer,
+  createSnapshotStagedBuildServer, inspectStagedSnapshotServer, createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer,
   PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -104,6 +104,81 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it.each(["success", "trust", "project", "source", "catalog", "media", "freeze", "cancel", "rollback", "wrong-purpose"])(
+    "selected staged publication final cut: %s", async (mode) => {
+      const setup = await fixture(mode === "media"); const { scope } = setup;
+      const controller = new AbortController(); const keys = generateKeyPairSync("ed25519");
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+      const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+      const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let heads = 0;
+      const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+        expect(cuts.active).toBe(0);
+        if (command instanceof HeadObjectCommand) {
+          heads++; return { ContentLength: 100, ContentType: "image/jpeg", LastModified: new Date(0) } as never;
+        }
+        if (command instanceof PutObjectCommand) {
+          puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+          return { ETag: "synthetic-selected" } as never;
+        }
+        if (command instanceof GetObjectCommand) {
+          gets++; const bytes = objects.get(command.input.Key!); if (!bytes) throw new Error("SYNTHETIC_MISSING_OBJECT");
+          return { ContentLength: bytes.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+            Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield bytes; } } } as never;
+        }
+        throw new Error("SYNTHETIC_UNEXPECTED_IO");
+      });
+      const storage = new S3ObjectStorage({ bucket: "synthetic-selected", client });
+      const trustSet = { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [] as string[],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+      const actualPublish = PrismaSnapshotDeliveryRepository.prototype.publishCurrentAndCreateRun;
+      const publish = vi.spyOn(PrismaSnapshotDeliveryRepository.prototype, "publishCurrentAndCreateRun").mockImplementation(async function (this: PrismaSnapshotDeliveryRepository, input) {
+        const run = await actualPublish.call(this, input); if (mode === "rollback") controller.abort(); return run;
+      });
+      try {
+        const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-stage-key",
+          privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY") })(setup.principal, setup.lookup);
+        const lookup = { buildInputId: stage.buildInputId }; const buildHeads = heads;
+        expect(await inspectSelectedSnapshotRunServer(setup.principal, lookup)).toBeNull();
+        vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+        const finish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, lookup, controller.signal);
+        expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+        const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-selected-final", correlationId: randomUUID() };
+        await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          if (mode === "project") await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
+          if (mode === "source") await tx.source.create({ data: { ...scope, sourceKey: "synthetic-selected-stale", name: "Synthetic selected stale",
+            adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+            datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+          if (mode === "catalog") await tx.projectCatalogSubscriptionCity.deleteMany({ where: scope });
+          if (mode === "media") await tx.mediaAsset.update({ where: { id: setup.mediaId! }, data: { rightsBasis: "OWNED", license: null } });
+          if (mode === "freeze") await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        });
+        if (mode === "trust") trustSet.revokedKeyIds.push("synthetic-stage-key");
+        if (mode === "cancel") controller.abort();
+        const pending = observer(scope, finish, mode === "wrong-purpose" ? "operations-executor" : "snapshot-publication");
+        if (mode === "success") {
+          const run = await pending;
+          expect(run).toMatchObject({ publishSequence: stage.publishSequence, manifestSha256: stage.manifestSha256, publishedAt: setup.receipt.capturedAt });
+          // Same prepared closure is config-free on committed replay, including revoked trust and cancellation.
+          trustSet.revokedKeyIds.push("synthetic-stage-key"); controller.abort();
+          expect(await observer(scope, finish)).toEqual(run);
+          expect(await inspectSelectedSnapshotRunServer(setup.principal, lookup)).toEqual(run);
+        } else {
+          const errors: Record<string, string> = { trust: "SNAPSHOT_ARTIFACT_REVOKED_KEY_ID", project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED",
+            source: "SNAPSHOT_PUBLICATION_SOURCE_STALE", catalog: "SNAPSHOT_PUBLICATION_CATALOG_STALE", media: "SNAPSHOT_PUBLICATION_MEDIA_STALE",
+            freeze: "SNAPSHOT_PUBLICATION_JOBS_FROZEN", cancel: "SNAPSHOT_PUBLICATION_CANCELLED", rollback: "SNAPSHOT_PUBLICATION_CANCELLED",
+            "wrong-purpose": "SNAPSHOT_INPUT_ACCESS_DENIED" };
+          await expect(pending).rejects.toThrow(errors[mode]);
+        }
+        await observer(scope, async (tx) => {
+          expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+          expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+          expect(await tx.snapshotArtifactStageReceipt.count({ where: scope })).toBe(1);
+          expect(await tx.snapshotPublicationBinding.count({ where: scope })).toBe(1);
+        });
+        expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+        expect(publish).toHaveBeenCalledTimes(mode === "success" || mode === "rollback" ? 1 : 0);
+      } finally { publish.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+    }, 60_000);
   it("reads actual persisted staged artifacts using public trust only, without reassembly or publication", async () => {
     const setup = await fixture(true); const keys = generateKeyPairSync("ed25519");
     vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());

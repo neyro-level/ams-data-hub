@@ -15,3 +15,4 @@ export { PrismaSnapshotDeliveryRepository } from "./infrastructure/prisma-snapsh
 export { PrismaSnapshotInputRepository } from "./infrastructure/prisma-snapshot-input-repository.ts";
 export { runInSnapshotInputTransaction } from "./infrastructure/snapshot-input-transaction.ts";
 export { captureSnapshotInput } from "./infrastructure/snapshot-input-capture-command.ts";
+export { createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer } from "./infrastructure/snapshot-selected-publication.ts";
