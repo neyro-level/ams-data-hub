@@ -7,6 +7,7 @@ export interface RecordOperationalActionRequest {
   sourceId: string | null;
   sourceRevisionId: string | null;
   sourcePublishSequence: number | null;
+  buildInputId: string | null;
   reason: string | null;
   idempotencyKey: string;
   requestHash: string;

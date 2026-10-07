@@ -157,10 +157,14 @@ export const requestOperationalActionInputSchema = z.object({
   projectId: identifierSchema,
   sourceId: z.string().trim().max(128).default(""),
   sourceRevisionId: z.string().trim().max(128).default(""),
+  buildInputId: z.string().trim().max(128).optional(),
   sourcePublishSequence: z.coerce.number().int().positive().optional(),
   reason: z.string().trim().max(500).default(""),
   idempotencyKey: identifierSchema,
 }).superRefine((value, context) => {
+  if (value.action === "SNAPSHOT_PUBLISH" && !/^[A-Za-z0-9_-]{1,128}$/u.test(value.buildInputId ?? "")) {
+    context.addIssue({ code: "custom", path: ["buildInputId"], message: "Укажите точный ID завершённой сборки" });
+  }
   if (["RUN_SOURCE", "SUSPICIOUS_APPROVE", "SUSPICIOUS_REJECT"].includes(value.action) && !value.sourceId) {
     context.addIssue({ code: "custom", path: ["sourceId"], message: "Выберите источник" });
   }

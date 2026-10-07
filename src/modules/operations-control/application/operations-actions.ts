@@ -27,6 +27,7 @@ function normalizedRequest(input: RequestOperationalActionInput) {
     sourceId: suspicious ? input.sourceId : null,
     sourceRevisionId: suspicious ? input.sourceRevisionId : null,
     sourcePublishSequence: input.action === "SNAPSHOT_ROLLBACK" ? input.sourcePublishSequence ?? null : null,
+    buildInputId: input.action === "SNAPSHOT_PUBLISH" ? input.buildInputId ?? null : null,
     reason: suspicious ? input.reason : null,
   };
 }
@@ -40,6 +41,7 @@ function requestHash(input: ReturnType<typeof normalizedRequest>) {
     sourceRevisionId: input.sourceRevisionId,
     sourcePublishSequence: input.sourcePublishSequence,
     reason: input.reason,
+    ...(input.action === "SNAPSHOT_PUBLISH" ? { buildInputId: input.buildInputId } : {}),
   })).digest("hex");
 }
 
@@ -67,6 +69,7 @@ export function createOperationsActions(dependencies: {
         sourceId: normalized.sourceId,
         sourceRevisionId: normalized.sourceRevisionId,
         sourcePublishSequence: normalized.sourcePublishSequence,
+        buildInputId: normalized.buildInputId,
         reason: normalized.reason,
         idempotencyKey: input.idempotencyKey,
         requestHash: requestHash(normalized),

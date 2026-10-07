@@ -131,6 +131,16 @@ cohort/URL/agent/catalog/contact mismatch, foreign receipt, manual photo priorit
 admission, trust/lease и atomic publication/request result ещё не реализованы;
 MP-08.1 остаётся открытым.
 
+New PUBLISH request acceptance теперь сохраняет explicit buildInputId в
+idempotency hash/audit/request и scoped completed-stage FK. Nullable legacy
+запросы не переписаны; новые NULL targets отвергает SQL INSERT guard. Non-PUBLISH
+hashes сохранены byte-compatible; IDs-only queue и grants не расширены.
+Форма переиспользует существующие primitives и очищает target при смене проекта.
+5 action units PASS; native request/fleet/staging matrix — 47/47 PASS с 54
+forward migrations. Проверены exact replay, target conflict, foreign/missing/
+unbound target и атомарный rollback audit/intent/request. Это acceptance proof,
+не executor/result/production proof; browser/visual form proof ещё не выполнен.
+
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.
 MP-05.1 закрыт implementation ledger

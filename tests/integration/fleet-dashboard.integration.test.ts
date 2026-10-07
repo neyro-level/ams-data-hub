@@ -60,7 +60,7 @@ describe("fleet dashboard persistence projection", () => {
     const buildInput = { action: "SNAPSHOT_BUILD" as const, organizationId: setup.organizationId, projectId: setup.projectId, sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: `fleet-build-${suffix}` };
     const build = await requestOperationalAction(principal, buildInput);
     await expect(requestOperationalAction(principal, buildInput)).resolves.toEqual({ ...build, duplicate: true });
-    await expect(requestOperationalAction(principal, { ...buildInput, action: "SNAPSHOT_PUBLISH" })).rejects.toThrow("OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT");
+    await expect(requestOperationalAction(principal, { ...buildInput, action: "SNAPSHOT_PUBLISH", buildInputId: "selected-stage" })).rejects.toThrow("OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT");
     await expect(requestOperationalAction(tenant(setup.organizationId), { ...buildInput, action: "ACK_ROTATE", idempotencyKey: `fleet-tenant-${suffix}` })).rejects.toThrow("OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED");
     await expect(requestOperationalAction(principal, { ...buildInput, action: "RUN_SOURCE", sourceId: setup.sourceId, idempotencyKey: `fleet-source-${suffix}` })).resolves.toMatchObject({ duplicate: false });
     await freezeMutatingJobs(principal, { reason: "Synthetic integration safety check" });

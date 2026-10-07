@@ -38,6 +38,18 @@ scope, topic, payload or audit identity mismatches. Private review justification
 stays in request/audit, never the queue payload. New requests are REQUESTED;
 declared lifecycle states alone are not executor completion.
 
+New SNAPSHOT_PUBLISH requests pin an explicit buildInputId to the completed
+SnapshotArtifactStageReceipt through a composite organization/project/build FK.
+Forward migration `20261008005000_operational_selected_publish_stage` adds the
+nullable legacy field and a new-INSERT audit/target guard, without rewriting old
+NULL-target requests. New PUBLISH without a target is rejected; non-PUBLISH
+subjects retain NULL. Existing immutable identity guards and narrow worker UPDATE
+grants forbid retargeting. No web SELECT grant on private snapshot tables is
+needed for FK validation. Only PUBLISH request hashes gain the selected ID;
+non-PUBLISH hashes remain byte-compatible. The queue still carries only request
+identity, never the build receipt, private capture or storage/key capabilities.
+Legacy NULL targets must fail finitely in the future executor, not select latest.
+
 The web role creates requests only through the admin purpose. The worker can
 read with the exact single-project `operations-executor` purpose and update only
 lifecycle columns, not immutable identity, subject or intent binding. A SQL

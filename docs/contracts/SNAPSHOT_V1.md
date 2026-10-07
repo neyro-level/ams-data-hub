@@ -200,6 +200,13 @@ multiplicity, historical GOOD with producer OFF, relinked reservations, foreign
 receipt, manual-over-feed photo selection and ambiguous listing-slot rejection.
 Decoded-value attacks test attribution only, not preservation of a changed
 signature. Final fresh admission/lease/atomic PUBLISH remains separate.
+New operational PUBLISH acceptance requires an explicit buildInputId, includes it
+in idempotency and audit identity, and persists a scoped FK to a completed stage.
+The INSERT guard rejects missing targets; FK validation rejects foreign, missing
+and unbound capture IDs without granting web access to private snapshot tables.
+Historical NULL-target requests are not rewritten. The admin form uses existing
+field/error primitives and clears the target when switching projects. This pins
+intent only: it does not enable a registered PUBLISH or claim final publication.
 Native staging regression proves actual captured/bound/staged agent/media artifacts
 can be read with the private signing key unavailable: fourteen bounded GETs,
 no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only

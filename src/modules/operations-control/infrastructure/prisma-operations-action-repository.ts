@@ -64,6 +64,7 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
           operation: input.action,
           ...(input.sourceRevisionId ? { sourceRevisionId: input.sourceRevisionId } : {}),
           ...(input.sourcePublishSequence ? { sourcePublishSequence: input.sourcePublishSequence } : {}),
+          ...(input.buildInputId ? { buildInputId: input.buildInputId } : {}),
           ...(input.reason ? { reason: input.reason } : {}),
         },
         source: "operations-control",
@@ -84,12 +85,18 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
       correlationId: input.correlationId, schemaVersion: 1, occurredAt: now.toISOString(),
       availableAt: now.toISOString(), expiresAt: new Date(now.getTime() + 30 * 24 * 3_600_000).toISOString(),
     });
-    await this.transaction.operationalActionRequest.create({ data: {
+    try { await this.transaction.operationalActionRequest.create({ data: {
       id: audit.id, organizationId: input.organizationId, projectId: input.projectId,
       action: input.action, sourceId: input.sourceId, sourceRevisionId: input.sourceRevisionId,
       sourcePublishSequence: input.sourcePublishSequence, reason: input.reason,
+      buildInputId: input.buildInputId,
       requestHash: input.requestHash, requestedBy: input.actorId, outboxEventId: intent.outboxEventId,
-    } });
+    } }); } catch (error) {
+      if (input.action === "SNAPSHOT_PUBLISH" && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+        throw new OperationsControlError("OPERATIONS_CONTROL_REFERENCE_INVALID");
+      }
+      throw error;
+    }
     await this.transaction.idempotencyKey.create({
       data: {
         organizationId: input.organizationId,

@@ -56,6 +56,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
       projectId: firstProject?.projectId ?? "",
       sourceId: firstProject?.sources[0]?.sourceId ?? "",
       sourceRevisionId: "",
+      buildInputId: "",
       reason: "",
       idempotencyKey: initialIdempotencyKey,
     },
@@ -107,6 +108,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
                   const next = projects.find((project) => project.projectId === event.target.value);
                   form.setValue("organizationId", next?.organizationId ?? "");
                   form.setValue("sourceId", next?.sources[0]?.sourceId ?? "");
+                  form.setValue("buildInputId", "");
                 },
               })} />
             </FormField>
@@ -123,6 +125,11 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
             {needsSequence ? (
               <FormField error={form.formState.errors.sourcePublishSequence?.message} label="Исходный publish sequence" helper="Старое содержимое будет опубликовано только отдельным executor как новый больший sequence." required>
                 <TextInput min={1} type="number" {...form.register("sourcePublishSequence")} />
+              </FormField>
+            ) : null}
+            {action === "SNAPSHOT_PUBLISH" ? (
+              <FormField error={form.formState.errors.buildInputId?.message} label="ID завершённой сборки" helper="Точный buildInputId из результата BUILD; последняя сборка автоматически не выбирается." required>
+                <TextInput {...form.register("buildInputId")} />
               </FormField>
             ) : null}
             <FormField error={form.formState.errors.idempotencyKey?.message} label="Ключ запроса" helper="Защищает от повторной отправки." required>

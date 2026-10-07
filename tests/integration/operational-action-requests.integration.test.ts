@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
@@ -26,6 +27,11 @@ import { createOutboxDrainDependencies, drainOutboxWithDependencies, getPgBoss, 
 import { runReliabilityRetention } from "../../src/modules/platform-operations/infrastructure/retention-runtime.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import { captureSnapshotInput, createSnapshotStagedBuildServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
+import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
+import { PrismaOperationsActionRepository } from "../../src/modules/operations-control/infrastructure/prisma-operations-action-repository.ts";
 
 async function fixture() {
   const suffix = randomUUID().slice(0, 8);
@@ -41,7 +47,73 @@ function input(scope: { organizationId: string; projectId: string }, key: string
   return { ...scope, action: "SNAPSHOT_BUILD" as const, sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: key };
 }
 
+async function selectedStage(admin: PlatformAdminPrincipal, scope: { organizationId: string; projectId: string }) {
+  await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+    const city = await tx.city.findFirstOrThrow({ select: { uid: true } });
+    await tx.projectCatalogSubscription.upsert({ where: { organizationId_projectId: scope }, update: {},
+      create: { ...scope, mode: "CURATED", cities: { create: { cityUid: city.uid } } } });
+    await tx.dataSafetyState.upsert({ where: { id: "global" }, create: { id: "global", jobsFrozen: false, unfrozenAt: new Date() },
+      update: { jobsFrozen: false, unfrozenAt: new Date() } });
+  });
+  const principal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+  const capture = await captureSnapshotInput(principal, { ...scope, idempotencyKey: `selected-${randomUUID()}`, schemaMinor: 0 });
+  const keys = generateKeyPairSync("ed25519");
+  vi.stubEnv("SYNTHETIC_SELECTED_PUBLISH_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+  const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+  const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+    expect(command).toBeInstanceOf(PutObjectCommand); return { ETag: "synthetic" } as never;
+  });
+  try {
+    return await createSnapshotStagedBuildServer({ ...scope, storage: new S3ObjectStorage({ bucket: "synthetic", client }),
+      keyId: "synthetic-selected", privateKeyRef: defineSecretRef("SYNTHETIC_SELECTED_PUBLISH_KEY"),
+      trustSet: { currentKeyId: "synthetic-selected", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-selected": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } })(principal,
+      { idempotencyKeyHash: capture.idempotencyKeyHash, requestHash: capture.requestHash });
+  } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+}
+
 describe("actual admin durable operational requests under NOBYPASS", () => {
+  it("pins explicit scoped completed stage, replays without private capability and rolls back invalid targets", async () => {
+    const own = await fixture(); const first = await selectedStage(own.admin, own.scope);
+    const second = await selectedStage(own.admin, own.scope);
+    const foreign = await fixture(); const other = await selectedStage(foreign.admin, foreign.scope);
+    const sibling = await runInPrincipalDatabaseTransaction(own.admin, async (tx) => {
+      const project = await tx.project.create({ data: { organizationId: own.scope.organizationId,
+        name: "Synthetic sibling", slug: `sibling-${own.suffix}` } });
+      return { organizationId: own.scope.organizationId, projectId: project.id };
+    });
+    const siblingStage = await selectedStage(own.admin, sibling);
+    const principal = createProjectJobPrincipal({ ...own.scope, jobName: "snapshot-input" });
+    const unbound = await captureSnapshotInput(principal, { ...own.scope, idempotencyKey: `unbound-${own.suffix}`, schemaMinor: 0 });
+    const request = { ...input(own.scope, `selected-publish-${own.suffix}`), action: "SNAPSHOT_PUBLISH" as const, buildInputId: first.buildInputId };
+    const result = await requestOperationalAction(own.admin, request);
+    await expect(requestOperationalAction(own.admin, request)).resolves.toEqual({ ...result, duplicate: true });
+    await expect(requestOperationalAction(own.admin, { ...request, buildInputId: second.buildInputId }))
+      .rejects.toThrow("OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT");
+    await expect(requestOperationalAction(own.admin, { ...request, buildInputId: "" })).rejects.toThrow();
+    await expect(runInPrincipalDatabaseTransaction(own.admin, (tx) => new PrismaOperationsActionRepository(tx).recordRequest({
+      ...own.scope, action: "SNAPSHOT_PUBLISH", buildInputId: null, sourceId: null, sourceRevisionId: null,
+      sourcePublishSequence: null, reason: null, idempotencyKey: `sql-null-${own.suffix}`, requestHash: "a".repeat(64),
+      actorId: own.admin.userId, correlationId: own.admin.correlationId,
+    }))).rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    for (const buildInputId of ["missing-stage", other.buildInputId, siblingStage.buildInputId, unbound.id]) {
+      await expect(requestOperationalAction(own.admin, { ...request, buildInputId, idempotencyKey: `invalid-${buildInputId}` }))
+        .rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    }
+    await runInPrincipalDatabaseTransaction(own.admin, async (tx) => {
+      expect(await tx.$queryRawUnsafe(`SELECT has_table_privilege(current_user, '"SnapshotArtifactStageReceipt"', 'SELECT') AS stage_read,
+        has_column_privilege('ams_data_hub_worker', '"OperationalActionRequest"', 'buildInputId', 'UPDATE') AS target_write`))
+        .toEqual([{ stage_read: false, target_write: false }]);
+      const rows = await tx.operationalActionRequest.findMany({ where: own.scope }); expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id: result.requestId, buildInputId: first.buildInputId, status: "REQUESTED" });
+      const audit = await tx.auditEvent.findUniqueOrThrow({ where: { id: result.requestId } });
+      expect(audit.afterMarker).toMatchObject({ buildInputId: first.buildInputId });
+      expect(await tx.outboxEvent.count({ where: { organizationId: own.scope.organizationId } })).toBe(1);
+      expect(await tx.auditEvent.count({ where: { organizationId: own.scope.organizationId } })).toBe(2);
+      const event = await tx.outboxEvent.findUniqueOrThrow({ where: { id: rows[0]!.outboxEventId! } });
+      expect(event.payload).toEqual({ schemaVersion: 1, ...own.scope, requestId: result.requestId, action: "SNAPSHOT_PUBLISH" });
+    });
+  }, 60_000);
   it("fences the full persisted operation lease across same-attempt takeover and expired-attempt reclaim", async () => {
     const { admin, scope, suffix } = await fixture();
     const request = await requestOperationalAction(admin, input(scope, `synthetic-fence-${suffix}`));
@@ -192,7 +264,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     const results = await Promise.all([requestOperationalAction(admin, request), requestOperationalAction(admin, request)]);
     expect(results[0]!.requestId).toBe(results[1]!.requestId);
     expect(results.map((result) => result.duplicate).sort()).toEqual([false, true]);
-    await expect(requestOperationalAction(admin, { ...request, action: "SNAPSHOT_PUBLISH" }))
+    await expect(requestOperationalAction(admin, { ...request, action: "SNAPSHOT_PUBLISH", buildInputId: "selected-stage" }))
       .rejects.toThrow("OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT");
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
       const rows = await tx.operationalActionRequest.findMany({ where: scope }); expect(rows).toHaveLength(1);
@@ -249,6 +321,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
 
   it("persists all six exact action discriminators without moving private review evidence into intents", async () => {
     const { admin, scope, suffix } = await fixture();
+    const stage = await selectedStage(admin, scope);
     const source = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
       const row = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-review", name: "Synthetic review",
         adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0",
@@ -266,6 +339,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
       const review = action.startsWith("SUSPICIOUS_");
       const result = await requestOperationalAction(admin, { ...input(scope, `synthetic-${suffix}-${action}`), action,
         ...(action === "SNAPSHOT_ROLLBACK" ? { sourcePublishSequence: 1 } : {}),
+        ...(action === "SNAPSHOT_PUBLISH" ? { buildInputId: stage.buildInputId } : {}),
         ...(review ? { ...source, reason: "Synthetic private review evidence" } : {}) });
       requestIds.set(action, result.requestId);
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {
