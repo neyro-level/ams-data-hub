@@ -98,8 +98,17 @@ regressions; новый runtime proof описан отдельно выше.
 Targeted storage matrix — 52/52 PASS в пяти suites с actual S3 adapter и
 synthetic SDK transport, включая scope denial, size/hash rejection,
 cancellation и reader cleanup. Это не registered PUBLISH executor:
-выбор stage, strict public artifact verification и atomic publication/request
-result ещё требуют реализации и доказательств.
+выбор stage и atomic publication/request result ещё требуют реализации и
+доказательств. Internal staged-artifact reader теперь использует exact canonical
+binding, текущую public trust policy, bounded sequential GET и portable verifier
+с тринадцатью actual strict public schemas, privacy и доступными public references.
+Targeted unit matrix — 122/122 PASS в семи suites. Это read-only artifact seam,
+не доказательство выбранного scoped stage, fresh captured admission, final lease
+или atomic PUBLISH/result; полный executor остаётся незавершённым. Native
+staging suite — 30/30 PASS: actual capture/binding/stage с agent/media читаются
+после отключения временного signing key без новых PUT/HEAD/capture и без
+current/DeliveryRun; последующая revocation отказывает после manifest GET.
+SDK transport synthetic; это не registered PUBLISH/live provider/production proof.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

@@ -59,6 +59,7 @@ import { OperationalActionLifecycleRepository } from "../../src/modules/operatio
 import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
 import { snapshotInputRequestHashes } from "../../src/modules/snapshot-delivery/index.ts";
 import { settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
+import { readStagedSnapshotArtifacts } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -100,6 +101,62 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it("reads actual persisted staged artifacts using public trust only, without reassembly or publication", async () => {
+    const setup = await fixture(true); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let heads = 0;
+    const destroyed = vi.fn(); const wholeBody = vi.fn();
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof HeadObjectCommand) {
+        heads++; return { ContentLength: 100, ContentType: "image/jpeg", LastModified: new Date(0) } as never;
+      }
+      if (command instanceof PutObjectCommand) {
+        puts++; expect(command.input.Body).toBeInstanceOf(Uint8Array);
+        objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+        return { ETag: "synthetic-stage" } as never;
+      }
+      if (command instanceof GetObjectCommand) {
+        gets++; expect(command.input.Key).toMatch(new RegExp(`^snapshots/${setup.scope.projectId}/[a-f0-9]{64}$`, "u"));
+        const bytes = objects.get(command.input.Key!);
+        if (!bytes) throw Object.assign(new Error(), { name: "NoSuchKey" });
+        return { ContentLength: bytes.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy: destroyed, transformToByteArray: wholeBody, async *[Symbol.asyncIterator]() { yield bytes; } } } as never;
+      }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-stage", client });
+    const trustSet = { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...setup.scope, storage, keyId: "synthetic-stage-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet })(setup.principal, setup.lookup);
+      expect(puts).toBe(14); const buildHeads = heads;
+      const binding = await observer(setup.scope, (tx) => tx.snapshotPublicationBinding.findUniqueOrThrow({ where: {
+        organizationId_projectId_buildInputId: { ...setup.scope, buildInputId: stage.buildInputId },
+      } }));
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", ""); // Verification has no private signing capability.
+      const selected = { projectId: setup.scope.projectId, storage, trustSet, lastGood: null,
+        binding: { projectId: binding.projectId, publishSequence: binding.publishSequence, keyId: binding.keyId,
+          manifestSha256: binding.manifestSha256, manifestCanonical: binding.manifestCanonical } };
+      const result = await readStagedSnapshotArtifacts(selected);
+      expect(result.manifest.publishSequence).toBe(stage.publishSequence);
+      expect(result.datasets.agents).toHaveLength(1); expect(result.datasets.media).toHaveLength(1);
+      expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+      expect(wholeBody).not.toHaveBeenCalled(); expect(destroyed).toHaveBeenCalledTimes(14);
+      trustSet.revokedKeyIds.push("synthetic-stage-key");
+      await expect(readStagedSnapshotArtifacts(selected)).rejects.toThrow("SNAPSHOT_ARTIFACT_REVOKED_KEY_ID");
+      expect(gets).toBe(15); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(1);
+        expect(await tx.snapshotArtifactStageReceipt.count({ where: setup.scope })).toBe(1);
+        expect(await tx.snapshotPublicationBinding.count({ where: setup.scope })).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+      });
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
   it.each(["success", "domain-commit-before-result", "takeover-during-put", "wrong-schema-minor"])("fences request-owned operational BUILD after %s", async (mode) => {
     const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
     const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-build", correlationId: randomUUID() };

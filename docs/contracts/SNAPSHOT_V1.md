@@ -150,6 +150,28 @@ caller cancellation and owned reader cleanup. This storage prerequisite is not
 a completed operational PUBLISH executor. Signed file keys remain logical
 `kind.sha256.json.gz`; physical reads use the project/hash storage namespace,
 without rewriting signed manifests.
+An internal staged-artifact reader now authenticates the exact canonical binding
+manifest through bounded GET (2 MiB), then applies the portable verifier's raw
+shape/trust/signature/project/sequence/dataset-set/declared-budget preflight
+before any dataset GET. All signed logical file keys must match kind and digest;
+physical keys are derived separately from the scoped project. Sequential bounded
+GETs retain compressed-byte budgets and owned reader cleanup; full portable
+verification enforces digest, gzip/decompressed budgets, record counts and all
+thirteen actual strict public schemas plus the existing privacy policy.
+Public reference checks cover typed catalog parents, inventory URL/agent links,
+editorial subjects, media owners and full embedded-media equality. Relinked
+reservation subjects, inactive lifecycle history and coincident price/event
+values remain valid. Private observation/event/redirect-target IDs are absent
+from public values: they are not reconstructed or claimed verified here.
+This reader does not sign, PUT, HEAD, assemble, mutate current/DeliveryRun or
+succeed an operational request. Scoped selected-stage loading, captured admission,
+final current trust/lease checks and atomic PUBLISH/result remain required;
+artifact verification alone cannot close MP-08.1.
+Native staging regression proves actual captured/bound/staged agent/media artifacts
+can be read with the private signing key unavailable: fourteen bounded GETs,
+no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
+the manifest GET. Transport is synthetic; this is not a registered PUBLISH,
+remote provider or production proof.
 The operational BUILD adapter pins capture identity to the accepted
 request ID, records RUNNING before capture and succeeds only against the same
 stage receipt under the complete current lease. SQL checks both request-derived
