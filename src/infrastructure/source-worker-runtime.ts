@@ -1,10 +1,14 @@
 import "server-only";
 import { setTimeout as delay } from "node:timers/promises";
+import { createOperationalAckRotationCapability } from "./ack-rotation-capability.ts";
+import { createSnapshotWebhookCapability } from "./snapshot-webhook-capability.ts";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
-import { createSnapshotBuildCapability } from "./snapshot-build-capability.ts";
-import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
+import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "./snapshot-build-capability.ts";
+import { SNAPSHOT_BUILD_REQUEST_TOPIC, SNAPSHOT_NOTIFICATION_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
+import { OPERATIONAL_EXECUTOR_TOPICS, handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../modules/operations-control/worker.ts";
+import { OPERATIONAL_ACTION_TOPICS } from "../modules/operations-control/index.ts";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
 import { createSourceExecutionServer } from "../modules/ingestion-core/server.ts";
 import { createSourceJobs, createPrismaSourceJobRepository, drainSourceJobQueue, PgBossSourceJobQueue,
@@ -70,13 +74,23 @@ export async function runSourceWorkerWithDependencies(options: SourceWorkerOptio
 export async function runSourceWorker(options: SourceWorkerOptions) {
   if (options.signal.aborted) return { fetched: 0, completed: 0, failed: 0 };
   assertSourceWorkerId(options.workerId);
+  // Revoke a crashed incarnation even if the new startup configuration is invalid.
+  try { await clearSourceWorkerHeartbeat(options.workerId); } catch { throw new Error("SOURCE_READINESS_CLEAR_FAILED"); }
   // Reject missing bindings before opening a queue or attempting any intake.
   const resolveStorage = createProjectObjectStorageResolver();
   const snapshotBuild = createSnapshotBuildCapability(resolveStorage);
-  // Revoke any previous incarnation before queue startup/reconciliation.
-  try { await clearSourceWorkerHeartbeat(options.workerId); } catch { throw new Error("SOURCE_READINESS_CLEAR_FAILED"); }
+  const operationalBuild = createOperationalSnapshotBuildCapability(resolveStorage);
+  const operationalPublish = createOperationalSnapshotPublishCapability(resolveStorage);
+  const operationalRollback = createOperationalSnapshotRollbackCapability(resolveStorage);
+  const operationalAckRotation = createOperationalAckRotationCapability();
+  const snapshotWebhook = createSnapshotWebhookCapability();
+  const operationalTopics = [...OPERATIONAL_EXECUTOR_TOPICS, ...(operationalBuild ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD] : []),
+    ...(operationalPublish ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH] : []),
+    ...(operationalRollback ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK] : []),
+    ...(operationalAckRotation ? [OPERATIONAL_ACTION_TOPICS.ACK_ROTATE] : [])];
   const boss = await getPgBoss();
   let terminalCursor = "";
+  const operationalTerminalCursors = new Map<string, string>();
   try { return await runSourceWorkerWithDependencies(options, { boss, resolveStorage,
     readiness: {
       probe: async () => { if (!await boss.getQueue(SOURCE_IMPORT_QUEUE)) throw new Error("SOURCE_QUEUE_NOT_READY"); },
@@ -89,10 +103,17 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       const events = await listDeadLetterOutboxEvents(SOURCE_MANUAL_REQUEST_TOPIC, terminalCursor);
       await settleTerminalSourceManualRequests(events);
       terminalCursor = events.length === 100 ? events.at(-1)!.id : "";
+      for (const topic of Object.values(OPERATIONAL_ACTION_TOPICS)) {
+        const terminal = await listDeadLetterOutboxEvents(topic, operationalTerminalCursors.get(topic) ?? "");
+        await settleTerminalOperationalRequests(terminal);
+        operationalTerminalCursors.set(topic, terminal.length === 100 ? terminal.at(-1)!.id : "");
+      }
     },
     outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC,
-      ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
-      handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
-        : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event) : handleDefaultOutboxEvent(event) } }); }
+      ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : []), ...(snapshotWebhook ? [SNAPSHOT_NOTIFICATION_TOPIC] : [])],
+      handle: (event, signal) => event.topic === SNAPSHOT_NOTIFICATION_TOPIC && snapshotWebhook ? snapshotWebhook(event, signal)
+        : event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
+        : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
+          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined, operationalRollback ?? undefined, operationalAckRotation ?? undefined) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

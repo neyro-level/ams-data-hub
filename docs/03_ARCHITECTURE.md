@@ -185,7 +185,8 @@ remediation program preserves these boundaries while connecting them:
   state and events. Verified agent media is a server-owned input, not proof of
   HEAD or fresh consent. MP-05.2 supplied these 11 projectors; subsequent tasks
   below add subscription filtering, inventory GOOD resolution and verified media
-  to the complete thirteen-dataset candidate. Fresh publication remains pending.
+  to the complete thirteen-dataset candidate. Fresh signed publication is
+  implemented with the scoped final admission cut described below.
   Generated stored payload byte/record counts avoid repeated JSON sizing in
   deferred commit checks without removing either header/part constraint trigger,
   contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
@@ -198,7 +199,8 @@ remediation program preserves these boundaries while connecting them:
   oversized pages before transfer, and malformed components return marker-only
   failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
   and coordinates use the captured location policy in the candidate projector
-  described below. Full signed build/publication orchestration remains unfinished.
+  described below. Full signed build/publication orchestration is implemented
+  with immutable artifacts and persisted publication identity.
   GOOD resolution now excludes raw `draft.address` and private apartment fields
   from its result. Optional `addressPublic` passes bounded NFKC-aware unit
   redaction: explicit RU/EN unit components and exact captured apartment markers
@@ -284,7 +286,7 @@ remediation program preserves these boundaries while connecting them:
   The combined Source worker optionally registers the strict snapshot topic;
   active cancellation joins owned SDK work. Local synthetic PostgreSQL/pg-boss
   evidence is implementation proof, not live-provider or production activation.
-  Implementation is closed in Task Manager; exact-head epic delivery is pending.
+  Implementation and exact-head epic delivery are closed in Task Manager.
 - MP-06: ingestion sanitizer emits a branded portable `descriptionHtmlSafe`
   contract; public DTO/snapshot accept only its validated tag grammar, never raw
   markup or attributes. Strict `MediaPublicV1` excludes producer URLs and private
@@ -311,8 +313,85 @@ remediation program preserves these boundaries while connecting them:
   exercise signed bombs, huge JSON/counts, aliases, concatenated gzip, exact
   boundaries, key rotation/revocation and last-good. MP-07 delivery passed its
   exact-head gate and is recorded in Task Manager. Budgets are not callback/RSS limits.
-- MP-08: Operations UI records requests; missing executors and HTTP discovery/
-  delivery/ACK composition are not represented as completed operations.
+- MP-08: admin requests atomically record a durable scoped request, audited
+  idempotency response and an exact IDs-only operational outbox intent. The
+  request survives settled-intent retention; mutable SUSPICIOUS admission never
+  prevents replay of an already accepted request. Worker reads are exact-purpose,
+  single-project; request UPDATE is lifecycle-column-only with immutable identity
+  and SQL lease/result guards. Unsupported consumers reserve/defer
+  all six topics. A platform-owned transaction-bound lease fence validates the
+  complete persisted event/job tuple and expected scoped payload, locking event
+  then job until caller commit. Caller order is global safety → domain locks →
+  lease fence → request; external IO stays outside that cut. Existing outbox/job
+  privileges are reused, not widened. The concrete suspicious-rejection adapter
+  commits revision review/audit and durable success together, preserves Last GOOD,
+  and replays committed success before mutable admission. SQL bounds private
+  policy/analysis before transfer. This real adapter is registered in the
+  combined queue. Terminal FAILED requires durable DEAD_LETTER and its latest
+  full FAILED JobRun identity, not retry/defer; startup/60s reconciliation closes
+  the crash gap without overwriting committed success. Retention preserves
+  unresolved bound requests' events/jobs via an exact-purpose boolean-only
+  definer predicate and delete guard; its owner-only RLS policy supports the
+  non-BYPASS migrator without granting runtime private-request reads. Malformed
+  or unbound terminal intents stay quarantined, never fabricate a result and do
+  not block consumer startup. Manual BUILD groundwork adds a separate immutable
+  stage receipt only after settled PUTs and fresh four-owner admission, with
+  config-free exact replay and no current/DeliveryRun. Its concrete BUILD adapter
+  uses request-owned capture identity and complete stage lookup pins with two
+  full lease fences surrounding capture/IO. The existing enabled snapshot
+  capability registers it in the same combined queue; it is never a PUBLISH
+  permission. Selected PUBLISH uses public-only bounded artifact GET and one
+  final full-lease cut for current/run/SUCCESS. Historical ROLLBACK authenticates
+  an already-approved source using its retained PUBLIC archive key, reuses the
+  thirteen immutable files and signs only a higher-sequence manifest under the
+  current non-revoked key. Its immutable request-owned reservation/binding/stage
+  survives takeover; fresh permission and full lease gates bracket external IO.
+  The operations-owned final cut locks global → publication → input before
+  event/job/request, then commits current/run/SUCCESS atomically through a fixed
+  same-scope actor bridge. Dedicated SQL independently validates exact source,
+  root, binding, run and full accepted lease/result. Committed replay reads only
+  metadata, needs no config/IO and never regresses newer current. PUBLISH and
+  ROLLBACK register independently in the same worker with default-false flags;
+  no new process, credentials or wider grants are introduced. ACK_ROTATE is a
+  fifth concrete executor with independent default-false enablement. Accepted
+  STAGE/PROMOTE and expected credential version are immutable; global → publication
+  → input → ACK locks precede full event/job/request lease fencing. Snapshot-owned
+  preparation keeps token resolution and scrypt outside the final transaction;
+  credential CAS, trigger-created immutable private receipt and request SUCCESS
+  commit together. Historical replay uses that receipt, not the latest credential
+  or configuration. Fleet exposes only the credential version, never its hashes.
+  Manual SUSPICIOUS approval reuses ingestion's actual persisted-record plan/apply
+  without endpoint resolution or live adapter/profile reinterpretation. A separate
+  predicate recomputes pinned SUSPICIOUS evidence and checks the accepted private
+  review; automatic SAFE admission stays independent. Under global → source locks
+  and a complete accepted lease, actual identity changes create immutable private
+  mutation witnesses. GOOD requires exact applied UID/hash/seen state, missing
+  reconciliation/events and fresh source/baseline/policy/project/freeze admission.
+  A trigger records the revision/request approval receipt; GOOD/LastGOOD, inventory,
+  lifecycle events, snapshot intent, audit and operational SUCCESS share one cut.
+  Snapshot capture accepts recomputed SAFE or durable, recomputed manual approval;
+  private review never enters public datasets. Fleet's admin-only projection
+  additionally selects at most 25 recent requests per project: IDs, action,
+  persisted lifecycle, timestamps and safe error code. Completed results are
+  loaded server-side only when SQL bounds the JSON to 4096 bytes, then parsed
+  with the same strict executor result schemas. The UI receives only matching
+  action-specific Build ID, sequence, source revision or ACK phase/version.
+  Private request reason, actor, lease, hashes and raw result are not emitted. Acceptance
+  feedback carries request ID and is never reported as publication success.
+  The lifecycle UI presents persisted REQUESTED/RUNNING/SUCCEEDED/FAILED;
+  BUILD success is not presented as publication. Consumer HTTP discovery and
+  immutable delivery use bounded Bearer-only project authentication, a narrow
+  snapshot-consumer database purpose and server-owned storage/trust resolution.
+  Final credential and trust cuts reject rotation/revocation during IO; private
+  input parts and physical storage keys are not response DTOs. Authenticated ACK
+  reuses the existing service under publication/input/rotation locks and records
+  the consumer's applied attestation atomically, not an apply performed by Hub.
+  SUSPENDED/frozen projects retain pull/ACK. Publication atomically enqueues an
+  IDs-only notification intent; the existing combined worker optionally sends
+  a fixed projectId/publishSequence HTTPS POST outside transactions. Fresh full
+  lease fences precede IO and the PENDING → NOTIFIED write; a concurrent ACK
+  is never downgraded. Notification retries/dead-letter cannot undo publication.
+  Delivery is at-least-once, with polling fallback; complete runtime proof remains.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server.ts";
 import { projectSnapshotCatalog, selectSnapshotCatalog, validateSnapshotInput } from "../../src/modules/snapshot-delivery/index.ts";
 import { prepareSnapshotPublicationCatalogAnchors } from "../../src/modules/shared-catalog/index.ts";
-import { createSnapshotPublicationCatalogReader } from "../../src/modules/shared-catalog/server.ts";
+import { createSnapshotPublicationCatalogReader, createSnapshotRollbackCatalogReader } from "../../src/modules/shared-catalog/server.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
@@ -63,6 +63,23 @@ function publication<T>(scope: { organizationId: string; projectId: string }, ex
   }, { isolationLevel: "ReadCommitted", maxWait: 2000, timeout: 5000 });
 }
 describe("actual NOBYPASS selected catalog publication admission", () => {
+  it("rollback uses current subscription permissions, not an obsolete subscription version", async () => {
+    const s = await fixture(); const original = structuredClone(s.anchors);
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      await tx.projectCatalogSubscription.update({ where: { organizationId_projectId: s.scope }, data: { version: { increment: 1 } } });
+      await tx.projectCatalogSubscriptionSelection.create({ data: { ...s.scope, developmentUid: s.otherDevelopmentUid, decision: "EXCLUDE" } });
+    });
+    await expect(publication(s.scope, (tx) => createSnapshotPublicationCatalogReader(tx)(s.scope, s.anchors)))
+      .rejects.toThrow("SNAPSHOT_PUBLICATION_CATALOG_STALE");
+    await publication(s.scope, (tx) => createSnapshotRollbackCatalogReader(tx)(s.scope, s.anchors));
+    expect(s.anchors).toEqual(original);
+    await publication(s.scope, (tx) => expect(createSnapshotRollbackCatalogReader(tx)(s.scope, s.anchors))
+      .rejects.toThrow("SNAPSHOT_ROLLBACK_CATALOG_ACCESS_DENIED"), "*");
+    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCatalogSubscriptionSelection.update({
+      where: { organizationId_projectId_developmentUid: { ...s.scope, developmentUid: s.developmentUid } }, data: { decision: "EXCLUDE" } }));
+    await expect(publication(s.scope, (tx) => createSnapshotRollbackCatalogReader(tx)(s.scope, s.anchors)))
+      .rejects.toThrow("SNAPSHOT_ROLLBACK_CATALOG_DENIED");
+  });
   it("allows name/version changes and unrelated additions without querying a live cohort", async () => {
     const setup = await fixture();
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {

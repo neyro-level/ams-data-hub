@@ -6,7 +6,7 @@ const transport = vi.hoisted(() => ({ lookup: vi.fn(), https: vi.fn(), http: vi.
 vi.mock("node:dns/promises", () => ({ lookup: transport.lookup }));
 vi.mock("node:https", () => ({ request: transport.https }));
 vi.mock("node:http", () => ({ request: transport.http }));
-import { safeOutboundStream } from "../src/platform/http/safe-outbound.ts";
+import { safeOutboundStream, safeOutboundWebhook } from "../src/platform/http/safe-outbound.ts";
 
 it("native HTTPS transport pins the second validated IP while preserving TLS and Host identity", async () => {
   transport.lookup.mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }]).mockResolvedValueOnce([{ address: "1.1.1.1", family: 4 }]);
@@ -21,4 +21,20 @@ it("native HTTPS transport pins the second validated IP while preserving TLS and
   expect(transport.https).toHaveBeenCalledWith(expect.objectContaining({ hostname: "1.1.1.1", family: 4, servername: "feed.example.test", port: 8443, path: "/private?fixture=1", headers: expect.objectContaining({ host: "feed.example.test:8443", accept: "application/xml" }) }), expect.any(Function));
   expect(transport.http).not.toHaveBeenCalled();
   expect(request.destroy).toHaveBeenCalled();
+});
+
+it("native webhook transport uses pinned HTTPS POST and exact JSON without credentials", async () => {
+  transport.lookup.mockClear(); transport.https.mockClear(); transport.http.mockClear();
+  transport.lookup.mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }]).mockResolvedValueOnce([{ address: "1.1.1.1", family: 4 }]);
+  const message = Object.assign(Readable.from([]), { statusCode: 204, headers: {} });
+  const request = Object.assign(new EventEmitter(), { end: vi.fn(), destroy: vi.fn() });
+  transport.https.mockImplementation((_options, receive) => { request.end.mockImplementation(() => receive(message)); return request; });
+  const notification = { projectId: "synthetic-project", publishSequence: 2 };
+  await safeOutboundWebhook("https://consumer.example.test/hint", notification);
+  const body = request.end.mock.calls[0]![0] as Uint8Array;
+  expect(JSON.parse(new TextDecoder().decode(body))).toEqual(notification);
+  expect(transport.https).toHaveBeenCalledWith(expect.objectContaining({ method: "POST", hostname: "1.1.1.1", servername: "consumer.example.test",
+    headers: expect.objectContaining({ host: "consumer.example.test", "content-type": "application/json", "content-length": String(body.byteLength) }) }), expect.any(Function));
+  expect(Object.keys(transport.https.mock.calls[0]![0].headers)).not.toContain("authorization");
+  expect(transport.lookup).toHaveBeenCalledTimes(2); expect(transport.http).not.toHaveBeenCalled(); expect(request.destroy).toHaveBeenCalled();
 });

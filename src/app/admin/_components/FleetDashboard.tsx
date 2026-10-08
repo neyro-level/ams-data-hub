@@ -4,6 +4,7 @@ import type {
 } from "../../../modules/operations-control/index.ts";
 import { KpiCard } from "../../../components/dashboard/KpiCard.tsx";
 import { OperationsControlForms } from "./OperationsControlForms.tsx";
+import { operationalRequestStateLabel } from "../../../modules/operations-control/index.ts";
 
 const sourceHealthLabels: Record<FleetSourceHealth, string> = {
   DISABLED: "Отключён",
@@ -93,6 +94,27 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
                     <dd className="mt-1 break-all text-sm font-semibold text-app-foreground">{project.latestDelivery?.safeErrorCode ?? "Нет"}</dd>
                   </div>
                 </dl>
+
+                <section className="mt-4 space-y-2" aria-label={`История операций: ${project.projectName}`}>
+                  <h4 className="text-sm font-semibold text-app-foreground">История операций</h4>
+                  <p className="text-xs text-app-secondary">До 25 последних запросов. Обновите страницу для нового состояния; принятие запроса не означает публикацию.</p>
+                  {project.operationalRequests.length === 0 ? <p className="text-sm text-app-secondary">Операционных запросов ещё нет.</p> : (
+                    <ul className="space-y-2">
+                      {project.operationalRequests.map((request) => (
+                        <li key={request.requestId} className="rounded-[var(--radius)] bg-[var(--muted)] p-3 text-sm">
+                          <p className="font-semibold text-app-foreground">{request.action} · {request.status}</p>
+                          <p className={request.status === "FAILED" ? "text-app-destructive" : "text-app-secondary"}>{operationalRequestStateLabel(request)}</p>
+                          <p className="break-all text-xs text-app-secondary">ID: {request.requestId}</p>
+                          {request.resultSummary && "buildInputId" in request.resultSummary ? <p className="break-all text-xs text-app-secondary">Build ID: {request.resultSummary.buildInputId}</p> : null}
+                          {request.resultSummary && "publishSequence" in request.resultSummary ? <p className="text-xs text-app-secondary">Sequence: {request.resultSummary.publishSequence}</p> : null}
+                          {request.resultSummary?.action === "ACK_ROTATE" ? <p className="text-xs text-app-secondary">ACK {request.resultSummary.phase} · версия {request.resultSummary.credentialVersion}</p> : null}
+                          <p className="text-xs text-app-secondary">Принят: {formatDate(request.requestedAt)} · Начат: {formatDate(request.startedAt)} · Завершён: {formatDate(request.finishedAt)}</p>
+                          {request.safeErrorCode ? <p className="break-all text-xs text-app-destructive">Код: {request.safeErrorCode}</p> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[900px] text-left text-sm">

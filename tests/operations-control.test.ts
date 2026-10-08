@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import {
   createOperationsActions,
   getFleetDashboardWithRepository,
@@ -76,6 +77,27 @@ describe("operations-control fleet dashboard", () => {
 });
 
 describe("operations-control action requests", () => {
+  it("requires an explicit publish stage and pins only publish request hashes", async () => {
+    const writes: Parameters<OperationsActionRepository["recordRequest"]>[0][] = [];
+    const actions = createOperationsActions({ createRepository: () => ({ async recordRequest(value) {
+      writes.push(value); return { requestId: "request", duplicate: false };
+    } }), runInTransaction: async (_principal, execute) => execute({} as DatabaseTransaction) });
+    const base = { organizationId: "org", projectId: "project", idempotencyKey: "key" };
+    for (const buildInputId of [undefined, "", "bad/id", "a".repeat(129)]) {
+      await expect(actions.requestAction(admin, { ...base, action: "SNAPSHOT_PUBLISH", buildInputId })).rejects.toThrow();
+    }
+    expect(writes).toHaveLength(0);
+    for (const buildInputId of ["build-a", "build-b"]) await actions.requestAction(admin, { ...base, action: "SNAPSHOT_PUBLISH", buildInputId });
+    expect(writes[0]?.buildInputId).toBe("build-a"); expect(writes[1]?.buildInputId).toBe("build-b");
+    expect(writes[0]?.requestHash).not.toBe(writes[1]?.requestHash);
+    for (const buildInputId of [undefined, "build-a"]) await actions.requestAction(admin, { ...base, action: "ACK_ROTATE", buildInputId,
+      ackRotationPhase: "STAGE", ackCredentialVersion: 1 });
+    expect(writes[2]?.buildInputId).toBeNull(); expect(writes[3]?.buildInputId).toBeNull();
+    expect(writes[2]?.requestHash).toBe(writes[3]?.requestHash);
+    expect(writes[2]?.requestHash).toBe(createHash("sha256").update(JSON.stringify({ action: "ACK_ROTATE",
+      organizationId: "org", projectId: "project", sourceId: null, sourceRevisionId: null,
+      sourcePublishSequence: null, reason: null, ackRotationPhase: "STAGE", ackCredentialVersion: 1 })).digest("hex"));
+  });
   it("authorizes and records a normalized, idempotent operation request", async () => {
     let recorded: Parameters<OperationsActionRepository["recordRequest"]>[0] | null = null;
     const repository: OperationsActionRepository = {

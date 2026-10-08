@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { Button } from "../../../components/ui/button.tsx";
 import {
@@ -44,18 +44,25 @@ function newIdempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+const subscribeReadiness = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
+
 function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects: FleetProjectView[]; initialIdempotencyKey: string }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const ready = useSyncExternalStore(subscribeReadiness, clientReady, serverReady);
   const firstProject = projects[0];
   const form = useForm<RequestOperationalActionInput>({
     resolver: zodResolver(requestOperationalActionInputSchema) as Resolver<RequestOperationalActionInput>,
+    shouldUnregister: true,
     defaultValues: {
       action: "RUN_SOURCE",
       organizationId: firstProject?.organizationId ?? "",
       projectId: firstProject?.projectId ?? "",
       sourceId: firstProject?.sources[0]?.sourceId ?? "",
       sourceRevisionId: "",
+      buildInputId: "",
       reason: "",
       idempotencyKey: initialIdempotencyKey,
     },
@@ -86,16 +93,18 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
     }
     setFeedback({
       kind: "success",
-      message: result.data.duplicate ? "Повторный запрос найден по тому же ключу" : "Операционный запрос записан и добавлен в аудит",
+      message: `${result.data.duplicate ? "Повторный запрос найден" : "Запрос принят"}: ${result.data.requestId}. Это не подтверждение выполнения; ${values.action === "RUN_SOURCE" ? "проверяйте состояние источника и jobs" : "состояние смотрите в истории операций проекта"}.`,
     });
     form.setValue("idempotencyKey", newIdempotencyKey("operation"));
     router.refresh();
   });
 
   return (
-    <SectionCard title="Операционное действие" description="Действия создают проверяемый запрос и audit trail. Build, Publish, rollback и ACK rotation не запускают production executor из этого экрана.">
+    <SectionCard title="Операционное действие" description="Запрос передаётся исполнителю общей очереди. Принятие запроса не означает завершения: результат показывается в истории операций. Выключенные server capabilities ждут включения; этот экран не выполняет production rollout.">
       {projects.length === 0 ? <p className="text-sm text-app-secondary">Сначала создайте проект.</p> : (
         <form className="grid gap-4" onSubmit={submit}>
+          <fieldset className="grid gap-4" disabled={!ready || form.formState.isSubmitting}>
+          <legend className="sr-only">Операционный запрос</legend>
           <input type="hidden" {...form.register("organizationId")} />
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField error={form.formState.errors.action?.message} label="Действие" required>
@@ -107,6 +116,8 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
                   const next = projects.find((project) => project.projectId === event.target.value);
                   form.setValue("organizationId", next?.organizationId ?? "");
                   form.setValue("sourceId", next?.sources[0]?.sourceId ?? "");
+                  form.setValue("buildInputId", "");
+                  form.resetField("ackCredentialVersion");
                 },
               })} />
             </FormField>
@@ -125,6 +136,21 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
                 <TextInput min={1} type="number" {...form.register("sourcePublishSequence")} />
               </FormField>
             ) : null}
+            {action === "SNAPSHOT_PUBLISH" ? (
+              <FormField error={form.formState.errors.buildInputId?.message} label="ID завершённой сборки" helper="Точный buildInputId из результата BUILD; последняя сборка автоматически не выбирается." required>
+                <TextInput {...form.register("buildInputId")} />
+              </FormField>
+            ) : null}
+            {action === "ACK_ROTATE" ? (
+              <>
+                <FormField error={form.formState.errors.ackRotationPhase?.message} label="Фаза ACK rotation" helper="STAGE сохраняет оба токена; PROMOTE отдельным запросом завершает overlap и отключает старый." required>
+                  <SelectInput options={[{ value: "", label: "Выберите фазу" }, { value: "STAGE", label: "STAGE — current + next" }, { value: "PROMOTE", label: "PROMOTE — только next" }]} {...form.register("ackRotationPhase")} />
+                </FormField>
+                <FormField error={form.formState.errors.ackCredentialVersion?.message} label="Ожидаемая версия ACK credential" helper={`Наблюдаемая версия: ${currentProject?.ackCredentialVersion ?? "credential не настроена"}. Токен задаётся сервером через SecretRef и не вводится в форму.`} required>
+                  <TextInput min={1} max={2_147_483_646} type="number" {...form.register("ackCredentialVersion", { valueAsNumber: true })} />
+                </FormField>
+              </>
+            ) : null}
             <FormField error={form.formState.errors.idempotencyKey?.message} label="Ключ запроса" helper="Защищает от повторной отправки." required>
               <TextInput {...form.register("idempotencyKey")} />
             </FormField>
@@ -135,6 +161,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
             </FormField>
           ) : null}
           <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Записать запрос" onRefresh={() => router.refresh()} pendingLabel="Записываем..." />
+          </fieldset>
         </form>
       )}
     </SectionCard>

@@ -1,9 +1,11 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import { assertSourceRevisionApproval } from "../application/source-revision-approval.ts";
+import { assertManualSourceRevisionApproval } from "../application/manual-source-revision-approval.ts";
+import { normalizedContentHash } from "../application/import-pipeline.ts";
 
 interface Pin { sourceId: string; revisionId: string; sequence: number }
-type Approval = ReturnType<typeof assertSourceRevisionApproval> & Pin & { baseRevisionId: string | null };
+type Approval = (ReturnType<typeof assertSourceRevisionApproval> | ReturnType<typeof assertManualSourceRevisionApproval>) & Pin & { baseRevisionId: string | null };
 
 /** Scoped immutable revision/baseline proof; cache belongs only to this MVCC cut. */
 export function createSnapshotRevisionApprovalReader(transaction: DatabaseTransaction,
@@ -36,7 +38,7 @@ export function createSnapshotRevisionApprovalReader(transaction: DatabaseTransa
       if (oversized.length) throw new Error("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID");
       const revisions = await transaction.sourceRevision.findMany({ where: { organizationId: scope.organizationId, projectId: scope.projectId, status: "GOOD",
         OR: missing.map((pin) => ({ id: pin.revisionId, sourceId: pin.sourceId, sequence: pin.sequence })) }, take: 201,
-      select: { id: true, sourceId: true, sequence: true, baseLastGoodRevisionId: true,
+      select: { id: true, organizationId: true,projectId: true,sourceId: true,sequence: true,sourceVersion: true,safetyPolicyVersion: true,baseLastGoodRevisionId: true,
         safetyPolicy: true, safetyAnalysis: true, recordCount: true, invalidRecordCount: true } });
       if (revisions.length !== missing.length) throw new Error("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID");
       const baseIds = [...new Set(revisions.flatMap((row) => row.baseLastGoodRevisionId ? [row.baseLastGoodRevisionId] : []))];
@@ -50,7 +52,16 @@ export function createSnapshotRevisionApprovalReader(transaction: DatabaseTransa
           ? !base || base.sourceId !== row.sourceId || base.sequence !== row.sequence - 1
           : row.sequence !== 1)) throw new Error("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID");
         try {
-          const approval = assertSourceRevisionApproval(row, base?.recordCount ?? null);
+          let approval: ReturnType<typeof assertSourceRevisionApproval> | ReturnType<typeof assertManualSourceRevisionApproval>;
+          if (row.safetyAnalysis && typeof row.safetyAnalysis === "object" && !Array.isArray(row.safetyAnalysis) && row.safetyAnalysis.disposition === "APPROVED") {
+            const receipt = await transaction.sourceManualApprovalReceipt.findFirst({ where: { organizationId: scope.organizationId,projectId: scope.projectId,sourceId: row.sourceId,revisionId: row.id } });
+            if (!receipt || receipt.sequence !== row.sequence) throw new Error("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID");
+            approval = assertManualSourceRevisionApproval(row,base?.recordCount ?? null,{ organizationId: receipt.organizationId,
+              projectId: receipt.projectId,sourceId: receipt.sourceId,revisionId: receipt.revisionId,requestId: receipt.requestId,
+              requestHash: receipt.requestHash,sourceVersion: receipt.sourceVersion,safetyPolicyVersion: receipt.safetyPolicyVersion,
+              baseLastGoodRevisionId: receipt.baseLastGoodRevisionId,previousGoodRecordCount: receipt.previousGoodRecordCount,
+              policyHash: normalizedContentHash(receipt.policy),originalAnalysisHash: normalizedContentHash(receipt.originalAnalysis),reviewedAnalysisHash: normalizedContentHash(receipt.reviewedAnalysis) });
+          } else approval = assertSourceRevisionApproval(row, base?.recordCount ?? null);
           cache.set(row.id, { ...approval, ...pin, baseRevisionId: row.baseLastGoodRevisionId });
         } catch { throw new Error("SNAPSHOT_INPUT_SOURCE_APPROVAL_INVALID"); }
       }

@@ -25,6 +25,9 @@
 fleet state, guarded source requests, audited SUSPICIOUS/snapshot/ACK requests,
 data-safety freeze/unfreeze controls and a redacted audit feed. Recording a
 Build/Publish/Rollback/ACK request does not claim that an executor completed it.
+Accepted requests now atomically persist a scoped REQUESTED row and IDs-only
+outbox intent with the audited request ID. Duplicate acceptance reuses that ID;
+executor lifecycle and consumer delivery API are still active MP-08 work.
 The notifications feed receives deduplicated Platform Admin alerts for overdue
 sources, SUSPICIOUS/CRITICAL imports, stale ACK, worker health and failed
 backups. Owner email uses the same safe alert envelope, but remains disabled

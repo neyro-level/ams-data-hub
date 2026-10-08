@@ -29,6 +29,59 @@ require a scoped compatibility check; silently shifting old data is forbidden.
 - Transfer contracts carry exact `schemaMajor/schemaMinor` and use canonical
   JSON with recursively sorted object keys.
 
+## Durable operational requests — MP-08 foundation
+
+`OperationalActionRequest` preserves the existing audited request ID and binds
+one exact project/action to an IDs-only outbox intent in the same command
+transaction. Composite Source/revision/project FKs and an INSERT trigger reject
+scope, topic, payload or audit identity mismatches. Private review justification
+stays in request/audit, never the queue payload. New requests are REQUESTED;
+declared lifecycle states alone are not executor completion.
+
+New SNAPSHOT_PUBLISH requests pin an explicit buildInputId to the completed
+SnapshotArtifactStageReceipt through a composite organization/project/build FK.
+Forward migration `20261008005000_operational_selected_publish_stage` adds the
+nullable legacy field and a new-INSERT audit/target guard, without rewriting old
+NULL-target requests. New PUBLISH without a target is rejected; non-PUBLISH
+subjects retain NULL. Existing immutable identity guards and narrow worker UPDATE
+grants forbid retargeting. No web SELECT grant on private snapshot tables is
+needed for FK validation. Only PUBLISH request hashes gain the selected ID;
+non-PUBLISH hashes remain byte-compatible. The queue still carries only request
+identity, never the build receipt, private capture or storage/key capabilities.
+Legacy NULL targets must fail finitely in the future executor, not select latest.
+
+The web role creates requests only through the admin purpose. The worker can
+read with the exact single-project `operations-executor` purpose and update only
+lifecycle columns, not immutable identity, subject or intent binding. A SQL
+guard validates the full active lease and forbids manufactured results. The ordinary outbox
+consumer defers all six reserved operational topics instead of failing them.
+Existing 14/30-day settled-intent retention detaches the optional outbox FK
+without deleting the durable request or changing its stable idempotency result.
+New INSERT still requires an exact existing intent. Existing idempotency expiry
+policy remains unchanged; no consumer, credential provisioning or production
+operation is activated by this foundation.
+
+The platform-owned `lockOperationalOutboxLease` API uses existing worker
+outbox/job privileges to lock and verify the full event/attempt/worker/time/job
+tuple under an exact `operations-executor` single-project context. It does not
+grant request UPDATE or settle business state. Caller-owned ReadCommitted cuts
+must acquire global safety and domain locks before this fence; never hold it
+over external IO. Lifecycle now persists RUNNING owner identity and immutable
+SUCCEEDED results for the concrete suspicious-rejection adapter. Its domain
+review, audit and request completion share one transaction; rejection never
+changes inventory or Last GOOD. Replay of an already committed result precedes
+mutable freeze/project/revision admission. Policy/analysis JSON is SQL-bounded
+before transfer. The shared queue now registers rejection plus capability-gated
+BUILD, PUBLISH, ROLLBACK, ACK_ROTATE and the concrete SUSPICIOUS_APPROVE adapter.
+Immutable FAILED carries one finite generic safeErrorCode
+and requires actual DEAD_LETTER/latest FAILED JobRun metadata. Retry/defer does
+not fail a request; committed success cannot be overwritten. Startup/60s paged
+reconciliation survives the fail-before-request crash gap. A purpose-restricted
+boolean definer and owner-only SELECT policy work under non-BYPASS FORCE RLS
+without opening runtime request reads; deletion is denied for bound unresolved
+requests but permits terminal or orphan event retention. Malformed/unbound
+intents are skipped without manufacturing request results.
+
 ## Confirmed listing-agent assignments
 
 `ListingAgentBinding` is owned by project-state. It binds scoped Source/GOOD
@@ -203,6 +256,84 @@ and restrictive fact-write denial; snapshot-input permissions are unchanged.
 The forward binding migration also corrects ListingAgentBinding's read-policy
 name to the canonical `_rls` convention with identical predicates and grants.
 Binding/artifact staging is not current publication or fresh consent admission.
+
+`SnapshotRollbackReservation` records one immutable scoped operational rollback
+request, exact committed source run/sequence, root capture/hash, new reserved
+sequence, DB-generated time/transaction ID and initial full lease history. Its
+scoped FKs bind request/source sequence/root; the INSERT guard additionally binds
+exact source run ID/hash/key/time to completed normal stage or a prior rollback's
+staged binding and run. It cannot select an uncommitted stage as approval. Sequence
+allocation uses the common counter; SQL rejects rollback/capture collisions in
+both directions. No UPDATE/DELETE is granted, and valid retries never rewrite the
+initial lease or reallocate a sequence.
+
+`SnapshotRollbackBinding` pins immutable strict canonical manifest/SHA/key/new
+sequence to that reservation. Source content/descriptors must remain identical
+except the five publication-identity fields; both times equal reservation time.
+Only a one-time NULL -> DB-generated stagedAt and its full current lease tuple
+can be appended after the server's settled manifest PUT/fresh admission. Worker
+UPDATE grants name only those stage columns; all other metadata is immutable.
+Both tables have exact snapshot-publication FORCE RLS with narrow read/insert
+grants and no legacy broad job fallback. Every mutable step checks the current
+accepted rollback request and complete live OutboxEvent/JobRun tuple via a fixed
+same-scope actor bridge. These records do not create current/run, enable operational
+SUCCESS, or register runtime execution; the rollback facade remains required.
+
+`SnapshotArtifactStageReceipt` is the separate immutable metadata proof of
+completed BUILD staging, not of publication. It references the scoped binding
+and pins the input hash, captured idempotency hash, sequence and manifest hash;
+its timestamp is generated by PostgreSQL, not by the caller. The INSERT guard
+checks those pins against binding/input, and exact-purpose RLS permits scoped
+metadata reads only. Worker gets SELECT/INSERT, never UPDATE/DELETE. Only the
+server staging facade records it after fully settled artifact/manifest PUTs
+and fresh four-owner admission under global then publication locks. There is
+no public caller-metadata receipt writer. A failed or cancelled stage leaves
+no receipt/current/DeliveryRun, though the immutable pre-PUT binding may exist.
+Exact replay reads metadata without signing, storage IO or mutable admission;
+it proves the old BUILD, never authorizes a new PUBLISH. Operational BUILD
+request completion now has a concrete two-cut adapter: full RUNNING lease fence
+before capture/IO, full success fence after staging, with the SQL guard requiring
+the same request-owned key and complete capture request hash (minor zero, input
+schema one, db-v1). New stage INSERTs pin that request hash against the input.
+The nullable additive column preserves older immutable non-operational receipts
+without backfill; a NULL legacy pin cannot satisfy operational BUILD success.
+Exact operational replay rechecks the scoped immutable result without config,
+capture or PUT. The combined queue registers BUILD only with the existing
+SNAPSHOT_BUILD_ENABLED capability. Selected PUBLISH is independently registered
+under SNAPSHOT_PUBLISH_ENABLED with public trust only; ROLLBACK has its independent
+SNAPSHOT_ROLLBACK_ENABLED adapter and atomic current/run/SUCCESS cut described above.
+SUSPICIOUS_APPROVE uses the actual persisted-record apply path described below.
+
+Forward migration 58 adds immutable nullable ACK phase/version pins to operational
+requests (legacy NULL rows fail closed for ACK execution), and
+`SnapshotAckRotationReceipt`. The receipt stores scoped request identity, phase,
+before/after credential versions and private hash transition metadata. Exact-purpose
+FORCE RLS exposes it only to the same project's snapshot-ack-rotation actor;
+worker has SELECT/INSERT, never UPDATE/DELETE. Only a nested AFTER credential UPDATE
+trigger can insert it; direct receipt insertion is denied. Credential CAS and the
+strict four-field operational SUCCESS result require the complete accepted live
+event/job lease. STAGE preserves current and installs next at version+1; PROMOTE
+requires its exact prior STAGE transition and moves next to current at version+1.
+All credential writers take the global safety lock; the rotation takes publication,
+input and ACK locks before credential/event/job/request row work. Replay proves the
+immutable accepted transition without depending on today's credential or token refs.
+Fleet selects only the safe credential version, not private transition metadata.
+
+Forward migration 59 adds `SourceManualApprovalReceipt` and
+`SourceManualApprovalMutation`. Both are immutable, FORCE-RLS private proofs with
+worker SELECT/INSERT only. Mutation witnesses are created solely by nested actual
+InventoryIdentity INSERT/UPDATE triggers under the current accepted APPROVE lease;
+they pin before/after identity metadata, not raw record bodies. Direct receipt or
+witness insertion is denied. Manual GOOD validates seen-record identity/hash/time,
+missing-run reconciliation and matching lifecycle events, source version/LastGOOD,
+policy version/known-key content, project state and global freeze. Its AFTER trigger
+captures scoped request hash, revision/source/policy versions, baseline/counts and
+bounded original/reviewed analysis. Operational SUCCESS additionally proves the
+actual GOOD/LastGOOD and exact IDs-only snapshot intent. No SUSPICIOUS→STAGED
+workaround or inferred LastGOOD backfill is used. Snapshot approval recomputes
+original SUSPICIOUS against this durable receipt; a review label alone is invalid.
+Historical automatic SAFE proof remains byte-compatible. Capture carries only
+value-free approval pins/hashes; public identity excludes the private proof.
 
 The forward publication Source-read migration adds exact-purpose scoped SELECT
 policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with

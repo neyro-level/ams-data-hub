@@ -1,5 +1,6 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { lockSnapshotPublication } from "./snapshot-publication-lock.ts";
+import { enqueueSnapshotNotification } from "./snapshot-notification-intent.ts";
 import type { CurrentSnapshotManifest, DeliveryRun, DeliveryRunStatus } from "../contracts.ts";
 import { assertDeliveryTransition } from "../domain/delivery-run.ts";
 import type {
@@ -78,6 +79,8 @@ export class PrismaSnapshotDeliveryRepository implements SnapshotDeliveryReposit
       },
     });
     const run = await this.transaction.deliveryRun.create({ data: input });
+    await enqueueSnapshotNotification(this.transaction, { organizationId: input.organizationId,
+      projectId: input.projectId, deliveryRunId: run.id, publishSequence: input.publishSequence });
     return toRun(run as StoredDeliveryRun);
   }
 

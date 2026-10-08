@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server.ts";
 import { validateSnapshotInput } from "../../src/modules/snapshot-delivery/index.ts";
-import { createSnapshotPublicationSourceReader, createSnapshotSourceGoodTriggerReader } from "../../src/modules/ingestion-core/server.ts";
+import { createSnapshotPublicationSourceReader, createSnapshotRollbackSourceReader, createSnapshotSourceGoodTriggerReader } from "../../src/modules/ingestion-core/server.ts";
 import { prepareSnapshotPublicationSourceAnchors, analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
@@ -179,6 +179,27 @@ describe("actual NOBYPASS publication source freshness", () => {
     });
     await expect(publication(setup.scope, (tx) => createSnapshotPublicationSourceReader(tx)(setup.scope, setup.anchors)))
       .rejects.toThrow("SNAPSHOT_PUBLICATION_SOURCE_STALE");
+    await publication(setup.scope, (tx) => createSnapshotRollbackSourceReader(tx)(setup.scope, setup.anchors));
+  });
+  it.each(["new-hash", "extra-source", "extra-active", "inactive", "external", "dataset", "false-head", "false-fact"])("historical rollback source permission: %s", async (mode) => {
+    const s = await fixture(); const original = structuredClone(s.anchors); const pins = structuredClone(s.anchors);
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      if (mode === "new-hash") await tx.inventoryIdentity.update({ where: { uid: s.uid }, data: { normalizedHash: "f".repeat(64) } });
+      if (mode === "extra-source") await tx.source.create({ data: { ...s.sourceData, sourceKey: "synthetic-rollback-extra" } });
+      if (mode === "extra-active") await tx.inventoryIdentity.create({ data: { ...s.scope, sourceId: s.sourceId, uid: createUlid(),
+        externalOfferId: "synthetic-rollback-extra", normalizedHash: recordHash, sourceHash: "a".repeat(64), firstSeenAt: new Date(), lastSeenAt: new Date() } });
+      if (mode === "inactive") await tx.inventoryIdentity.update({ where: { uid: s.uid }, data: { status: "INACTIVE" } });
+      if (mode === "external") await tx.inventoryIdentity.update({ where: { uid: s.uid }, data: { externalOfferId: "synthetic-unmatched" } });
+      if (mode === "dataset") await tx.source.update({ where: { id: s.sourceId }, data: { datasetType: "LAND" } });
+    });
+    if (mode === "false-head") pins.sources[0]!.approvedHead!.normalizedContentHash = "f".repeat(64);
+    if (mode === "false-fact") pins.inventory[0]!.factProfileKey = "synthetic-false";
+    const read = publication(s.scope, (tx) => createSnapshotRollbackSourceReader(tx)(s.scope, pins));
+    if (["new-hash", "extra-source", "extra-active"].includes(mode)) await read;
+    else await expect(read).rejects.toThrow("SNAPSHOT_ROLLBACK_SOURCE_DENIED");
+    expect(s.anchors).toEqual(original);
+    await publication(s.scope, (tx) => expect(createSnapshotRollbackSourceReader(tx)(s.scope, pins))
+      .rejects.toThrow("SNAPSHOT_ROLLBACK_SOURCE_ACCESS_DENIED"), "*");
   });
   it("enforces exact scope and read-only facts despite legacy broad job grants", async () => {
     const setup = await fixture();

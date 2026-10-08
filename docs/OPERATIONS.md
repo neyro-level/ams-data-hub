@@ -142,12 +142,111 @@ explicit local combined worker/scheduler/manual composition is implemented
 within MP-04. Concurrency and controlled shutdown have local runtime evidence;
 Source health now has its explicit command and exact-owner qualification;
 MP-04 exact-head delivery is complete. Real snapshot
-assembly/publication is implemented by MP-05, whose provider gate remains open;
+assembly/publication is implemented and delivered by MP-05;
 operations build/publish/rollback/
 ACK executors plus delivery routes are MP-08. An Admin request or contract test
 does not prove execution. Use synthetic local runtime fixtures until separate
 authorization for real feeds/PII/provider operations. MP-10 proof precedes any
 separately authorized exact-main release.
+
+Operational BUILD is registered by the existing combined source-worker only
+with SNAPSHOT_BUILD_ENABLED=true; absent/false leaves its requests reserved.
+It stages a request-owned immutable signed build, never publishes current.
+Local native runtime proof covers enabled completion, disabled/invalid startup,
+and crash recovery using the saved stage under a new lease without repeated
+capture/PUT or credential resolution. It observes and clears the exact worker's
+heartbeat. This synthetic pg-boss/SDK proof does not activate production or
+prove a live provider.
+Operational selected PUBLISH is registered independently with
+SNAPSHOT_PUBLISH_ENABLED=true (absent/false remains reserved), using the same
+project registry's public trust fields only. BUILD and signing can stay disabled.
+Actual combined-runtime pg-boss proof covers enabled completion, disabled/no GET,
+invalid registry before startup, recovery after an atomic late SUCCESS rollback,
+and queue-ACK-loss replay after freeze/SUSPENDED with unavailable public/storage
+refs. PUBLISH performs bounded GET only, no new capture/sign/PUT/HEAD; exact own
+heartbeat is observed active and cleared after joined stop. Runtime snapshot
+matrix now covers BUILD, PUBLISH and ROLLBACK — 17/17 PASS with synthetic SDK
+transport. ACK rotation and manual approval add their separately verified
+executors below. No production
+activation is implied.
+Startup revokes the previous exact-owner qualification before validating storage
+or capabilities. An invalid new configuration cannot leave a crashed process's
+fresh heartbeat reporting active until TTL; pre-aborted startup remains a no-op.
+
+Historical rollback uses a snapshot-owned current-rights admission prerequisite.
+It accepts old GOOD content after head
+advance but rejects current identity/consent/visibility/assignment/contact/media
+permission loss, EXCLUDE and disabled/SUSPENDED/frozen state. Agent contact
+fingerprints are value-free; assignment checks the current selected GOOD fact
+instead of any historical row. No ordinary PUBLISH gate or RLS grant is weakened.
+Durable request-bound sequence/time/source identity and immutable signed binding
+with a one-time stage marker are implemented in the snapshot-private repository.
+Each mutable step validates the full current accepted lease; valid takeover keeps
+the original reserved identity. These metadata APIs are not an executor or proof
+of external IO. Internal bounded artifact reading now retains the authenticated
+compressed bytes for unchanged-file reuse without extra GETs or recompression;
+consumer trust, privacy and limits are unchanged. Approved-source loading validates
+exact committed run/binding/root capture, with stage pins when present, before
+config/IO and authenticates retained
+exact-source PUBLIC Ed25519 key in a separate archive-only trust view. This permits
+reading an already-approved revoked/noncurrent source, never accepting a revoked
+new signature or changing ordinary PUBLISH. Root identity adaptation is private
+attribution only; original source bytes/signature remain pinned. Safe-key restart/
+staging server now binds the higher-sequence actual signature before IO, PUTs only
+the new manifest, awaits settlement and records staging after fresh lease/rights/
+current-trust admission. Pending binding reuses exact bytes without signing;
+revoked pending key denies recovery. Snapshot-owned finish atomically publishes
+current/run under final full lease/current trust and permissions. Committed run
+replay needs no config/IO/fresh rights and does not rewind newer current.
+The concrete operational adapter now commits current/run/request SUCCESS together
+under global → publication → input locks and the complete accepted event/job lease.
+The SQL success guard verifies exact source run, root capture, immutable staged
+binding, new run and the strict six-field result; late failure/cancellation rolls
+back all three states. Register it with SNAPSHOT_ROLLBACK_ENABLED=true (absent/false
+reserves the topic), independently of BUILD/PUBLISH. Startup validates the existing
+value-free signing/public registry; actual signing re-reads current configuration.
+Keep the approved source's PUBLIC key for archive authentication, never its private
+secret. New manifests must use a current/next non-revoked key. Committed operational
+replay precedes config/IO, including after freeze/SUSPENDED and unavailable refs.
+Native pg-boss proof covers enabled, disabled, invalid, late-SUCCESS crash recovery
+and queue-ACK-loss replay; own readiness is observed and cleared after joined stop.
+This remains local synthetic implementation proof, not live-provider/production proof.
+
+## Operational ACK rotation — local implementation
+
+ACK_ROTATE requires an explicit STAGE/PROMOTE phase and expected credential version
+in the accepted request; IDs-only outbox messages do not carry tokens. Missing
+credentials cannot be initialized by rotation. With ACK_ROTATION_ENABLED=true,
+the existing combined worker validates PROJECT_ACK_ROTATION_BINDINGS before queue
+startup. Keep it absent/false unless enabling this capability is separately approved.
+STAGE lazily resolves the exact project's approved nextTokenRef, checks a bounded
+32–512-byte token and rejects the current token or an already-staged next token.
+During overlap, both current and next authenticate ACK. PROMOTE uses the persisted
+next hash and its exact immutable STAGE proof, without resolving any token value;
+after promotion, the former current token no longer authenticates ACK.
+Every transition increments version once. A stale version or two competing requests
+cannot overwrite a newer credential. Final full-lease/fresh-admission fencing commits
+credential, private receipt and request SUCCESS atomically. A lost lease cannot
+recover SUCCESS; historical committed replay needs neither config nor current rights
+and never changes a newer credential. Fleet displays only version. Secrets stay
+server-side; the form accepts phase/version only. Native tests prove local synthetic
+behavior and real pg-boss execution, not browser/live-provider/production readiness.
+
+## Operational SUSPICIOUS approval — local implementation
+
+An accepted Admin APPROVE request pins the source/revision and private reason.
+The existing combined worker routes it beside REJECT; it does not fetch the feed,
+resolve endpoint/storage credentials, reparse XML or reinterpret staged records
+using a live producer profile. Revision-bound SUSPICIOUS analysis is recomputed;
+critical/invalid/rejected evidence is not approvable. Changed source version,
+LastGOOD baseline or policy requires revalidation, not silent adoption of latest.
+The source must be enabled and the project ACTIVE/unfrozen. Actual ingestion apply
+updates stable identities, missing grace/reactivation/events, GOOD/LastGOOD and
+snapshot intent atomically with audit and request SUCCESS. Independent SQL checks
+actual mutations, not a status-only receipt. Late failure/cancellation rolls the
+entire cut back. Exact historical replay reads durable proof before mutable rights
+and does not reapply inventory or enqueue another snapshot. Local synthetic proof
+does not activate production or establish HTTP delivery/browser readiness.
 
 ## Streaming raw artifacts — remediation foundation
 

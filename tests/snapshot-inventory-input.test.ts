@@ -34,6 +34,19 @@ function receipt(data: ReturnType<typeof fixture>, sources: unknown[] = [capture
   value.inputHash = snapshotBuildInputDigest(value); return value;
 }
 describe("captured inventory preflight", () => {
+  it("accepts only fully pinned matching manual proof and excludes it from public identity", () => {
+    const data = fixture(); const head = capturedSource();
+    const manual = { ...approval(),disposition: "APPROVED",requestId: "synthetic-request",requestHash: "e".repeat(64) };
+    Object.assign(data.inventory[0]!.factApproval,manual); Object.assign(head.approvedHead.approval,manual);
+    const result = prepareSnapshotInventoryInput(receipt(data,[head]));
+    expect(result.rows).toHaveLength(1); expect(result.rows[0]!.identity).not.toHaveProperty("factApproval");
+    expect(JSON.stringify(result.rows[0]!.identity)).not.toContain("synthetic-request");
+    Object.assign(head.approvedHead.approval,{ requestId: "foreign-request" });
+    expect(() => prepareSnapshotInventoryInput(receipt(data,[head]))).toThrow("SOURCE_COMPOSITION_INVALID");
+    Object.assign(head.approvedHead.approval,{ requestId: "synthetic-request" });
+    delete (data.inventory[0]!.factApproval as Record<string,unknown>).requestId;
+    expect(() => prepareSnapshotInventoryInput(receipt(data,[head]))).toThrow("INVENTORY_INPUT_INVALID");
+  });
   it("requires unique captured sources and exact approved head membership", () => {
     const missing = fixture(); expect(() => prepareSnapshotInventoryInput(receipt(missing, []))).toThrow("SOURCE_COMPOSITION_INVALID");
     expect(() => prepareSnapshotInventoryInput(receipt(fixture(), [capturedSource(), capturedSource()]))).toThrow("SOURCE_COMPOSITION_INVALID");

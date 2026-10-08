@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createProjectSnapshotSigningResolver } from "../src/modules/snapshot-delivery/infrastructure/project-snapshot-signing.ts";
-import { createSnapshotBuildCapability } from "../src/infrastructure/snapshot-build-capability.ts";
+import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability } from "../src/infrastructure/snapshot-build-capability.ts";
 const scope = { organizationId: "synthetic-org", projectId: "synthetic-project" };
 const pem = generateKeyPairSync("ed25519").publicKey.export({ format: "pem", type: "spki" }).toString();
 const binding = () => ({ ...scope, keyId: "current", privateKeyRef: "SYNTHETIC_PRIVATE_KEY", currentKeyId: "current", nextKeyId: null,
@@ -48,15 +48,18 @@ describe("exact project snapshot signing bindings", () => {
   });
   it("keeps disabled worker capability independent of signing config or storage and validates explicit enable", () => {
     const storage = vi.fn();
-    expect(createSnapshotBuildCapability(storage, {})).toBeNull();
-    expect(createSnapshotBuildCapability(storage, { SNAPSHOT_BUILD_ENABLED: "false", PROJECT_SNAPSHOT_SIGNING_BINDINGS: "invalid" })).toBeNull();
+    for (const create of [createSnapshotBuildCapability, createOperationalSnapshotBuildCapability]) {
+      expect(create(storage, {})).toBeNull();
+      expect(create(storage, { SNAPSHOT_BUILD_ENABLED: "false", PROJECT_SNAPSHOT_SIGNING_BINDINGS: "invalid" })).toBeNull();
+      expect(() => create(storage, { SNAPSHOT_BUILD_ENABLED: "1" })).toThrow("SNAPSHOT_BUILD_CAPABILITY_INVALID");
+      expect(() => create(storage, { SNAPSHOT_BUILD_ENABLED: "true" })).toThrow("PROJECT_SNAPSHOT_SIGNING_BINDINGS_INVALID");
+    }
     expect(storage).not.toHaveBeenCalled();
-    expect(() => createSnapshotBuildCapability(storage, { SNAPSHOT_BUILD_ENABLED: "1" })).toThrow("SNAPSHOT_BUILD_CAPABILITY_INVALID");
-    expect(() => createSnapshotBuildCapability(storage, { SNAPSHOT_BUILD_ENABLED: "true" })).toThrow("PROJECT_SNAPSHOT_SIGNING_BINDINGS_INVALID");
   });
   it("enabled capability parses a registry but defers credentials/key reads until after durable replay", () => {
     const env = { ...environment(), SNAPSHOT_BUILD_ENABLED: "true" };
     Object.defineProperty(env, "SYNTHETIC_PUBLIC_KEY", { get: () => { throw new Error("SYNTHETIC_EAGER_KEY_READ"); } });
-    const storage = vi.fn(); expect(createSnapshotBuildCapability(storage, env)).toBeTypeOf("function"); expect(storage).not.toHaveBeenCalled();
+    const storage = vi.fn(); expect(createSnapshotBuildCapability(storage, env)).toBeTypeOf("function");
+    expect(createOperationalSnapshotBuildCapability(storage, env)).toBeTypeOf("function"); expect(storage).not.toHaveBeenCalled();
   });
 });

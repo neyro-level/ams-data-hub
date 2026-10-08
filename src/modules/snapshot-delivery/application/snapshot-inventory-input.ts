@@ -22,9 +22,13 @@ const configuration = z.object({ fieldMappings: z.array(mapping).max(200), unitA
     districtOverrideAllowedFor: z.array(property).max(11) }).strict() });
 const profile = z.object({ identity: z.string().max(257), configuration: configuration.nullable(),
   formatContract: z.object({ family: z.enum(["YRL_2010", "AVITO_V3", "CIAN_V2"]) }).nullable() });
-const approval = z.object({ version: z.literal(1), disposition: z.literal("SAFE"), sourceId: id, revisionId: id,
+const approvalFields = { version: z.literal(1), sourceId: id, revisionId: id,
   sequence: z.number().int().positive(), policyHash: hash, analysisHash: hash,
-  baseRevisionId: id.nullable(), previousGoodRecordCount: z.number().int().nonnegative().nullable() }).strict()
+  baseRevisionId: id.nullable(), previousGoodRecordCount: z.number().int().nonnegative().nullable() };
+const approval = z.discriminatedUnion("disposition",[
+  z.object({ ...approvalFields,disposition: z.literal("SAFE") }).strict(),
+  z.object({ ...approvalFields,disposition: z.literal("APPROVED"),requestId: id,requestHash: hash }).strict(),
+])
   .refine((row) => row.baseRevisionId === null ? row.sequence === 1 && row.previousGoodRecordCount === null
     : row.sequence > 1 && row.previousGoodRecordCount !== null);
 const inventory = z.object({ uid: ulidSchema, sourceId: id, externalOfferId: z.string().min(1).max(240), status: z.literal("ACTIVE"),
@@ -106,6 +110,9 @@ export function prepareSnapshotInventoryInput(input: SnapshotBuildInputReceipt) 
       || row.factApproval.sourceId !== row.sourceId || row.factApproval.revisionId !== row.factRevisionId
       || row.factApproval.sequence !== row.factRevisionSequence
       || (row.factRevisionId === head.id && (row.factApproval.policyHash !== head.approval.policyHash
+        || row.factApproval.disposition !== head.approval.disposition
+        || (row.factApproval.disposition === "APPROVED" && head.approval.disposition === "APPROVED"
+          && (row.factApproval.requestId !== head.approval.requestId || row.factApproval.requestHash !== head.approval.requestHash))
         || row.factApproval.analysisHash !== head.approval.analysisHash
         || row.factApproval.baseRevisionId !== head.approval.baseRevisionId
         || row.factApproval.previousGoodRecordCount !== head.approval.previousGoodRecordCount))) {

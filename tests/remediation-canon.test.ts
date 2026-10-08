@@ -58,7 +58,9 @@ describe("approved remediation canon", () => {
     expect(architecture).toContain("publication is not performed in the import transaction");
     expect(architecture).toContain("Broken runs leave current");
     expect(architecture).toContain("service unit tests are not production composition proof");
-    expect(architecture).toContain("missing executors");
+    expect(architecture).toContain("complete runtime proof remains");
+    expect(architecture).toContain("not a PRODUCTION READY claim");
+    expect(architecture).toContain("Notification retries/dead-letter cannot undo publication");
     expect(read("docs/OPERATIONS.md")).toContain("An Admin request or contract test");
     expect(read("docs/DELIVERY_STATE.yaml")).toContain("readiness: NOT_PRODUCTION_READY");
   });

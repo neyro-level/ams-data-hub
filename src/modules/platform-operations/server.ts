@@ -1,4 +1,5 @@
 export { PrismaReliabilityRepository } from "./infrastructure/prisma-reliability-repository.ts";
+export { lockOperationalOutboxLease, lockOperationalOutboxTerminal, type OperationalOutboxLeaseScope } from "./infrastructure/operational-outbox-lease.ts";
 export { PrismaDataSafetyRepository } from "./infrastructure/prisma-data-safety-repository.ts";
 export { createDataSafetyService, assertMutatingJobsAllowed, DataSafetyError } from "./application/data-safety-service.ts";
 export {

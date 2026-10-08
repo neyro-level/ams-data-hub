@@ -52,6 +52,13 @@ function toProject(project: FleetProjectRecord, now: Date): FleetProjectView {
     projectSlug: project.projectSlug,
     projectStatus: project.projectStatus,
     serviceState: project.serviceState,
+    ackCredentialVersion: project.ackCredentialVersion ?? null,
+    operationalRequests: (project.operationalRequests ?? []).map((request) => ({
+      requestId: request.requestId, action: request.action, status: request.status,
+      requestedAt: request.requestedAt.toISOString(), startedAt: request.startedAt?.toISOString() ?? null,
+      finishedAt: request.finishedAt?.toISOString() ?? null, safeErrorCode: request.safeErrorCode,
+      resultSummary: request.resultSummary ?? null,
+    })),
     sources,
     currentSnapshot: project.currentSnapshot
       ? { publishSequence: project.currentSnapshot.publishSequence, publishedAt: project.currentSnapshot.publishedAt.toISOString() }

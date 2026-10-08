@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-const queue = vi.hoisted(() => ({ get: vi.fn(), stop: vi.fn() }));
+const queue = vi.hoisted(() => ({ get: vi.fn(), stop: vi.fn(), clear: vi.fn(async () => {}) }));
 vi.mock("../src/modules/platform-operations/worker.ts", async (original) => ({
-  ...await original<typeof import("../src/modules/platform-operations/worker.ts")>(), getPgBoss: queue.get, stopPgBoss: queue.stop,
+  ...await original<typeof import("../src/modules/platform-operations/worker.ts")>(), getPgBoss: queue.get, stopPgBoss: queue.stop, clearSourceWorkerHeartbeat: queue.clear,
 }));
 import { runSourceWorker, runSourceWorkerWithDependencies } from "../src/infrastructure/source-worker-runtime.ts";
 import { SOURCE_IMPORT_QUEUE } from "../src/modules/ingestion-core/worker.ts";
@@ -11,12 +11,14 @@ describe("source worker command composition", () => {
     const controller = new AbortController(); controller.abort();
     expect(await runSourceWorker({ workerId: "synthetic", signal: controller.signal })).toEqual({ fetched: 0, completed: 0, failed: 0 });
     expect(queue.get).not.toHaveBeenCalled(); expect(queue.stop).not.toHaveBeenCalled();
+    expect(queue.clear).not.toHaveBeenCalled();
   });
   it("rejects missing storage configuration before connecting to pg-boss", async () => {
     vi.stubEnv("PROJECT_STORAGE_BINDINGS", "");
     try { await expect(runSourceWorker({ workerId: "synthetic", signal: new AbortController().signal })).rejects.toThrow("PROJECT_STORAGE_BINDINGS_INVALID");
       expect(queue.get).not.toHaveBeenCalled(); expect(queue.stop).not.toHaveBeenCalled(); }
     finally { vi.unstubAllEnvs(); }
+    expect(queue.clear).toHaveBeenCalledWith("synthetic");
   });
   it("shares queue ownership between outbox and source consumers without stopping it per cycle", async () => {
     const controller = new AbortController(); const fetched: string[] = [];

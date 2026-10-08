@@ -1,5 +1,6 @@
 import "server-only";
 export { createSnapshotPublicationSourceReader } from "./infrastructure/snapshot-publication-source-reader.ts";
+export { createSnapshotRollbackSourceReader } from "./infrastructure/snapshot-rollback-source-reader.ts";
 export { assertSnapshotSourceGoodTrigger, createSnapshotSourceGoodTriggerReader } from "./infrastructure/snapshot-source-trigger.ts";
 export { createSourceExecutionServer } from "./infrastructure/streaming-source-runtime.ts";
 export { createSnapshotGoodFactResolver, type SnapshotGoodFactPin, type SnapshotGoodNormalizedFact,
@@ -31,6 +32,8 @@ export const inventoryIdentityCommands = createInventoryIdentityCommands({
 
 export { SourceRegistryError } from "./domain/source-registry-error.ts";
 export { adapterProfileRegistry } from "./domain/adapter-profile-registry.ts";
+export { prepareSuspiciousRevisionRejection } from "./infrastructure/suspicious-revision-rejection.ts";
+export { applySuspiciousRevisionApproval } from "./infrastructure/suspicious-revision-approval.ts";
 export {
   normalizedContentHash,
   runIndependentSourceImports,

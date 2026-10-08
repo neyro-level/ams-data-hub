@@ -1,5 +1,201 @@
 # Snapshot V1 contract
 
+## Authenticated consumer HTTP
+
+`GET /api/snapshots/{organizationId}/{projectId}/current` returns the signed
+public manifest and logical artifact URLs. `GET` on
+`/api/snapshots/{organizationId}/{projectId}/{publishSequence}/files/{kind}`
+returns verified compressed bytes; a slash in kind is URL-encoded. Bytes use
+`application/gzip`, not Content-Encoding, preserving the signed compressed hash.
+Authentication is bounded Bearer-header-only, exact single-project scope; query
+credentials, cookies, wildcard scopes and caller-selected storage keys are not
+supported. Responses are no-store with Vary Authorization and nosniff.
+
+Server-owned storage/trust bindings and committed root/binding/run pins gate
+every read. Standalone BUILD staging alone is not publication. A narrow
+NOBYPASSRLS-owned function returns only bounded public signed manifest metadata,
+never private input parts. Storage IO occurs outside database transactions;
+length/hash/signature and fresh credential/trust cuts reject corruption,
+revocation or promotion during IO. SUSPENDED and frozen projects retain reads.
+
+`POST /api/snapshots/{organizationId}/{projectId}/ack` accepts bounded JSON
+(4096 bytes): projectId, publishSequence, manifestSha256, applied:true and
+idempotencyKey. Authentication remains in the header. Applied is the consumer's
+attestation after its atomic apply, not proof that Hub applied consumer data.
+The actual ACK service and publication/input/rotation locks atomically advance
+PENDING/NOTIFIED → DOWNLOADED → APPLIED → ACKNOWLEDGED. Exact replay is idempotent;
+conflicting replay, wrong manifest and FAILED/STALE runs do not advance.
+Consumer-only SQL guards prevent identity/manifest or unrelated field writes.
+Late cancellation rolls the transaction back. Errors use generic bounded
+400/401/404/409/413/503 responses without private DB/storage diagnostics.
+
+SUSPENDED alone (jobs unfrozen) rejects actual new Source execution, capture and
+pending publication while preserving the committed current/run and immutable
+objects. Authorized current discovery and artifact GET remain available.
+
+Native production-controller and staging regression proof: 106/106 tests with
+62 migrations and final reset; final ACK trust-cut regression run: 15/15,
+including rollback on signing-key revocation after the real ACK write. The
+additional SUSPENDED-alone regression completes a 16/16 consumer suite.
+The combined run includes all six rollback modes followed by
+actual consumer reads. SDK/credentials are synthetic. This does not claim a
+Next-network/browser end-to-end run, live provider activation or production.
+
+## Durable notification hint
+
+Automatic GOOD publication and Operations PUBLISH/ROLLBACK enqueue exactly one
+notification intent per scoped publication sequence in the same transaction
+as DeliveryRun creation. BUILD-only staging creates no notification. The
+internal strict payload contains schemaVersion, organizationId, projectId,
+deliveryRunId and publishSequence; no URL, dataset, manifest or credentials.
+Replay reuses the committed publication without a second intent. Historical
+runs are not backfilled; polling remains available.
+
+The existing combined worker opts in with `SNAPSHOT_WEBHOOK_ENABLED=true` and
+an exact-scope value-free `PROJECT_SNAPSHOT_WEBHOOK_BINDINGS` registry. The
+external fixed JSON POST contains only projectId and publishSequence. Missing
+project bindings defer; disabled/unsupported workers reserve this topic.
+Server-owned HTTPS endpoints use double DNS validation and pinned sockets/SNI,
+no redirects, cancellation, a five-second deadline and a 4096-byte opaque reply
+bound. Empty 204 is accepted; URLs and raw transport errors are not emitted.
+
+Global/publication locks and the full durable outbox/job lease tuple fence both
+the pre-send read and final PENDING → NOTIFIED transaction. HTTP occurs between
+these cuts, outside a transaction. An ACK committed during IO is never
+downgraded. A narrow invoker trigger permits the snapshot-notifier actor only
+the scoped PENDING → NOTIFIED status/timestamp write, not private/identity,
+creation/deletion or FAILED writes. Existing outbox retry/dead-letter handles
+notification failure without failing DeliveryRun or moving current backwards.
+
+This is at-least-once notification, not exactly-once HTTP: a crash or takeover
+after POST can resend the same hint. Consumers deduplicate project/sequence and
+pull authenticated current/artifacts; polling is the fallback. Notification
+success does not attest consumer apply or ACK. Native handler/DB proof replaces
+only external HTTP transport; full registered-worker/Next network proof remains
+separate, and no production or real endpoint activation is claimed.
+The final notifier/consumer and staging run passes 114/114 with 63 forward
+migrations and final test-database reset. It includes real notification retry
+exhaustion, takeover fencing, ACK during POST, configuration deferral, notifier
+write denial and actual Ops PUBLISH/ROLLBACK intent creation. The first run
+113/114 had a wrong test status oracle (COMPLETED vs persisted PROCESSED), fixed
+before the final run; fixture clocks isolate claims without moving foreign intents.
+
+## Historical rollback admission prerequisite
+
+MP-08 rollback means old approved content with a new higher publication sequence,
+not a new capture or mutation of an old receipt. A separate snapshot-owned
+internal admission seam checks historical GOOD head/fact attribution and current
+permissions under global -> scoped publication locks in ReadCommitted. New GOOD,
+new unrelated identities/sources and cosmetic versions alone do not forbid old
+content. Current Source dataset/sharing and published identity ACTIVE membership
+with the same source/external identity remain required. No producer payload is
+returned by these fresh reads.
+
+Published Agent permissions still require ACTIVE/showOnSite, the same consent
+epoch and photo assignments. Contact/version of captured project contact remains
+strict; this prevents reintroducing replaced project contact details. Agent
+version/name-only changes are allowed, but published workPhone/workEmail and
+ordered messenger values must match value-free SHA-256 pins. SQL compares these
+pins without returning contact values; nullable string prefixes and UTF-8 length
+framing distinguish null, empty, ordering and Unicode. Assignment must be to the
+same person in the current selected GOOD fact, not merely a retained historical
+ListingAgentBinding. A new GOOD assignment to a different person or no assignment
+denies the entire rollback, without rewriting old datasets.
+
+Selected old catalog entities must be allowed by the current bounded subscription
+and retain ACTIVE/unmerged and parent relationships; EXCLUDE denies them. Existing
+media permission/ownership/license/provenance checks are reused unchanged.
+This is an explicit conservative interpretation of rollback's current-rights
+requirement, not a relaxation of ordinary PUBLISH freshness. The seam is internal
+and requires pins from authenticated artifacts attributed to a persisted approved
+source capture. It does not itself authenticate approval, reserve a new sequence,
+sign/stage a rollback, publish current/run, settle an operational lease, or register
+an executor. The separate durable metadata prerequisite is described below;
+all six operational executors are now registered with request-owned lease
+fencing. Registration is not production capability activation.
+
+Rollback's snapshot-private repository now persists a request-owned immutable
+`SnapshotRollbackReservation`: exact scoped committed source DeliveryRun,
+source sequence, root capture/hash, allocated new sequence, database-minted time
+and initial lease history. Only exact matching committed normal root/binding/run
+(and matching stage receipt when present) or a previously staged rollback
+binding/run qualifies as source. Automatic GOOD publication does not require a
+standalone BUILD receipt. Stage alone,
+binding alone, foreign/mismatched root/hash/run do not qualify. Source consumer
+ACK status is not a new approval criterion. Reserved identity survives valid
+takeover without changing its initial lease tuple, sequence or timestamps.
+
+Allocation reuses the existing counter under global -> publication -> input
+locks, before request rows, with a fixed same-scope actor-only bridge. SQL denies
+collisions in both directions between normal capture and rollback reservations;
+overflow fails closed and a failed transaction rolls reservation/counter back
+together. Current full accepted rollback request + IDs-only outbox + actual
+RUNNING JobRun lease tuple is required for reserve, bind and stage marker writes.
+
+`SnapshotRollbackBinding` pins strict canonical manifest bytes/SHA before IO.
+Only sequence, generatedAt/publishedAt, keyId and signature may differ from the
+approved source manifest; all thirteen file descriptors and attribution metadata
+remain unchanged. Both times equal the immutable reservation time. A signature
+or key change cannot overwrite an existing binding. Only NULL -> database-minted
+stagedAt plus its current lease history can be appended, never reversed/rewritten.
+The server may mark staged only after owned manifest PUT settles and fresh
+historical permission admission; SQL proves identity/lease, not external IO.
+These new tables use exact-purpose FORCE RLS and minimal insert/read/stage-column
+grants. No normal binding/capture or operational success guard is relaxed.
+
+The snapshot-private staged artifact reader also returns an unsigned composition
+with the original hash-verified compressed bytes after complete signature,
+privacy, dataset and reference verification. It uses the same fourteen bounded
+GETs and fixed limits, without recompression or extra IO; ordinary selected
+PUBLISH still receives only verified manifest/datasets. This byte-reuse seam does
+not prove database source approval or relax revoked/current/next consumer trust.
+
+The snapshot-private approved-source loader checks an exact scoped committed
+DeliveryRun plus completed stage/binding and validates its immutable root capture
+in one bounded RepeatableRead cut, before public configuration or artifact GET.
+Stage-only and mismatched run metadata are not approval. Only the retained exact
+source PUBLIC Ed25519 key may authenticate these already-approved archived bytes;
+missing/private/invalid/wrong keys fail closed. A separate local archive-only
+trust object permits this key even after consumer revocation/rotation, without
+mutating live trust or changing ordinary PUBLISH/new-signature policy. All content,
+privacy, signature, scope and resource limits still apply.
+
+Rollback-of-rollback preserves the original source manifest and compressed bytes.
+An internal attribution-only copy changes sequence/generatedAt/publishedAt to the
+validated root capture identity for the existing strict attribution checks. This
+copy is never returned as a cryptographically verified or publishable artifact;
+schema, catalog/source revisions, file descriptors and datasets remain unchanged.
+No fresh permission, full lease, new signature, stage or current/run/result write
+is implied by this read seam.
+
+The internal rollback staging server reserves identity under the full accepted
+lease before configuration/IO. It authenticates approved source bytes, composes
+only the higher-sequence manifest, checks the new signing key against live
+current/next/non-revoked public trust before resolving its SecretRef, uses the
+actual Ed25519 signer, and pins the signature under fresh historical permission
+and a current full lease. Existing pending binding never resolves signing or
+changes signature/sequence/time; a revoked bound key fails before archive GET/PUT.
+Only the new manifest is PUT, and its owned IO is awaited before a fresh lease,
+permission and current-trust cut records staging. Completed stage skips this PUT.
+
+Its snapshot-owned finish closure checks full lease, fresh historical permission
+and current signature/sequence policy inside the caller's short transaction,
+then writes current and DeliveryRun atomically. Caller mutation cannot retarget
+the captured lease or metadata. Committed matching run replays before config,
+signing, artifacts, cancellation or fresh rights and never rewinds a newer current.
+If another invocation commits after initial inspection or during owned IO failure,
+a fresh locked full-lease/identity recheck may recover the exact committed run;
+lost lease cannot use this fallback. Otherwise the original failure is retained.
+This closure does not itself settle the operational request; operational SUCCESS
+must join the same transaction through a separate validated adapter/result guard.
+
+These seams remain internal. The registered operational rollback adapter now
+joins full-lease current/run/request success atomically and is composed into the
+combined worker behind its server capability. Synthetic tests compose the actual
+signer, storage/domain repositories and operational executor; they do not prove
+live provider or production activation. Task Manager owns exact checkpoint and
+delivery evidence.
+
 URL/lifecycle datasets transfer persistent Hub state, not consumer SEO policy.
 They preserve independent publicUrlId reservations, entries after legitimate
 relink, stored canonical paths, factual/presentation lifecycle, immutable 301
@@ -133,6 +329,145 @@ HEAD/PUT, all four post-PUT permission changes, atomic rollback/cancellation,
 concurrent committed fallback and restart/rotation replay. It does not prove a
 registered durable outbox execution, a live provider or production readiness.
 
+Manual BUILD has a separate server-only staged-build facade. It reuses actual
+capture/sign/bind/artifact staging but never writes current or DeliveryRun.
+Following settled PUTs and fresh Project/Source/Catalog/Media admission, it
+records an immutable scoped `SnapshotArtifactStageReceipt` with exact
+input/idempotency/sequence/manifest pins and a database-generated timestamp.
+Config-free exact replay precedes mutable admission and signer/storage IO,
+including concurrent committed-stage recovery after cancellation following an
+initial replay miss. Stage completion does not authorize later publication:
+PUBLISH must independently verify current trust, artifact integrity and fresh
+admission. The project-scoped snapshot storage wrapper exposes explicit bounded
+GET: project-key, byte-limit and already-aborted checks precede adapter IO;
+an adapter without bounded-read capability fails closed, never falling back to
+unbounded GET. The existing S3 adapter preserves streaming limits, digest checks,
+caller cancellation and owned reader cleanup. This storage prerequisite is not
+a completed operational PUBLISH executor. Signed file keys remain logical
+`kind.sha256.json.gz`; physical reads use the project/hash storage namespace,
+without rewriting signed manifests.
+An internal staged-artifact reader now authenticates the exact canonical binding
+manifest through bounded GET (2 MiB), then applies the portable verifier's raw
+shape/trust/signature/project/sequence/dataset-set/declared-budget preflight
+before any dataset GET. All signed logical file keys must match kind and digest;
+physical keys are derived separately from the scoped project. Sequential bounded
+GETs retain compressed-byte budgets and owned reader cleanup; full portable
+verification enforces digest, gzip/decompressed budgets, record counts and all
+thirteen actual strict public schemas plus the existing privacy policy.
+Public reference checks cover typed catalog parents, inventory URL/agent links,
+editorial subjects, media owners and full embedded-media equality. Relinked
+reservation subjects, inactive lifecycle history and coincident price/event
+values remain valid. Private observation/event/redirect-target IDs are absent
+from public values: they are not reconstructed or claimed verified here.
+This reader does not sign, PUT, HEAD, assemble, mutate current/DeliveryRun or
+succeed an operational request. Scoped selected-stage loading is implemented
+separately below; snapshot-owned final fresh admission/current trust are implemented
+below, while full Ops lease and atomic PUBLISH/result remain required;
+artifact verification alone cannot close MP-08.1.
+The internal selected-stage loader requires an explicit scoped buildInputId and
+matching immutable input header, completed stage receipt and publication binding.
+Missing, foreign, unbound or interrupted binding-only inputs are not replaced by
+a latest stage. It reuses snapshot-owned publication read purpose without adding
+Operations grants. Metadata inspection takes the existing publication lock and
+can replay an exact committed run without private captured parts, config, keys,
+storage IO or fresh admission; it does not rewrite a newer current pointer.
+New-publication capture loading is separate, bounded and RepeatableRead through
+the existing immutable input repository. Native staging/delivery matrix is 35/35
+PASS, including foreign scope, wrong purpose, binding-only interruption and old
+run replay with newer current, freeze/SUSPENDED and unavailable private capture
+capability. Test-controlled run setup proves the loader, not an operational
+PUBLISH executor or its final lease/atomic result.
+Pure selected-admission preparation now binds the authenticated manifest metadata
+and sorted source-revision union to the immutable receipt. It checks the ACTIVE
+inventory cohort, captured publicUrlId and optional agent assignment; existing
+source/catalog/project/media anchor preparers are reused. Captured catalog and
+project-state projections are compared as canonical multisets, preserving equal
+price/event values with distinct private IDs and legitimate relinked reservations.
+Published media must match an unambiguous captured slot and provenance. Missing
+BUILD media remains an allowed subset; uncaptured extra media metadata is rejected.
+This helper does not resolve GOOD facts, HEAD, sign, PUT, read fresh authorization
+or publish. Factual inventory payload remains authenticated by immutable binding
+and signature, not reconstructed from metadata-only pins. Native coverage proves
+actual staged Agent/media attribution and metadata/project/media rejection plus
+valid media omission without extra IO. A separate 13-case helper suite composes,
+signs and verifies nonempty captured inventory/catalog artifacts, then tests
+cohort/URL/optional agent/catalog/contact mismatch, private-ID price/event
+multiplicity, historical GOOD with producer OFF, relinked reservations, foreign
+receipt, manual-over-feed photo selection and ambiguous listing-slot rejection.
+Decoded-value attacks test attribution only, not preservation of a changed
+signature. Full Ops lease/atomic request result remains separate.
+The selected-publication server seam performs bounded artifact IO and captured
+admission first, then returns a snapshot-owned finish closure for a caller-owned
+short ReadCommitted transaction. It exports no private capture or anchors. Finish
+requires exact publication purpose, acquires global→publication locks and checks
+committed replay before cancellation, trust or freshness. New publication repeats
+the four owner gates and current public trust/sequence policy, then atomically
+writes current and DeliveryRun. No signer, PUT, HEAD or reassembly is invoked.
+Native staging suite is 42/42 PASS, including ten final-cut scenarios for success,
+committed replay, post-GET revocation, owner/freeze changes, wrong purpose, abort
+and rollback after actual writes. The worker uses NOBYPASSRLS and SDK transport
+is synthetic. This seam does not own an Ops lease or persist request SUCCEEDED;
+that responsibility belongs to the separate operational composition below.
+New operational PUBLISH acceptance requires an explicit buildInputId, includes it
+in idempotency and audit identity, and persists a scoped FK to a completed stage.
+The INSERT guard rejects missing targets; FK validation rejects foreign, missing
+and unbound capture IDs without granting web access to private snapshot tables.
+Historical NULL-target requests are not rewritten. The admin form uses existing
+field/error primitives and clears the target when switching projects. This pins
+intent only: it does not enable a registered PUBLISH.
+The concrete operational PUBLISH adapter now composes that finish closure in one
+Ops-owned ReadCommitted final cut: global/publication locks, full latest
+event/job/request lease fence, fixed same-scope actor-only bridge, publication,
+normal actor restoration and request SUCCEEDED. Role, principal kind, scope and
+correlation never change. Any late exception or cancellation rolls back current,
+DeliveryRun and request success together. A forward SQL success guard independently
+requires the full lease and exact selected stage/header/binding/run identity;
+no grants, historical requests or immutable captures are rewritten. Completed
+domain/request replay precedes lazy public config and bounded GET and preserves
+newer current, including after freeze, SUSPENDED or trust rotation. This adapter
+is registered in the existing combined worker under the independent, default-off
+SNAPSHOT_PUBLISH_ENABLED capability. The other three operational executors and
+full MP-08.1 closure remain required.
+Native request/rejection/staging matrix is 84/84 PASS with 55 forward migrations:
+late SUCCESS failure/cancel rolls back all three states, GET-time takeover fences
+the old worker, each lease field substitution is rejected before config/IO, and
+SQL rejects success without the exact run. An actual newer publication remains
+current during older operational replay after freeze/SUSPENDED/trust rotation,
+with no extra object IO. This is synthetic SDK/native database proof, not
+combined-worker registration, live provider or production evidence.
+Actual combined-worker/pg-boss runtime registration has separate 12/12 native
+proof (five PUBLISH and seven BUILD/GOOD cases): enabled completion, disabled
+reserved/no GET, invalid registry before startup, late-SUCCESS atomic rollback
+recovery and queue-ACK-loss replay with freeze/SUSPENDED/unavailable refs.
+PUBLISH uses only bounded GET and the exact pre-existing stage: no extra capture,
+signing, PUT or HEAD. Its public-only resolver reuses the project registry but
+does not require keyId/privateKeyRef or resolve signing secrets; private PEM in a
+public slot is rejected. Startup validates the registry, while actual public refs
+and storage stay lazy after replay; final trust resolution re-reads the current
+policy/refs. Own heartbeat is observed active and cleared after joined stop.
+SDK transport is synthetic; this is not provider live or OS-signal/production proof.
+Native staging regression proves actual captured/bound/staged agent/media artifacts
+can be read with the private signing key unavailable: fourteen bounded GETs,
+no new PUT/HEAD/capture or current/DeliveryRun. Revocation then fails after only
+the manifest GET. Transport is synthetic; this is not a registered PUBLISH,
+remote provider or production proof.
+The operational BUILD adapter pins capture identity to the accepted
+request ID, records RUNNING before capture and succeeds only against the same
+stage receipt under the complete current lease. SQL checks both request-derived
+idempotency and complete minor-zero capture request hash. It recovers a stage
+committed before request success without configuration, new capture or PUT,
+even after freeze/suspension/key rotation. Stale attempt may leave private
+staging but cannot succeed the request. The combined worker registers this
+distinct topic only when the existing SNAPSHOT_BUILD_ENABLED capability is true;
+disabled mode reserves it. Manual BUILD never invokes the GOOD-intent publisher.
+Actual combined-runtime native proof now covers operational enabled completion,
+disabled reserved/no IO, invalid registry before startup and expired-lease recovery
+after stage/result crash. Recovery uses one saved capture/stage and fourteen total
+PUTs with jobs frozen, project suspended and unavailable key/storage references;
+it leaves current/DeliveryRun absent. Exact own heartbeat is observed while active
+and absent after joined stop. Only the synthetic SDK transport is replaced: this
+is not OS-signal, remote-provider or production proof.
+
 The existing combined source-worker optionally registers `snapshot.build.request`
 when `SNAPSHOT_BUILD_ENABLED=true`; absent/false preserves old intake and reserved
 snapshot intents. Its strict envelope/payload must agree on organization and
@@ -243,7 +578,9 @@ own fresh consent-gated projection. Forward migration
 the server-owned `media-projection` database purpose; import writes and FORCE
 RLS are unchanged. Historical fact revisions for missing-grace inventory use the
 MP-05 captured path below; full snapshot build/publication composition is
-implemented. Consumer HTTP delivery and Operations executors remain MP-08 work.
+implemented. All six Operations executors and consumer HTTP delivery/ACK are
+implemented; the durable optional notifier is wired in the existing worker.
+Complete runtime proof remains MP-08 work.
 
 `createSnapshotMediaProjectionServer` accepts only a server-loaded immutable
 SnapshotInput receipt and server-selected project-bound storage. It validates
@@ -284,8 +621,14 @@ Capture reuses ingestion's actual SAFE policy/count/analysis predicate for both
 the head and each selected historical fact. The baseline is the exact scoped GOOD
 `baseLastGoodRevisionId`, from the same source and preceding GOOD sequence; its
 record count is read from the immutable row, not trusted from analysis metrics.
-Each private proof contains version, SAFE disposition, source/revision/sequence,
-policy/analysis hashes, baseline ID and previous GOOD count. Preflight correlates
+Automatic private proof contains version, SAFE disposition, source/revision/sequence,
+policy/analysis hashes, baseline ID and previous GOOD count. A manually approved
+GOOD instead requires the immutable scoped `SourceManualApprovalReceipt` created
+by actual request-owned apply. Ingestion recomputes its original SUSPICIOUS analysis,
+policy, private review and request pins; an APPROVED label alone is not authority.
+The strict APPROVED proof additionally pins request ID/hash and does not carry
+reviewer/reason or raw policy/analysis. SAFE admission remains unchanged.
+Preflight correlates
 these pins and equal-head proofs before object IO; none enters public DTOs.
 The per-cut cache bounds each lookup to 200 pins. SQL rejects policy or analysis
 JSON over 4096 bytes each before transfer; no raw policy/analysis is captured.

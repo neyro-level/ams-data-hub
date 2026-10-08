@@ -193,6 +193,18 @@ export class ProjectSnapshotStorage {
     return this.storage.get(key);
   }
 
+  /** Explicit capability: never downgrade a bounded snapshot read to get(). */
+  public getBounded(input: ObjectStorageBoundedGetInput): Promise<ObjectStorageGetResult | null> {
+    this.assertProjectKey(input.key);
+    if (!Number.isSafeInteger(input.maxBytes) || input.maxBytes < 1 || input.maxBytes > MAX_STREAMING_OBJECT_BYTES) {
+      throw new Error("OBJECT_STORAGE_READ_LIMIT_INVALID");
+    }
+    if (input.signal?.aborted) throw new Error("OBJECT_STORAGE_READ_ABORTED");
+    const bounded = this.storage as ObjectStorage & Partial<BoundedObjectStorage>;
+    if (typeof bounded.getBounded !== "function") throw new Error("OBJECT_STORAGE_BOUNDED_READ_UNSUPPORTED");
+    return bounded.getBounded(input);
+  }
+
   public head(key: ObjectStorageKey, options?: ObjectStorageHeadOptions): Promise<ObjectStorageObject | null> {
     this.assertProjectKey(key);
     return options ? this.storage.head(key, options) : this.storage.head(key);

@@ -1,4 +1,6 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import { Prisma } from "../../../generated/prisma/client.ts";
+import { projectOperationalResult } from "../domain/operational-request-presentation.ts";
 import type { FleetRepository } from "../application/ports/fleet-repository.ts";
 import type { FleetFailedJobRecord, FleetProjectRecord } from "../contracts.ts";
 
@@ -23,6 +25,11 @@ export class PrismaFleetRepository implements FleetRepository {
         slug: true,
         status: true,
         serviceState: true,
+        ackCredential: { select: { version: true } },
+        operationalActionRequests: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 25,
+          select: { id: true, action: true, status: true, createdAt: true, startedAt: true, finishedAt: true, safeErrorCode: true },
+        },
         organization: { select: { name: true } },
         sources: {
           orderBy: { name: "asc" },
@@ -50,9 +57,17 @@ export class PrismaFleetRepository implements FleetRepository {
             safeErrorCode: true,
           },
         },
-      },
+      } satisfies Prisma.ProjectSelect,
     });
-    return rows.map((row) => ({
+    const projects: FleetProjectRecord[] = [];
+    for (const row of rows) {
+      const ids = row.operationalActionRequests.map((request) => request.id);
+      const results = ids.length ? await this.transaction.$queryRaw<{ id: string; result: unknown }[]>(Prisma.sql`
+        SELECT id, CASE WHEN octet_length(result::text) <= 4096 THEN result ELSE NULL END AS result
+        FROM "OperationalActionRequest" WHERE "organizationId"=${row.organizationId} AND "projectId"=${row.id}
+        AND id IN (${Prisma.join(ids)}) AND status='SUCCEEDED'`) : [];
+      const resultMap = new Map(results.map((result) => [result.id, result.result]));
+      projects.push({
       organizationId: row.organizationId,
       organizationName: row.organization.name,
       projectId: row.id,
@@ -60,10 +75,16 @@ export class PrismaFleetRepository implements FleetRepository {
       projectSlug: row.slug,
       projectStatus: row.status,
       serviceState: row.serviceState,
+      ackCredentialVersion: row.ackCredential?.version ?? null,
+      operationalRequests: row.operationalActionRequests.map(({ id, createdAt, ...request }) => ({ requestId: id, requestedAt: createdAt, ...request,
+        resultSummary: projectOperationalResult(request.action, request.status, resultMap.get(id)),
+      })),
       sources: row.sources,
       currentSnapshot: row.currentSnapshotManifest,
       latestDelivery: row.deliveryRuns[0] ?? null,
-    }));
+      });
+    }
+    return projects;
   }
 
   async listRecentFailedJobs(limit: number): Promise<FleetFailedJobRecord[]> {

@@ -1,7 +1,12 @@
 import "server-only";
+export { createSnapshotNotificationHandler } from "./infrastructure/snapshot-notification-handler.ts";
+export { createProjectSnapshotWebhookResolver } from "./infrastructure/project-snapshot-webhook.ts";
+export { createSnapshotConsumerReadServer } from "./infrastructure/snapshot-consumer-read.ts";
+export { handleSnapshotConsumerGet, handleSnapshotConsumerAck } from "./infrastructure/snapshot-consumer-http.ts";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";
 export { createSnapshotSignedBuildServer } from "./infrastructure/snapshot-signed-build.ts";
 export { createSnapshotArtifactStagingServer } from "./infrastructure/snapshot-artifact-staging.ts";
+export { createSnapshotStagedBuildServer, inspectStagedSnapshotServer } from "./infrastructure/snapshot-staged-build.ts";
 export { createSnapshotPublicationServer } from "./infrastructure/snapshot-publication.ts";
 export { inspectSnapshotPublicationServer } from "./infrastructure/snapshot-publication-replay.ts";
 export { createSnapshotBuildRequestHandler } from "./infrastructure/snapshot-build-request-handler.ts";
@@ -14,3 +19,7 @@ export { PrismaSnapshotDeliveryRepository } from "./infrastructure/prisma-snapsh
 export { PrismaSnapshotInputRepository } from "./infrastructure/prisma-snapshot-input-repository.ts";
 export { runInSnapshotInputTransaction } from "./infrastructure/snapshot-input-transaction.ts";
 export { captureSnapshotInput } from "./infrastructure/snapshot-input-capture-command.ts";
+export { createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer } from "./infrastructure/snapshot-selected-publication.ts";
+export { createProjectSnapshotTrustResolver } from "./infrastructure/project-snapshot-trust.ts";
+export { createSnapshotRollbackServer, inspectSnapshotRollbackRunServer } from "./infrastructure/snapshot-rollback-server.ts";
+export { createSnapshotAckRotationServer } from "./infrastructure/snapshot-ack-rotation-server.ts";

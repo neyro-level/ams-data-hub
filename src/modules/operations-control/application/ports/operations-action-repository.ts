@@ -7,6 +7,9 @@ export interface RecordOperationalActionRequest {
   sourceId: string | null;
   sourceRevisionId: string | null;
   sourcePublishSequence: number | null;
+  buildInputId: string | null;
+  ackRotationPhase?: "STAGE" | "PROMOTE" | null;
+  ackCredentialVersion?: number | null;
   reason: string | null;
   idempotencyKey: string;
   requestHash: string;

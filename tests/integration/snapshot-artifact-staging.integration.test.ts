@@ -4,14 +4,17 @@ import { canonicalJson, createUlid, type CanonicalJsonValue } from "@ams-data-hu
 import { describe, expect, it, vi } from "vitest";
 
 const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
-  afterInitialReplay: null as (() => Promise<void>) | null }));
+  afterInitialReplay: null as (() => Promise<void>) | null,
+  afterInitialRollbackReplay: null as (() => Promise<void>) | null,
+  afterInitialStageReplay: null as (() => Promise<void>) | null }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
-      const snapshot = ["snapshot-input", "snapshot-publication", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
+      const consumer = context.principalKind === "snapshot-consumer";
+      const snapshot = consumer || ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
       if (snapshot) {
-        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
           .toEqual([{ rolbypassrls: false, rolsuper: false }]); cuts.roles++;
       }
@@ -25,6 +28,15 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
       const after = cuts.afterInitialReplay; cuts.afterInitialReplay = null;
       await after(); // Actual transaction has committed and released its locks.
     }
+    if (context.actorId === "snapshot-input" && context.correlationId === "synthetic-stage-replay-race"
+      && cuts.afterInitialStageReplay) {
+      const after = cuts.afterInitialStageReplay; cuts.afterInitialStageReplay = null;
+      await after(); // Inspection completed; a competing BUILD can now commit.
+    }
+    if (context.actorId === "snapshot-publication" && context.correlationId === "synthetic-rollback-replay-race"
+      && cuts.afterInitialRollbackReplay) {
+      const after = cuts.afterInitialRollbackReplay; cuts.afterInitialRollbackReplay = null; await after();
+    }
     return result;
   };
   const system: typeof actual.runInSystemJobDatabaseTransaction = (input, execute) =>
@@ -32,10 +44,13 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInSystemJobDatabaseTransaction: system };
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
-  PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
+  createSnapshotStagedBuildServer, inspectStagedSnapshotServer, createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer,
+  PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository, createEd25519SecretRefSigner } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotConsumerReadServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/application/snapshot-ack.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
-import { calculateObjectSha256, createMediaKey } from "../../src/platform/storage/object-storage.ts";
+import { calculateObjectSha256, createMediaKey, createProjectSnapshotKey } from "../../src/platform/storage/object-storage.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -46,6 +61,25 @@ import { ReliabilityService } from "../../src/modules/platform-operations/applic
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { drainOutboxWithDependencies } from "../../src/modules/platform-operations/worker.ts";
+import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor, createOperationalSnapshotRollbackExecutor, requestOperationalAction, getFleetDashboard } from "../../src/modules/operations-control/server.ts";
+import { OPERATIONAL_ACTION_TOPICS } from "../../src/modules/operations-control/index.ts";
+import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
+import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
+import { snapshotInputRequestHashes } from "../../src/modules/snapshot-delivery/index.ts";
+import { settleTerminalOperationalRequests } from "../../src/modules/operations-control/worker.ts";
+import { readStagedSnapshotArtifacts, readStagedSnapshotComposition } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-staged-artifact-reader.ts";
+import { inspectSelectedSnapshotStageServer, loadSelectedSnapshotCaptureServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-selected-stage.ts";
+import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-input-repository.ts";
+import { prepareSelectedSnapshotAdmission } from "../../src/modules/snapshot-delivery/application/snapshot-selected-admission.ts";
+import { admitHistoricalSnapshotRollback } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-admission.ts";
+import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
+import { createSnapshotPublicationProjectReader } from "../../src/modules/project-state/server.ts";
+import { PrismaSnapshotRollbackRepository, type SnapshotRollbackLease } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
+import { composeRollbackSnapshot } from "../../src/modules/snapshot-delivery/application/snapshot-rollback.ts";
+import { signSnapshotManifest, verifySnapshotSignatureCandidate } from "../../src/modules/snapshot-delivery/application/snapshot-signing.ts";
+import { SNAPSHOT_NOTIFICATION_TOPIC, snapshotManifestV1Schema, type SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
+import { createApprovedSnapshotRollbackSourceReader } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-source.ts";
+import { createSnapshotRollbackStagingServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-staging.ts";
 
 async function fixture(withMedia = false) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-binding-admin", correlationId: randomUUID() };
@@ -87,6 +121,1134 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it.each(["success", "late-failure", "late-cancel", "takeover", "project", "trust"])("atomic operational ROLLBACK: %s", async (mode) => {
+    const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-rollback", correlationId: randomUUID() };
+    const oldKey = generateKeyPairSync("ed25519"); const nextKey = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_OLD", oldKey.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_NEXT", nextKey.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    let trustSet: SnapshotTrustSet = { currentKeyId: "synthetic-old", nextKeyId: null, revokedKeyIds: [],
+      publicKeys: { "synthetic-old": oldKey.publicKey.export({ format: "pem", type: "spki" }).toString(),
+        "synthetic-next": nextKey.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let putHook: (() => Promise<void>) | null = null;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof PutObjectCommand) { puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+        if (putHook) { const hook = putHook; putHook = null; await hook(); } return {} as never; }
+      if (command instanceof GetObjectCommand) { gets++; const body = objects.get(command.input.Key!); if (!body) throw new Error("SYNTHETIC_MISSING_OBJECT");
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } as never; }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-ops-rollback", client });
+    let now = new Date("1996-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    let ownedLease: Awaited<ReturnType<typeof reliability.claim>> = null;
+    const actualSucceed = OperationalActionLifecycleRepository.prototype.succeedRolledBackSnapshot;
+    const succeed = vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedRolledBackSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, lease, run) {
+      const value = await actualSucceed.call(this, lease, run);
+      if (mode === "late-failure") throw new Error("SYNTHETIC_AFTER_ROLLBACK_SUCCESS");
+      if (mode === "late-cancel") controller.abort(); return value;
+    });
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-old",
+        privateKeyRef: defineSecretRef("SYNTHETIC_OPS_ROLLBACK_OLD") })(setup.principal, setup.lookup);
+      const publish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
+      const sourceRun = await observer(scope, publish);
+      trustSet = { ...trustSet, currentKeyId: "synthetic-next", revokedKeyIds: ["synthetic-old"] };
+      vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_OLD", ""); // Historical signing secret is not used.
+      const accepted = await requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        if (!request.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+        await tx.outboxEvent.update({ where: { id: request.outboxEventId }, data: { availableAt: new Date("1996-01-01T00:00:00Z") } });
+        return request.outboxEventId;
+      });
+      ownedLease = await reliability.claim(`synthetic-ops-rollback-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+      if (!ownedLease || ownedLease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+      const lease = ownedLease;
+      const getSigning = vi.fn(() => ({ keyId: "synthetic-next", privateKeyRef: defineSecretRef("SYNTHETIC_OPS_ROLLBACK_NEXT") }));
+      const resolveRollback = vi.fn(() => ({ ...scope, storage, getTrust: () => trustSet, getSigning }));
+      const execute = createOperationalSnapshotRollbackExecutor({ resolveRollback });
+      for (const altered of [{ ...lease, attempt: lease.attempt + 1 }, { ...lease, workerId: "synthetic-wrong-worker" },
+        { ...lease, jobRunId: "synthetic-missing-job" }, { ...lease, leaseAcquiredAt: "1996-01-01T00:00:02.000Z" }])
+        await expect(execute(altered)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+      expect(resolveRollback).not.toHaveBeenCalled(); expect(gets).toBe(14);
+      await observer(scope, (tx) => new OperationalActionLifecycleRepository(tx).begin(lease), "operations-executor");
+      await expect(observer(scope, (tx) => tx.operationalActionRequest.update({ where: { id: accepted.requestId }, data: {
+        status: "SUCCEEDED", finishedAt: new Date(), result: { action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+          sourceDeliveryRunId: sourceRun.deliveryRunId, deliveryRunId: "missing-run", publishSequence: stage.publishSequence + 1, manifestSha256: "a".repeat(64) },
+      } }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+      putHook = async () => {
+        if (mode === "takeover") { now = new Date("1996-01-01T00:06:00Z");
+          ownedLease = await reliability.claim("synthetic-rollback-takeover", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+          expect(ownedLease?.attempt).toBe(2); }
+        if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+        if (mode === "trust") trustSet = { ...trustSet, revokedKeyIds: [...trustSet.revokedKeyIds, "synthetic-next"] };
+      };
+      if (mode === "success") await expect(execute(lease, controller.signal)).resolves.toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourceDeliveryRunId: sourceRun.deliveryRunId });
+      else await expect(execute(lease, controller.signal)).rejects.toThrow({ "late-failure": "SYNTHETIC_AFTER_ROLLBACK_SUCCESS", "late-cancel": "OPERATIONS_CONTROL_EXECUTION_CANCELLED",
+        takeover: "OUTBOX_OPERATION_LEASE_LOST", project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED", trust: "SNAPSHOT_ARTIFACT_REVOKED_KEY_ID" }[mode]);
+      await observer(scope, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe(mode === "success" ? "SUCCEEDED" : "RUNNING");
+        expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 2 : 1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: scope })).publishSequence).toBe(stage.publishSequence + (mode === "success" ? 1 : 0));
+        expect(await tx.snapshotRollbackBinding.findMany({ where: scope })).toEqual([]);
+        expect(await tx.snapshotBuildInputPart.findMany({ where: scope })).toEqual([]);
+      }, "operations-executor");
+      succeed.mockRestore(); trustSet.revokedKeyIds = ["synthetic-old"];
+      if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "ACTIVE" } }));
+      if (!ownedLease) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      const result = await execute(ownedLease);
+      expect(result).toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+        sourceDeliveryRunId: sourceRun.deliveryRunId, publishSequence: stage.publishSequence + 1 });
+      await observer(scope, async (tx) => {
+        const run = await tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: stage.publishSequence + 1 } });
+        const intents = await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC,
+          payload: { path: ["projectId"], equals: scope.projectId } } });
+        expect(intents.filter((intent) => (intent.payload as { publishSequence: number }).publishSequence === run.publishSequence)
+          .map((intent) => intent.payload)).toEqual([{ schemaVersion: 1, ...scope, deliveryRunId: run.id, publishSequence: run.publishSequence }]);
+      });
+      expect(getSigning).toHaveBeenCalledTimes(1);
+      const consumerToken = `synthetic-rollback-consumer-${randomUUID()}`;
+      await runInPrincipalDatabaseTransaction(admin, (tx) => createSnapshotAckService({ repository: new PrismaSnapshotDeliveryRepository(tx), now: () => new Date() })
+        .initializeCredential({ ...scope, token: consumerToken }));
+      const pulled = await createSnapshotConsumerReadServer({ resolveStorage: () => storage, resolveTrust: () => trustSet })
+        .current(scope, `Bearer ${consumerToken}`);
+      expect(pulled).toMatchObject({ projectId: scope.projectId, publishSequence: stage.publishSequence + 1 });
+      const ioBefore = { puts, gets, resolves: resolveRollback.mock.calls.length };
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+      trustSet = { ...trustSet, revokedKeyIds: [...trustSet.revokedKeyIds, "synthetic-next"] }; resolveRollback.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
+      expect(await execute(ownedLease)).toEqual(result);
+      expect({ puts, gets, resolves: resolveRollback.mock.calls.length }).toEqual(ioBefore);
+      await reliability.complete(ownedLease); ownedLease = null;
+    } finally {
+      if (ownedLease) await reliability.complete(ownedLease);
+      succeed.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs();
+    }
+  }, 60_000);
+  it.each(["revoked", "noncurrent", "missing", "private", "invalid", "wrong", "unapproved", "foreign", "cancelled", "manifest-corrupt", "file-corrupt", "run-mismatch"])("approved rollback archival source: %s", async (mode) => {
+    const setup = await fixture(true); const { scope } = setup;
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_ARCHIVE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const trustSet = { currentKeyId: "synthetic-archive-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-archive-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0;
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof HeadObjectCommand) return { ContentLength: 100, ContentType: "image/jpeg", LastModified: new Date(0) } as never;
+      if (command instanceof PutObjectCommand) { puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array)); return {} as never; }
+      if (command instanceof GetObjectCommand) { gets++; const body = objects.get(command.input.Key!); if (!body) throw new Error("SYNTHETIC_OBJECT_MISSING");
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } as never; }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-archive", client });
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-archive-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_ARCHIVE_KEY") })(setup.principal, setup.lookup);
+      const binding = await observer(scope, (tx) => tx.snapshotPublicationBinding.findUniqueOrThrow({ where: {
+        organizationId_projectId_buildInputId: { ...scope, buildInputId: stage.buildInputId } } }));
+      if (mode !== "unapproved") {
+        const finish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
+        const run = await observer(scope, finish);
+        if (mode === "run-mismatch") {
+          const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-archive-run", correlationId: randomUUID() };
+          await runInPrincipalDatabaseTransaction(admin, (tx) => tx.deliveryRun.update({ where: { id: run.deliveryRunId },
+            data: { manifestKey: createProjectSnapshotKey(setup.foreignId, run.manifestSha256) } }));
+        }
+      }
+      expect(puts).toBe(14); gets = 0;
+      if (mode === "revoked") trustSet.revokedKeyIds.push("synthetic-archive-key");
+      if (mode === "noncurrent") trustSet.currentKeyId = "synthetic-new-key";
+      if (mode === "missing") delete (trustSet.publicKeys as Record<string, string>)["synthetic-archive-key"];
+      if (mode === "private") trustSet.publicKeys["synthetic-archive-key"] = keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+      if (mode === "invalid") trustSet.publicKeys["synthetic-archive-key"] = "-----BEGIN PUBLIC KEY-----\nsynthetic-invalid\n-----END PUBLIC KEY-----";
+      if (mode === "wrong") trustSet.publicKeys["synthetic-archive-key"] = generateKeyPairSync("ed25519").publicKey.export({ format: "pem", type: "spki" }).toString();
+      if (mode === "manifest-corrupt") objects.get(createProjectSnapshotKey(scope.projectId, stage.manifestSha256))![0] ^= 1;
+      if (mode === "file-corrupt") {
+        const file = snapshotManifestV1Schema.parse(JSON.parse(binding.manifestCanonical)).files[0]!;
+        objects.get(createProjectSnapshotKey(scope.projectId, file.sha256))![0] ^= 1;
+      }
+      const before = structuredClone(trustSet); const getTrust = vi.fn(() => trustSet);
+      const read = createApprovedSnapshotRollbackSourceReader({ ...scope, storage, getTrust });
+      const controller = new AbortController(); if (mode === "cancelled") controller.abort();
+      const principal = mode === "foreign" ? createProjectJobPrincipal({ ...scope, projectId: setup.foreignId, jobName: "snapshot-input" }) : setup.principal;
+      const result = read(principal, { sourcePublishSequence: stage.publishSequence }, controller.signal);
+      const error = mode === "unapproved" || mode === "run-mismatch" ? "SNAPSHOT_ROLLBACK_SOURCE_NOT_APPROVED"
+        : mode === "foreign" ? "SNAPSHOT_INPUT_ACCESS_DENIED" : mode === "cancelled" ? "SNAPSHOT_PUBLICATION_CANCELLED"
+        : mode === "missing" || mode === "private" || mode === "invalid" ? "SNAPSHOT_ROLLBACK_ARCHIVE_KEY_REQUIRED"
+        : mode === "wrong" ? "SNAPSHOT_ARTIFACT_INVALID_SIGNATURE"
+        : mode === "manifest-corrupt" || mode === "file-corrupt" ? "OBJECT_STORAGE_READ_HASH_MISMATCH" : null;
+      if (error) {
+        await expect(result).rejects.toThrow(error);
+        if (["unapproved", "run-mismatch", "foreign", "cancelled"].includes(mode)) expect(getTrust).not.toHaveBeenCalled();
+        if (["unapproved", "run-mismatch", "foreign", "cancelled", "missing", "private", "invalid"].includes(mode)) expect(gets).toBe(0);
+        if (mode === "wrong" || mode === "manifest-corrupt") expect(gets).toBe(1);
+      } else {
+        const approved = await result;
+        expect(approved.source).toMatchObject({ rootBuildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash, manifestSha256: stage.manifestSha256 });
+        expect(approved.composition.manifest).not.toHaveProperty("signature");
+        expect(approved.composition.manifest.publishSequence).toBe(stage.publishSequence);
+        for (const file of approved.composition.files) expect(Buffer.from(file.body).equals(
+          objects.get(createProjectSnapshotKey(scope.projectId, file.manifest.sha256))!)).toBe(true);
+        expect(gets).toBe(14); expect(approved.anchors.rollbackAgentContacts).toHaveLength(1);
+        const live = snapshotManifestV1Schema.parse(JSON.parse(binding.manifestCanonical));
+        expect(verifySnapshotSignatureCandidate({ manifest: live, trustSet, lastGood: null })).toMatchObject({ accepted: false,
+          reason: mode === "revoked" ? "REVOKED_KEY_ID" : "UNKNOWN_KEY_ID" });
+      }
+      expect(trustSet).toEqual(before); expect(puts).toBe(14);
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it.each(["takeover", "identity", "collision", "concurrent", "content", "canonical", "late-failure", "scope", "overflow", "prior-rollback",
+    "server-stage", "server-recovery", "server-revoked", "server-project", "server-cancel", "server-keyblocked", "server-mutation",
+    "server-latefinal", "server-finaltrust", "server-takeover", "server-newer", "server-stale",
+    "server-race-cancel", "server-race-put", "server-race-lease-lost", "server-put-settlement"])("durable request-bound rollback identity: %s", async (mode) => {
+    const setup = await fixture(); const { scope } = setup;
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-rollback-identity", correlationId: randomUUID() };
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_ROLLBACK_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const trustSet = { currentKeyId: "synthetic-rollback-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-rollback-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let putHook: (() => Promise<void>) | null = null;
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof PutObjectCommand) { puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+        if (putHook) await putHook(); return {} as never; }
+      if (command instanceof GetObjectCommand) { const body = objects.get(command.input.Key!); if (!body) throw new Error("SYNTHETIC_OBJECT_MISSING");
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } as never; }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-rollback", client });
+    let now = new Date("1996-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    let activeLease: Awaited<ReturnType<typeof reliability.claim>> = null;
+    const ownedLeases = new Map<string, NonNullable<Awaited<ReturnType<typeof reliability.claim>>>>();
+    const accept = async (sequence: number) => {
+      const accepted = await requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: sequence,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        await tx.outboxEvent.update({ where: { id: request.outboxEventId! }, data: { availableAt: new Date("1996-01-01T00:00:00Z") } });
+      });
+      const claimed = await reliability.claim(`synthetic-rollback-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+      if (!claimed || (claimed.payload as { requestId: string }).requestId !== accepted.requestId) throw new Error("SYNTHETIC_ROLLBACK_CLAIM_INVALID");
+      activeLease = claimed;
+      ownedLeases.set(claimed.outboxEventId, claimed);
+      await observer(scope, async (tx) => {
+        await lockSnapshotPublication(tx, scope); await new PrismaSnapshotInputRepository(tx).lockProject(scope.organizationId, scope.projectId);
+        await new OperationalActionLifecycleRepository(tx).begin(claimed);
+      }, "operations-executor");
+      const lease: SnapshotRollbackLease = { ...scope, requestId: accepted.requestId, sourcePublishSequence: sequence,
+        jobRunId: claimed.jobRunId, attempt: claimed.attempt, workerId: claimed.workerId, leaseAcquiredAt: claimed.leaseAcquiredAt };
+      return lease;
+    };
+    const cut = <T>(execute: (repo: PrismaSnapshotRollbackRepository, tx: DatabaseTransaction) => Promise<T>) =>
+      observer(scope, (tx) => execute(new PrismaSnapshotRollbackRepository(tx), tx));
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-rollback-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") })(setup.principal, setup.lookup);
+      const sourceManifest = await observer(scope, async (tx) => snapshotManifestV1Schema.parse(JSON.parse((await tx.snapshotPublicationBinding.findUniqueOrThrow({
+        where: { organizationId_projectId_buildInputId: { ...scope, buildInputId: stage.buildInputId } } })).manifestCanonical)));
+      const lease = await accept(stage.publishSequence);
+      // Completed signed staging alone is NOT approval to roll back.
+      await expect(cut((repo) => repo.reserve(lease))).rejects.toThrow("SNAPSHOT_ROLLBACK_SOURCE_NOT_APPROVED");
+      const publishSource = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
+      const sourceRun = await observer(scope, publishSource);
+      expect(puts).toBe(14);
+      if (mode === "scope") {
+        for (const projects of ["*", [], [scope.projectId, setup.foreignId], [setup.foreignId]] as const) {
+          await expect(observer(scope, (tx) => new PrismaSnapshotRollbackRepository(tx).reserve(lease), "snapshot-publication", projects))
+            .rejects.toThrow("SNAPSHOT_ROLLBACK_ACCESS_DENIED");
+        }
+      }
+      if (mode === "overflow") {
+        await observer(scope, (tx) => tx.projectSnapshotSequence.update({ where: { organizationId_projectId: scope }, data: { lastReservedSequence: 2_147_483_647 } }), "snapshot-input");
+        await expect(cut((repo) => repo.reserve(lease))).rejects.toThrow("SNAPSHOT_SEQUENCE_EXHAUSTED");
+        expect(await cut((_repo, tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(0); return;
+      }
+      if (mode === "late-failure") {
+        await expect(cut(async (repo) => { await repo.reserve(lease); throw new Error("SYNTHETIC_AFTER_RESERVE"); })).rejects.toThrow("SYNTHETIC_AFTER_RESERVE");
+        expect(await cut((_repo, tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(0);
+      }
+      let concurrentCaptureSequence: number | null = null;
+      const concurrent = { capture: null as ReturnType<typeof captureSnapshotInput> | null };
+      const reservation = mode === "concurrent" ? await cut(async (repo, tx) => {
+        const reserved = await repo.reserve(lease);
+        concurrent.capture = captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-concurrent-rollback-capture", schemaMinor: 0 });
+        const deadline = Date.now() + 1500; let waiting = false;
+        while (Date.now() < deadline) {
+          const blocked = await tx.$queryRaw<{ pid: number }[]>(Prisma.sql`
+            SELECT w.pid FROM pg_locks w JOIN pg_locks owner ON w.locktype=owner.locktype AND w.database=owner.database
+              AND w.classid=owner.classid AND w.objid=owner.objid AND w.objsubid=owner.objsubid
+            WHERE owner.pid=pg_backend_pid() AND owner.locktype='advisory' AND owner.granted AND NOT w.granted`);
+          if (blocked.length) { waiting = true; break; } await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(waiting).toBe(true); return reserved;
+      }) : await cut((repo) => repo.reserve(lease));
+      if (concurrent.capture) concurrentCaptureSequence = (await concurrent.capture).publishSequence;
+      expect(reservation).toMatchObject({ sourceDeliveryRunId: sourceRun.deliveryRunId, sourcePublishSequence: sourceRun.publishSequence,
+        rootBuildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash });
+      if (mode === "concurrent") expect([reservation.publishSequence, concurrentCaptureSequence].sort()).toEqual([sourceRun.publishSequence + 1, sourceRun.publishSequence + 2]);
+      else expect(reservation.publishSequence).toBe(sourceRun.publishSequence + 1);
+      expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation);
+      if (mode.startsWith("server-")) {
+        const nextKey = generateKeyPairSync("ed25519");
+        vi.stubEnv("SYNTHETIC_ROLLBACK_NEXT_KEY", nextKey.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+        let liveTrust: SnapshotTrustSet = { ...trustSet, currentKeyId: "synthetic-next-key", revokedKeyIds: ["synthetic-rollback-key"],
+          publicKeys: { ...trustSet.publicKeys, "synthetic-next-key": nextKey.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+        const getTrust = vi.fn(() => liveTrust);
+        const getSigning = vi.fn(() => ({ keyId: "synthetic-next-key", privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_NEXT_KEY") }));
+        const controller = new AbortController();
+        const server = createSnapshotRollbackStagingServer({ ...scope, storage, getTrust, getSigning });
+        if (mode === "server-keyblocked") {
+          liveTrust = { ...liveTrust, revokedKeyIds: [...liveTrust.revokedKeyIds, "synthetic-next-key"] };
+          vi.stubEnv("SYNTHETIC_ROLLBACK_NEXT_KEY", "");
+          await expect(server(setup.principal, lease)).rejects.toThrow("SNAPSHOT_BUILD_KEY_UNTRUSTED");
+          expect(puts).toBe(14); expect(await cut((_repo, tx) => tx.snapshotRollbackBinding.count({ where: scope }))).toBe(0); return;
+        }
+        const replaceLease = async () => {
+          now = new Date("1996-01-01T00:06:00Z");
+          const replacement = await reliability.claim(`synthetic-server-takeover-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+          if (!replacement || (replacement.payload as { requestId: string }).requestId !== lease.requestId) throw new Error("SYNTHETIC_TAKEOVER_INVALID");
+          ownedLeases.set(replacement.outboxEventId, replacement); activeLease = replacement;
+          await observer(scope, async (tx) => { await lockSnapshotPublication(tx, scope);
+            await new PrismaSnapshotInputRepository(tx).lockProject(scope.organizationId, scope.projectId);
+            await new OperationalActionLifecycleRepository(tx).begin(replacement); }, "operations-executor");
+          Object.assign(lease, { jobRunId: replacement.jobRunId, attempt: replacement.attempt, workerId: replacement.workerId, leaseAcquiredAt: replacement.leaseAcquiredAt });
+        };
+        if (mode === "server-put-settlement") {
+          let entered!: () => void; let release!: () => void;
+          const observed = new Promise<void>((resolve) => { entered = resolve; });
+          const held = new Promise<void>((resolve) => { release = resolve; });
+          putHook = async () => { putHook = null; entered(); await held; };
+          let settled = false;
+          const result = server(setup.principal, lease, controller.signal).then((value) => { settled = true; return value; },
+            (error: unknown) => { settled = true; return error; });
+          await observed;
+          try {
+            controller.abort(); await new Promise((resolve) => setTimeout(resolve, 20)); expect(settled).toBe(false);
+            const pending = await cut((_repo, tx) => tx.snapshotRollbackBinding.findUniqueOrThrow({ where: { organizationId_projectId_requestId: { ...scope, requestId: lease.requestId } } }));
+            expect(pending.stagedAt).toBeNull();
+            expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+          } finally { release(); await result; } // Never detach an owned PUT on assertion failure.
+          expect(await result).toEqual(new Error("SNAPSHOT_PUBLICATION_CANCELLED")); expect(puts).toBe(15); return;
+        }
+        if (mode.startsWith("server-race-")) {
+          const nested = async () => { const stage = await server(setup.principal, lease);
+            return cut((_repo, tx) => stage.finish(tx)); };
+          if (mode === "server-race-put") putHook = async () => {
+            putHook = null; await nested(); throw new Error("SYNTHETIC_FAILED_CONCURRENT_PUT");
+          };
+          else cuts.afterInitialRollbackReplay = async () => {
+            await nested();
+            if (mode === "server-race-lease-lost") await replaceLease();
+            controller.abort();
+          };
+          const racePrincipal = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input", correlationId: "synthetic-rollback-replay-race" });
+          const attempt = server(racePrincipal, lease, controller.signal);
+          if (mode === "server-race-lease-lost") await expect(attempt).rejects.toThrow("SNAPSHOT_PUBLICATION_CANCELLED");
+          else {
+            const recovered = await attempt;
+            expect((await cut((_repo, tx) => recovered.finish(tx))).publishSequence).toBe(reservation.publishSequence);
+            expect(getSigning).toHaveBeenCalledTimes(1);
+          }
+          expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(2); return;
+        }
+        putHook = async () => {
+          putHook = null;
+          if (["server-recovery", "server-revoked"].includes(mode)) throw new Error("SYNTHETIC_AFTER_MANIFEST_PUT");
+          if (mode === "server-project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+          if (mode === "server-cancel") controller.abort();
+          if (mode === "server-takeover") await replaceLease();
+        };
+        const expected = mode === "server-project" ? "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED"
+          : mode === "server-cancel" ? "SNAPSHOT_PUBLICATION_CANCELLED" : mode === "server-takeover" ? "OUTBOX_OPERATION_LEASE_LOST"
+          : ["server-recovery", "server-revoked"].includes(mode) ? "SYNTHETIC_AFTER_MANIFEST_PUT" : null;
+        let staged: Awaited<ReturnType<typeof server>>;
+        if (expected) {
+          await expect(server(setup.principal, lease, controller.signal)).rejects.toThrow(expected);
+          const pending = await cut((_repo, tx) => tx.snapshotRollbackBinding.findUniqueOrThrow({ where: { organizationId_projectId_requestId: { ...scope, requestId: lease.requestId } } }));
+          expect(pending.stagedAt).toBeNull(); expect(pending.publishSequence).toBe(reservation.publishSequence);
+          expect(puts).toBe(15);
+          expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+          if (["server-project", "server-cancel"].includes(mode)) return;
+          getSigning.mockImplementation(() => { throw new Error("SYNTHETIC_NO_RESIGN"); });
+          if (mode === "server-recovery") liveTrust = { ...liveTrust, currentKeyId: "synthetic-later-key", nextKeyId: "synthetic-next-key",
+            publicKeys: { ...liveTrust.publicKeys, "synthetic-later-key": nextKey.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+          if (mode === "server-revoked") {
+            liveTrust = { ...liveTrust, revokedKeyIds: [...liveTrust.revokedKeyIds, "synthetic-next-key"] };
+            const io = send.mock.calls.length;
+            await expect(server(setup.principal, lease)).rejects.toThrow("SNAPSHOT_ARTIFACT_REVOKED_KEY_ID");
+            expect(send.mock.calls).toHaveLength(io); expect(puts).toBe(15); return;
+          }
+          staged = await server(setup.principal, lease);
+          expect(staged.binding.manifestCanonical).toBe(pending.manifestCanonical);
+          expect(staged.binding.manifestSha256).toBe(pending.manifestSha256);
+          expect(puts).toBe(16); expect(getSigning).toHaveBeenCalledTimes(1);
+        } else staged = await server(setup.principal, lease, controller.signal);
+        expect(staged.binding.stagedAt).toBeInstanceOf(Date);
+        expect(staged.reservation).toEqual(reservation);
+        const actualManifest = snapshotManifestV1Schema.parse(JSON.parse(staged.binding.manifestCanonical));
+        expect(actualManifest.files).toEqual(sourceManifest.files);
+        expect(actualManifest.keyId).toBe("synthetic-next-key");
+        expect(verifySnapshotSignatureCandidate({ manifest: actualManifest, trustSet: liveTrust, lastGood: null }).accepted).toBe(true);
+        expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+        if (mode === "server-finaltrust") {
+          liveTrust = { ...liveTrust, revokedKeyIds: [...liveTrust.revokedKeyIds, "synthetic-next-key"] };
+          await expect(cut((_repo, tx) => staged.finish(tx))).rejects.toThrow("SNAPSHOT_ARTIFACT_REVOKED_KEY_ID"); return;
+        }
+        if (mode === "server-mutation") { staged.reservation.publishSequence = 999; staged.binding.manifestSha256 = "f".repeat(64); }
+        if (mode === "server-latefinal") {
+          await expect(cut(async (_repo, tx) => { await staged.finish(tx); throw new Error("SYNTHETIC_AFTER_ROLLBACK_RUN"); })).rejects.toThrow("SYNTHETIC_AFTER_ROLLBACK_RUN");
+          expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+        }
+        const publishNewer = async () => {
+          const captured = await captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-newer-than-rollback", schemaMinor: 0 });
+          const newerStage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet: liveTrust, keyId: "synthetic-next-key",
+            privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_NEXT_KEY") })(setup.principal,
+            { idempotencyKeyHash: captured.idempotencyKeyHash, requestHash: captured.requestHash });
+          const finish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => liveTrust })(setup.principal, { buildInputId: newerStage.buildInputId });
+          return observer(scope, finish);
+        };
+        if (mode === "server-stale") {
+          const newer = await publishNewer();
+          await expect(cut((_repo, tx) => staged.finish(tx))).rejects.toThrow("SNAPSHOT_ARTIFACT_STALE_PUBLISH_SEQUENCE");
+          expect((await cut((_repo, tx) => new PrismaSnapshotDeliveryRepository(tx).getCurrentManifest(scope.organizationId, scope.projectId)))?.publishSequence).toBe(newer.publishSequence); return;
+        }
+        const run = await cut((_repo, tx) => staged.finish(tx));
+        expect(run.publishSequence).toBe(reservation.publishSequence); expect(run.manifestSha256).toBe(calculateObjectSha256(new TextEncoder().encode(canonicalJson(actualManifest as CanonicalJsonValue))));
+        const newer = mode === "server-newer" ? await publishNewer() : run;
+        getTrust.mockImplementation(() => { throw new Error("SYNTHETIC_NO_REPLAY_CONFIG"); });
+        getSigning.mockImplementation(() => { throw new Error("SYNTHETIC_NO_REPLAY_SIGNING"); });
+        await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+        const io = send.mock.calls.length;
+        const replay = await server(setup.principal, lease); expect(await cut((_repo, tx) => replay.finish(tx))).toEqual(run);
+        expect(send.mock.calls).toHaveLength(io);
+        expect((await cut((_repo, tx) => new PrismaSnapshotDeliveryRepository(tx).getCurrentManifest(scope.organizationId, scope.projectId)))?.publishSequence).toBe(newer.publishSequence);
+        await observer(scope, async (tx) => { expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: lease.requestId } })).status).toBe("RUNNING"); }, "operations-executor");
+        return;
+      }
+      if (mode === "identity") {
+        const { createdAt: _created, reservationTransactionId: _txid, ...data } = reservation; void _created; void _txid;
+        for (const change of [{ sourceDeliveryRunId: "synthetic-wrong-run" }, { rootBuildInputId: "synthetic-wrong-root" },
+          { inputHash: "f".repeat(64) }, { publishSequence: sourceRun.publishSequence }]) {
+          await expect(cut((_repo, tx) => tx.snapshotRollbackReservation.create({ data: { ...data, ...change } })))
+            .rejects.toThrow("SNAPSHOT_ROLLBACK_RESERVATION_INVALID");
+        }
+        for (const change of [{ initialLeaseJobRunId: "synthetic-wrong-job" }, { initialLeaseAttempt: data.initialLeaseAttempt + 1 },
+          { initialLeaseWorkerId: "synthetic-wrong-worker" }, { initialLeaseAcquiredAt: new Date("1996-01-01T00:00:02Z") }]) {
+          await expect(cut((_repo, tx) => tx.snapshotRollbackReservation.create({ data: { ...data, ...change } })))
+            .rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+        }
+      }
+      if (mode === "takeover") {
+        const stale = { ...lease }; now = new Date("1996-01-01T00:06:00Z");
+        const replacement = await reliability.claim(`synthetic-takeover-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+        if (!replacement || (replacement.payload as { requestId: string }).requestId !== lease.requestId) throw new Error("SYNTHETIC_TAKEOVER_INVALID");
+        activeLease = replacement;
+        ownedLeases.set(replacement.outboxEventId, replacement);
+        await observer(scope, async (tx) => {
+          await lockSnapshotPublication(tx, scope); await new PrismaSnapshotInputRepository(tx).lockProject(scope.organizationId, scope.projectId);
+          await new OperationalActionLifecycleRepository(tx).begin(replacement);
+        }, "operations-executor");
+        Object.assign(lease, { jobRunId: replacement.jobRunId, attempt: replacement.attempt, workerId: replacement.workerId, leaseAcquiredAt: replacement.leaseAcquiredAt });
+        await expect(cut((repo) => repo.reserve(stale))).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+        expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation);
+        expect(reservation.initialLeaseAttempt).toBe(1); expect(lease.attempt).toBe(2);
+      }
+      if (mode === "collision") {
+        // Forge a normal capture at the last reserved rollback counter without
+        // advancing it: the new inverse SQL guard rejects the collision.
+        await expect(observer(scope, (tx) => tx.snapshotBuildInput.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          idempotencyKeyHash: "d".repeat(64), requestHash: "e".repeat(64), inputSchemaVersion: 1, projectorVersion: "db-v1", schemaMinor: 0,
+          publishSequence: reservation.publishSequence, projectStateRevision: setup.receipt.projectStateRevision, catalogRevision: setup.receipt.catalogRevision,
+          inputHash: "f".repeat(64), capturedAt: new Date() } }), "snapshot-input")).rejects.toThrow("SNAPSHOT_ROLLBACK_SEQUENCE_COLLISION");
+        const newer = await captureSnapshotInput(setup.principal, { ...scope, idempotencyKey: "synthetic-after-rollback-reserve", schemaMinor: 0 });
+        expect(newer.publishSequence).toBe(reservation.publishSequence + 1);
+        expect(await cut((repo) => repo.reserve(lease))).toEqual(reservation); // Never reallocate.
+      }
+      const { verified, composition: source } = await readStagedSnapshotComposition({ projectId: scope.projectId, storage, trustSet, lastGood: null,
+        binding: { projectId: scope.projectId, publishSequence: sourceRun.publishSequence, keyId: sourceManifest.keyId,
+          manifestSha256: stage.manifestSha256, manifestCanonical: canonicalJson(sourceManifest as CanonicalJsonValue) } });
+      for (const file of source.files) expect(Buffer.from(file.body).equals(
+        objects.get(createProjectSnapshotKey(scope.projectId, file.manifest.sha256))!)).toBe(true);
+      const composition = composeRollbackSnapshot({ source, currentPublishSequence: reservation.publishSequence - 1,
+        generatedAt: reservation.createdAt.toISOString(), publishedAt: reservation.createdAt.toISOString(), keyId: "synthetic-rollback-key" });
+      expect(composition.files.map((row) => Buffer.from(row.body))).toEqual(source.files.map((row) => Buffer.from(row.body)));
+      const manifest = await signSnapshotManifest(composition, createEd25519SecretRefSigner({ keyId: "synthetic-rollback-key", privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") }));
+      expect(verifySnapshotSignatureCandidate({ manifest, trustSet, lastGood: { projectId: scope.projectId, schemaMajor: 1, publishSequence: sourceRun.publishSequence } }).accepted).toBe(true);
+      if (mode === "content") await expect(cut((repo) => repo.bind(lease, { ...manifest, catalogRevision: "f".repeat(64) })))
+        .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_INVALID");
+      const binding = await cut((repo) => repo.bind(lease, manifest));
+      expect(await cut((repo) => repo.bind(lease, manifest))).toEqual(binding);
+      if (mode === "canonical") {
+        const altered = JSON.stringify(manifest, null, 2);
+        const otherLease = await accept(sourceRun.publishSequence);
+        const otherReservation = await cut((repo) => repo.reserve(otherLease));
+        const other = { ...manifest, publishSequence: otherReservation.publishSequence,
+          generatedAt: otherReservation.createdAt.toISOString(), publishedAt: otherReservation.createdAt.toISOString() };
+        const raw = JSON.stringify(other, null, 2);
+        await expect(cut((_repo, tx) => tx.snapshotRollbackBinding.create({ data: { ...scope, requestId: otherLease.requestId,
+          publishSequence: otherReservation.publishSequence, keyId: other.keyId, manifestCanonical: raw,
+          manifestSha256: calculateObjectSha256(new TextEncoder().encode(raw)), leaseJobRunId: otherLease.jobRunId,
+          leaseAttempt: otherLease.attempt, leaseWorkerId: otherLease.workerId, leaseAcquiredAt: new Date(otherLease.leaseAcquiredAt) } })))
+          .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_INVALID");
+        expect(altered).not.toBe(binding.manifestCanonical);
+        if (activeLease) { await reliability.complete(activeLease); ownedLeases.delete(activeLease.outboxEventId); }
+        activeLease = null;
+      }
+      // Durable identity alone has no rollback PUT/current/run/result effect.
+      expect(puts).toBe(14);
+      expect(await cut((_repo, tx) => tx.deliveryRun.count({ where: scope }))).toBe(1);
+      await observer(scope, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: lease.requestId } })).status).toBe("RUNNING");
+      }, "operations-executor");
+      await expect(cut((repo) => repo.markStaged({ ...lease, attempt: lease.attempt + 1 }))).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+      await storage.put({ key: createProjectSnapshotKey(scope.projectId, binding.manifestSha256), body: new TextEncoder().encode(binding.manifestCanonical), contentType: "application/json", sha256: binding.manifestSha256 });
+      const captured = await loadSelectedSnapshotCaptureServer(setup.principal, { buildInputId: stage.buildInputId });
+      const anchors = prepareSelectedSnapshotAdmission(captured.receipt, verified);
+      const staged = await cut(async (repo, tx) => { await repo.fence(lease); await admitHistoricalSnapshotRollback(tx, scope, anchors); return repo.markStaged(lease); });
+      expect(staged.stagedAt).toBeInstanceOf(Date); expect(puts).toBe(15);
+      expect(await cut((repo) => repo.markStaged(lease))).toEqual(staged);
+      await expect(cut((_repo, tx) => tx.snapshotRollbackBinding.update({ where: { organizationId_projectId_requestId: { ...scope, requestId: lease.requestId } }, data: { stagedAt: null } })))
+        .rejects.toThrow("SNAPSHOT_ROLLBACK_BINDING_IMMUTABLE");
+      await expect(cut((_repo, tx) => tx.$executeRaw(Prisma.sql`UPDATE "SnapshotRollbackReservation" SET "publishSequence"="publishSequence"+1 WHERE "requestId"=${lease.requestId}`)))
+        .rejects.toThrow(); // Worker has no reservation UPDATE grant.
+      if (mode === "prior-rollback") {
+        const rollbackRun = await cut((_repo, tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({ ...scope,
+          publishSequence: reservation.publishSequence, manifestSha256: binding.manifestSha256, manifestKey: createProjectSnapshotKey(scope.projectId, binding.manifestSha256), publishedAt: reservation.createdAt }));
+        trustSet.revokedKeyIds.push("synthetic-rollback-key");
+        const prior = await createApprovedSnapshotRollbackSourceReader({ ...scope, storage, getTrust: () => trustSet })(setup.principal,
+          { sourcePublishSequence: rollbackRun.publishSequence });
+        expect(prior.source.rootBuildInputId).toBe(setup.receipt.id);
+        expect(prior.composition.manifest.publishSequence).toBe(rollbackRun.publishSequence);
+        expect(prior.composition.manifest.generatedAt).toBe(reservation.createdAt.toISOString());
+        expect(prior.composition.manifest.publishSequence).not.toBe(setup.receipt.publishSequence);
+        expect(prior.source.manifestCanonical).toBe(binding.manifestCanonical);
+        const followup = await accept(rollbackRun.publishSequence);
+        const next = await cut((repo) => repo.reserve(followup));
+        expect(next).toMatchObject({ sourceDeliveryRunId: rollbackRun.deliveryRunId, rootBuildInputId: setup.receipt.id,
+          inputHash: setup.receipt.inputHash, sourcePublishSequence: reservation.publishSequence, publishSequence: reservation.publishSequence + 1 });
+      }
+    } finally {
+      // Fixture queue cleanup only, NOT operational success or executor proof.
+      for (const lease of ownedLeases.values()) await reliability.complete(lease);
+      cuts.afterInitialRollbackReplay = null;
+      send.mockRestore(); client.destroy(); vi.unstubAllEnvs();
+    }
+  }, 60_000);
+  it.each(["success", "late-failure", "late-cancel", "takeover", "project", "trust"])("atomic operational selected PUBLISH: %s", async (mode) => {
+    const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-publish", correlationId: randomUUID() };
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let takeoverDone = false;
+    let now = new Date("1996-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    let replacement: Awaited<ReturnType<typeof reliability.claim>> = null;
+    const trustSet = { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof PutObjectCommand) {
+        puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array)); return { ETag: "synthetic-ops" } as never;
+      }
+      if (command instanceof GetObjectCommand) {
+        gets++; const bytes = objects.get(command.input.Key!); if (!bytes) throw new Error("SYNTHETIC_MISSING_OBJECT");
+        if (!takeoverDone && mode === "takeover") {
+          takeoverDone = true; now = new Date("1996-01-01T00:06:00Z");
+          replacement = await reliability.claim("synthetic-publish-takeover", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH]);
+          expect(replacement?.attempt).toBe(2);
+        }
+        return { ContentLength: bytes.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield bytes; } } } as never;
+      }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-ops", client });
+    const actualSucceed = OperationalActionLifecycleRepository.prototype.succeedPublishedSnapshot;
+    const succeed = vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedPublishedSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, lease, result) {
+      const value = await actualSucceed.call(this, lease, result);
+      if (mode === "late-failure") throw new Error("SYNTHETIC_AFTER_SUCCESS_FAILURE");
+      if (mode === "late-cancel") controller.abort();
+      return value;
+    });
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-stage-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY") })(setup.principal, setup.lookup);
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+      const accepted = await requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        if (!request.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+        await tx.outboxEvent.update({ where: { id: request.outboxEventId }, data: { availableAt: new Date("1996-01-01T00:00:00Z") } });
+        return request.outboxEventId;
+      });
+      const lease = await reliability.claim(`synthetic-publish-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH]);
+      if (!lease || lease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+      const resolvePublication = vi.fn(() => ({ ...scope, storage, getTrust: () => trustSet }));
+      const execute = createOperationalSnapshotPublishExecutor({ resolvePublication });
+      if (mode === "success") {
+        for (const altered of [{ ...lease, attempt: lease.attempt + 1 }, { ...lease, workerId: "synthetic-wrong-worker" },
+          { ...lease, jobRunId: "synthetic-missing-job" }, { ...lease, leaseAcquiredAt: "1996-01-01T00:00:02.000Z" }]) {
+          await expect(execute(altered)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+        }
+        expect(resolvePublication).not.toHaveBeenCalled(); expect(gets).toBe(0);
+      }
+      // Direct SQL cannot manufacture success merely from a selected stage.
+      await observer(scope, (tx) => new OperationalActionLifecycleRepository(tx).begin(lease), "operations-executor");
+      await expect(observer(scope, (tx) => tx.operationalActionRequest.update({ where: { id: accepted.requestId }, data: {
+        status: "SUCCEEDED", finishedAt: new Date(), result: { action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId,
+          deliveryRunId: "missing-run", publishSequence: stage.publishSequence, manifestSha256: stage.manifestSha256 },
+      } }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+      if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+      if (mode === "trust") trustSet.revokedKeyIds.push("synthetic-stage-key");
+      const first = execute(lease, controller.signal);
+      if (mode === "success") await expect(first).resolves.toMatchObject({ action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId });
+      else await expect(first).rejects.toThrow({ "late-failure": "SYNTHETIC_AFTER_SUCCESS_FAILURE", "late-cancel": "OPERATIONS_CONTROL_EXECUTION_CANCELLED",
+        takeover: "OUTBOX_OPERATION_LEASE_LOST", project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED", trust: "SNAPSHOT_ARTIFACT_REVOKED_KEY_ID" }[mode]);
+      await observer(scope, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe(mode === "success" ? "SUCCEEDED" : "RUNNING");
+        expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+        expect(await tx.snapshotBuildInputPart.findMany({ where: scope })).toEqual([]);
+        expect(await tx.snapshotPublicationBinding.findMany({ where: scope })).toEqual([]);
+      }, "operations-executor");
+      succeed.mockRestore(); trustSet.revokedKeyIds.length = 0;
+      if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "ACTIVE" } }));
+      const result = mode === "success" ? await execute(lease) : await execute(replacement ?? lease);
+      expect(result).toMatchObject({ action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId, publishSequence: stage.publishSequence, manifestSha256: stage.manifestSha256 });
+      await observer(scope, async (tx) => {
+        const run = await tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: stage.publishSequence } });
+        const intents = await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC,
+          payload: { path: ["projectId"], equals: scope.projectId } } });
+        expect(intents.filter((intent) => (intent.payload as { publishSequence: number }).publishSequence === run.publishSequence)
+          .map((intent) => intent.payload)).toEqual([{ schemaVersion: 1, ...scope, deliveryRunId: run.id, publishSequence: run.publishSequence }]);
+      });
+      let currentSequence = stage.publishSequence;
+      if (mode === "success") {
+        // Actual newer stage/publication: an older operational replay must not move current backwards.
+        const newerCapture = await captureSnapshotInput(setup.principal, { ...scope, schemaMinor: 0, idempotencyKey: "synthetic-ops-publish-newer" });
+        vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+        const newerStage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-stage-key",
+          privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY") })(setup.principal, {
+            idempotencyKeyHash: newerCapture.idempotencyKeyHash, requestHash: newerCapture.requestHash });
+        vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+        const finishNewer = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: newerStage.buildInputId });
+        await observer(scope, finishNewer); currentSequence = newerStage.publishSequence;
+      }
+      const beforeReplayGets = gets; const beforeReplayResolve = resolvePublication.mock.calls.length;
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+      });
+      trustSet.revokedKeyIds.push("synthetic-stage-key"); resolvePublication.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
+      if (!replacement) { now = new Date("1996-01-01T00:06:00Z"); replacement = await reliability.claim("synthetic-publish-replay", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH]); }
+      if (!replacement) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      expect(await execute(replacement)).toEqual(result);
+      expect(gets).toBe(beforeReplayGets); expect(resolvePublication).toHaveBeenCalledTimes(beforeReplayResolve); expect(puts).toBe(mode === "success" ? 28 : 14);
+      await reliability.complete(replacement);
+      await observer(scope, async (tx) => {
+        expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 2 : 1); expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: scope })).publishSequence).toBe(currentSequence);
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).result).toEqual(result);
+      }, "operations-executor");
+    } finally { succeed.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it.each(["success", "trust", "project", "source", "catalog", "media", "freeze", "cancel", "rollback", "wrong-purpose"])(
+    "selected staged publication final cut: %s", async (mode) => {
+      const setup = await fixture(mode === "media"); const { scope } = setup;
+      const controller = new AbortController(); const keys = generateKeyPairSync("ed25519");
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+      const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+      const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let heads = 0;
+      const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+        expect(cuts.active).toBe(0);
+        if (command instanceof HeadObjectCommand) {
+          heads++; return { ContentLength: 100, ContentType: "image/jpeg", LastModified: new Date(0) } as never;
+        }
+        if (command instanceof PutObjectCommand) {
+          puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+          return { ETag: "synthetic-selected" } as never;
+        }
+        if (command instanceof GetObjectCommand) {
+          gets++; const bytes = objects.get(command.input.Key!); if (!bytes) throw new Error("SYNTHETIC_MISSING_OBJECT");
+          return { ContentLength: bytes.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+            Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield bytes; } } } as never;
+        }
+        throw new Error("SYNTHETIC_UNEXPECTED_IO");
+      });
+      const storage = new S3ObjectStorage({ bucket: "synthetic-selected", client });
+      const trustSet = { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [] as string[],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+      const actualPublish = PrismaSnapshotDeliveryRepository.prototype.publishCurrentAndCreateRun;
+      const publish = vi.spyOn(PrismaSnapshotDeliveryRepository.prototype, "publishCurrentAndCreateRun").mockImplementation(async function (this: PrismaSnapshotDeliveryRepository, input) {
+        const run = await actualPublish.call(this, input); if (mode === "rollback") controller.abort(); return run;
+      });
+      try {
+        const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-stage-key",
+          privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY") })(setup.principal, setup.lookup);
+        const lookup = { buildInputId: stage.buildInputId }; const buildHeads = heads;
+        expect(await inspectSelectedSnapshotRunServer(setup.principal, lookup)).toBeNull();
+        vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+        const finish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, lookup, controller.signal);
+        expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+        const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-selected-final", correlationId: randomUUID() };
+        await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          if (mode === "project") await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
+          if (mode === "source") await tx.source.create({ data: { ...scope, sourceKey: "synthetic-selected-stale", name: "Synthetic selected stale",
+            adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+            datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+          if (mode === "catalog") await tx.projectCatalogSubscriptionCity.deleteMany({ where: scope });
+          if (mode === "media") await tx.mediaAsset.update({ where: { id: setup.mediaId! }, data: { rightsBasis: "OWNED", license: null } });
+          if (mode === "freeze") await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        });
+        if (mode === "trust") trustSet.revokedKeyIds.push("synthetic-stage-key");
+        if (mode === "cancel") controller.abort();
+        const pending = observer(scope, finish, mode === "wrong-purpose" ? "operations-executor" : "snapshot-publication");
+        if (mode === "success") {
+          const run = await pending;
+          expect(run).toMatchObject({ publishSequence: stage.publishSequence, manifestSha256: stage.manifestSha256, publishedAt: setup.receipt.capturedAt });
+          // Same prepared closure is config-free on committed replay, including revoked trust and cancellation.
+          trustSet.revokedKeyIds.push("synthetic-stage-key"); controller.abort();
+          expect(await observer(scope, finish)).toEqual(run);
+          expect(await inspectSelectedSnapshotRunServer(setup.principal, lookup)).toEqual(run);
+        } else {
+          const errors: Record<string, string> = { trust: "SNAPSHOT_ARTIFACT_REVOKED_KEY_ID", project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED",
+            source: "SNAPSHOT_PUBLICATION_SOURCE_STALE", catalog: "SNAPSHOT_PUBLICATION_CATALOG_STALE", media: "SNAPSHOT_PUBLICATION_MEDIA_STALE",
+            freeze: "SNAPSHOT_PUBLICATION_JOBS_FROZEN", cancel: "SNAPSHOT_PUBLICATION_CANCELLED", rollback: "SNAPSHOT_PUBLICATION_CANCELLED",
+            "wrong-purpose": "SNAPSHOT_INPUT_ACCESS_DENIED" };
+          await expect(pending).rejects.toThrow(errors[mode]);
+        }
+        await observer(scope, async (tx) => {
+          expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+          expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(mode === "success" ? 1 : 0);
+          expect(await tx.snapshotArtifactStageReceipt.count({ where: scope })).toBe(1);
+          expect(await tx.snapshotPublicationBinding.count({ where: scope })).toBe(1);
+        });
+        expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+        expect(publish).toHaveBeenCalledTimes(mode === "success" || mode === "rollback" ? 1 : 0);
+      } finally { publish.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+    }, 60_000);
+  it("reads actual persisted staged artifacts using public trust only, without reassembly or publication", async () => {
+    const setup = await fixture(true); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let heads = 0;
+    const destroyed = vi.fn(); const wholeBody = vi.fn();
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof HeadObjectCommand) {
+        heads++; return { ContentLength: 100, ContentType: "image/jpeg", LastModified: new Date(0) } as never;
+      }
+      if (command instanceof PutObjectCommand) {
+        puts++; expect(command.input.Body).toBeInstanceOf(Uint8Array);
+        objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+        return { ETag: "synthetic-stage" } as never;
+      }
+      if (command instanceof GetObjectCommand) {
+        gets++; expect(command.input.Key).toMatch(new RegExp(`^snapshots/${setup.scope.projectId}/[a-f0-9]{64}$`, "u"));
+        const bytes = objects.get(command.input.Key!);
+        if (!bytes) throw Object.assign(new Error(), { name: "NoSuchKey" });
+        return { ContentLength: bytes.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy: destroyed, transformToByteArray: wholeBody, async *[Symbol.asyncIterator]() { yield bytes; } } } as never;
+      }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-stage", client });
+    const trustSet = { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [] as string[],
+      publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...setup.scope, storage, keyId: "synthetic-stage-key",
+        privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet })(setup.principal, setup.lookup);
+      expect(puts).toBe(14); const buildHeads = heads;
+      const binding = await observer(setup.scope, (tx) => tx.snapshotPublicationBinding.findUniqueOrThrow({ where: {
+        organizationId_projectId_buildInputId: { ...setup.scope, buildInputId: stage.buildInputId },
+      } }));
+      const selectedLookup = { buildInputId: stage.buildInputId };
+      expect(await inspectSelectedSnapshotStageServer(setup.principal, selectedLookup)).toMatchObject({
+        input: { id: setup.receipt.id, inputHash: setup.receipt.inputHash }, stage, binding, run: null, current: null,
+      });
+      const captured = await loadSelectedSnapshotCaptureServer(setup.principal, selectedLookup);
+      expect(captured.receipt).toEqual(setup.receipt); expect(captured.stage).toEqual(stage); expect(captured.binding).toEqual(binding);
+      await expect(inspectSelectedSnapshotStageServer(setup.principal, { buildInputId: "missing-stage" })).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(setup.principal, { buildInputId: "missing-stage" })).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      const foreign = createProjectJobPrincipal({ ...setup.scope, projectId: setup.foreignId, jobName: "snapshot-input" });
+      await expect(inspectSelectedSnapshotStageServer(foreign, selectedLookup)).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(foreign, selectedLookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      const wrongPurpose = createProjectJobPrincipal({ ...setup.scope, jobName: "operations-executor" });
+      await expect(inspectSelectedSnapshotStageServer(wrongPurpose, selectedLookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      await expect(loadSelectedSnapshotCaptureServer(wrongPurpose, selectedLookup)).rejects.toThrow("SNAPSHOT_INPUT_ACCESS_DENIED");
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.findMany({ where: setup.scope })).toEqual([]);
+        expect(await tx.snapshotBuildInputPart.findMany({ where: setup.scope })).toEqual([]);
+      }, "operations-executor");
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", ""); // Verification has no private signing capability.
+      const selected = { projectId: setup.scope.projectId, storage, trustSet, lastGood: null,
+        binding: { projectId: binding.projectId, publishSequence: binding.publishSequence, keyId: binding.keyId,
+          manifestSha256: binding.manifestSha256, manifestCanonical: binding.manifestCanonical } };
+      const result = await readStagedSnapshotArtifacts(selected);
+      expect(result.manifest.publishSequence).toBe(stage.publishSequence);
+      expect(result.datasets.agents).toHaveLength(1); expect(result.datasets.media).toHaveLength(1);
+      const admission = prepareSelectedSnapshotAdmission(captured.receipt, result);
+      expect(admission.projectAnchors.agents).toHaveLength(1);
+      expect(admission.mediaAnchors.attachments).toHaveLength(1);
+      expect(admission.mediaAnchors.attachments[0]?.asset.id).toBe(setup.mediaId);
+      expect(admission.requiresProjectContact).toBe(false);
+      // Pure preparation negatives alter already decoded values only. These are
+      // attribution tests, not claims that a changed value retains its signature.
+      const alteredSequence = { ...result, manifest: { ...result.manifest, publishSequence: result.manifest.publishSequence + 1 } };
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, alteredSequence)).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        manifest: { ...result.manifest, sourceRevisions: ["uncaptured-revision"] } })).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, agents: [] } })).toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      const decodedAgent = result.datasets.agents[0] as { uid: string; media: readonly unknown[] };
+      const decodedMedia = result.datasets.media[0] as { entityType: string; entityUid: string; media: { ref: string; kind: string; position: number } };
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, agents: [{ ...decodedAgent, fullName: "Changed public Agent" }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, media: [{ ...decodedMedia, entityUid: createUlid() }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, media: [{ ...decodedMedia, media: { ...decodedMedia.media, width: 100 } }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      expect(() => prepareSelectedSnapshotAdmission(captured.receipt, { ...result,
+        datasets: { ...result.datasets, "project/contacts": [{ phone: "Synthetic unbound contact" }] } }))
+        .toThrow("SNAPSHOT_SELECTED_ADMISSION_INVALID");
+      const omittedMedia = { ...result, datasets: { ...result.datasets, media: [], agents: [{ ...decodedAgent, media: [] }] } };
+      expect(prepareSelectedSnapshotAdmission(captured.receipt, omittedMedia).mediaAnchors.attachments).toEqual([]);
+      const originalAdmission = structuredClone(admission);
+      const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-historical-admission", correlationId: randomUUID() };
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.agent.update({ where: { uid: decodedAgent.uid }, data: { fullName: "Synthetic newer public name", version: { increment: 1 } } });
+        await tx.projectCatalogSubscription.update({ where: { organizationId_projectId: setup.scope }, data: { version: { increment: 1 } } });
+      });
+      await observer(setup.scope, async (tx) => {
+        await lockSnapshotPublication(tx, setup.scope);
+        await expect(createSnapshotPublicationProjectReader(tx)(setup.scope, admission.projectAnchors))
+          .rejects.toThrow("SNAPSHOT_PUBLICATION_PROJECT_STALE");
+        await admitHistoricalSnapshotRollback(tx, setup.scope, admission);
+      });
+      // Actual persisted capture -> signed/bounded GET -> private attribution ->
+      // fresh permission-only admission. This seam does NOT publish a rollback.
+      expect(admission).toEqual(originalAdmission);
+      expect(result.datasets.agents[0]).toMatchObject({ fullName: "Synthetic public Agent" });
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.mediaAsset.update({ where: { id: setup.mediaId! }, data: { rightsBasis: "OWNED", license: null } }));
+      await expect(observer(setup.scope, async (tx) => {
+        await lockSnapshotPublication(tx, setup.scope); await admitHistoricalSnapshotRollback(tx, setup.scope, admission);
+      })).rejects.toThrow("SNAPSHOT_PUBLICATION_MEDIA_STALE");
+      expect(gets).toBe(14); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+      expect(wholeBody).not.toHaveBeenCalled(); expect(destroyed).toHaveBeenCalledTimes(14);
+      trustSet.revokedKeyIds.push("synthetic-stage-key");
+      await expect(readStagedSnapshotArtifacts(selected)).rejects.toThrow("SNAPSHOT_ARTIFACT_REVOKED_KEY_ID");
+      expect(gets).toBe(15); expect(puts).toBe(14); expect(heads).toBe(buildHeads);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(1);
+        expect(await tx.snapshotArtifactStageReceipt.count({ where: setup.scope })).toBe(1);
+        expect(await tx.snapshotPublicationBinding.count({ where: setup.scope })).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+      });
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it("selected-stage replay ignores newer current, freeze, suspension and missing private capture capability", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const bound = { ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }), keyId: "synthetic-stage-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    let privateRead: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const old = await createSnapshotStagedBuildServer(bound)(setup.principal, setup.lookup);
+      const oldRun = await observer(setup.scope, (tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({
+        ...setup.scope, publishSequence: old.publishSequence, manifestSha256: old.manifestSha256,
+        manifestKey: createProjectSnapshotKey(setup.scope.projectId, old.manifestSha256), publishedAt: setup.receipt.capturedAt,
+      })); // Test-controlled committed publication, not an operational PUBLISH proof.
+      const newerCapture = await captureSnapshotInput(setup.principal, { ...setup.scope, idempotencyKey: "synthetic-newer-selected-stage", schemaMinor: 0 });
+      const newer = await createSnapshotStagedBuildServer(bound)(setup.principal, {
+        idempotencyKeyHash: newerCapture.idempotencyKeyHash, requestHash: newerCapture.requestHash,
+      });
+      const newerRun = await observer(setup.scope, (tx) => new PrismaSnapshotDeliveryRepository(tx).publishCurrentAndCreateRun({
+        ...setup.scope, publishSequence: newer.publishSequence, manifestSha256: newer.manifestSha256,
+        manifestKey: createProjectSnapshotKey(setup.scope.projectId, newer.manifestSha256), publishedAt: newerCapture.capturedAt,
+      }));
+      expect(send).toHaveBeenCalledTimes(28);
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+      await runInPrincipalDatabaseTransaction({ kind: "platform-admin", userId: "synthetic-selected-replay", correlationId: randomUUID() }, async (tx) => {
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      privateRead = vi.spyOn(PrismaSnapshotInputRepository.prototype, "find").mockRejectedValue(new Error("SYNTHETIC_CAPTURE_READ_FORBIDDEN"));
+      const selected = await inspectSelectedSnapshotStageServer(setup.principal, { buildInputId: old.buildInputId });
+      expect(selected?.stage).toEqual(old); expect(selected?.run).toEqual(oldRun);
+      expect(selected?.current).toMatchObject({ publishSequence: newer.publishSequence, manifestSha256: newer.manifestSha256 });
+      expect(privateRead).not.toHaveBeenCalled(); expect(send).toHaveBeenCalledTimes(28);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.snapshotArtifactStageReceipt.count({ where: setup.scope })).toBe(2);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(2);
+        expect(await new PrismaSnapshotDeliveryRepository(tx).getCurrentManifest(setup.scope.organizationId, setup.scope.projectId))
+          .toMatchObject({ publishSequence: newerRun.publishSequence, manifestSha256: newerRun.manifestSha256 });
+      });
+    } finally { privateRead?.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it("does not substitute an interrupted binding-only stage or an unbound capture", async () => {
+    const setup = await fixture();
+    const lookup = { buildInputId: setup.receipt.id };
+    await expect(inspectSelectedSnapshotStageServer(setup.principal, lookup)).resolves.toBeNull();
+    await expect(loadSelectedSnapshotCaptureServer(setup.principal, lookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+    const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockRejectedValue(new Error("SYNTHETIC_PARTIAL_STAGE"));
+    try {
+      await expect(createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+        keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+        trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [], publicKeys: {
+          "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup)).rejects.toThrow("SYNTHETIC_PARTIAL_STAGE");
+      expect(await observer(setup.scope, (tx) => tx.snapshotPublicationBinding.count({ where: setup.scope }))).toBe(1);
+      await expect(inspectSelectedSnapshotStageServer(setup.principal, lookup)).resolves.toBeNull();
+      await expect(loadSelectedSnapshotCaptureServer(setup.principal, lookup)).rejects.toThrow("SNAPSHOT_STAGE_NOT_FOUND");
+      expect(await observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.count({ where: setup.scope }))).toBe(0);
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  }, 60_000);
+  it.each(["success", "domain-commit-before-result", "takeover-during-put", "wrong-schema-minor"])("fences request-owned operational BUILD after %s", async (mode) => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-build", correlationId: randomUUID() };
+    const accepted = await requestOperationalAction(admin, { ...setup.scope, action: "SNAPSHOT_BUILD",
+      sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+    const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+      if (!row.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+      await tx.outboxEvent.update({ where: { id: row.outboxEventId }, data: { availableAt: new Date("1997-01-01T00:00:00Z") } });
+      return row.outboxEventId;
+    });
+    let now = new Date("1997-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    const lease = await reliability.claim(`synthetic-ops-build-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+    if (!lease || lease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+    let replacement: typeof lease | null = null;
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      if (mode === "takeover-during-put" && command instanceof PutObjectCommand && command.input.ContentType === "application/json") {
+        now = new Date("1997-01-01T00:06:00Z");
+        replacement = await reliability.claim("synthetic-ops-build-takeover", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+        expect(replacement?.outboxEventId).toBe(eventId); expect(replacement?.attempt).toBe(2);
+      }
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const resolveStage = vi.fn(() => ({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+      keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+      trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } }));
+    const execute = createOperationalSnapshotBuildExecutor({ resolveStage });
+    const completion = mode === "domain-commit-before-result" ? vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedStagedSnapshot")
+      .mockRejectedValueOnce(new Error("SYNTHETIC_RESULT_CRASH")) : null;
+    try {
+      if (mode === "wrong-schema-minor") {
+        await observer(setup.scope, (tx) => new OperationalActionLifecycleRepository(tx).begin(lease), "operations-executor");
+        const wrongRequest = { ...operationalSnapshotBuildRequest(setup.scope, accepted.requestId).request, schemaMinor: 1 };
+        await captureSnapshotInput(setup.principal, wrongRequest);
+        const wrong = await createSnapshotStagedBuildServer(resolveStage())(setup.principal, snapshotInputRequestHashes(wrongRequest));
+        await expect(observer(setup.scope, (tx) => tx.operationalActionRequest.update({ where: { id: accepted.requestId },
+          data: { status: "SUCCEEDED", finishedAt: new Date(), result: { action: "SNAPSHOT_BUILD", buildInputId: wrong.buildInputId,
+            inputHash: wrong.inputHash, publishSequence: wrong.publishSequence, manifestSha256: wrong.manifestSha256 } },
+        }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+        await expect(execute(lease)).rejects.toThrow("SNAPSHOT_INPUT_IDEMPOTENCY_CONFLICT");
+        expect(send).toHaveBeenCalledTimes(14);
+        await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+          expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe("RUNNING");
+          expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+          expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+        });
+        await reliability.fail(lease, "SYNTHETIC_WRONG_MINOR", false, 1);
+        await settleTerminalOperationalRequests([{ id: eventId, organizationId: setup.scope.organizationId, payload: lease.payload }]);
+        return;
+      }
+      const initial = execute(lease);
+      if (mode === "success") await expect(initial).resolves.toMatchObject({ action: "SNAPSHOT_BUILD", publishSequence: 2 });
+      else await expect(initial).rejects.toThrow(mode === "takeover-during-put" ? "OUTBOX_OPERATION_LEASE_LOST" : "SYNTHETIC_RESULT_CRASH");
+      completion?.mockRestore();
+      expect(send).toHaveBeenCalledTimes(14); expect(resolveStage).toHaveBeenCalledTimes(1);
+      if (mode === "domain-commit-before-result") {
+        // The receipt exists, but direct SQL cannot substitute another input or hash.
+        await expect(observer(setup.scope, (tx) => tx.operationalActionRequest.update({
+          where: { id: accepted.requestId }, data: { status: "SUCCEEDED", finishedAt: new Date(),
+            result: { action: "SNAPSHOT_BUILD", buildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash,
+              publishSequence: setup.receipt.publishSequence, manifestSha256: "e".repeat(64) } },
+        }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+      }
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const row = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        expect(row.status).toBe(mode === "success" ? "SUCCEEDED" : "RUNNING");
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", ""); resolveStage.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
+      if (!replacement) {
+        now = new Date("1997-01-01T00:06:00Z");
+        replacement = await reliability.claim("synthetic-ops-build-recovery", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD]);
+      }
+      if (!replacement) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      const replay = await execute(replacement);
+      expect(replay).toMatchObject({ action: "SNAPSHOT_BUILD", publishSequence: 2 });
+      if (mode === "success") {
+        if (replay.action !== "SNAPSHOT_BUILD") throw new Error("SYNTHETIC_BUILD_RESULT_MISSING");
+        const dashboard = await getFleetDashboard(admin);
+        const request = dashboard.projects.find((project) => project.projectId === setup.scope.projectId)?.operationalRequests.find((request) => request.requestId === accepted.requestId);
+        expect(request).toMatchObject({ status: "SUCCEEDED", resultSummary: { action: "SNAPSHOT_BUILD", buildInputId: replay.buildInputId, publishSequence: 2 } });
+        const serialized = JSON.stringify(request);
+        for (const field of ["inputHash", "manifestSha256", "requestedBy", "reason", "result", "requestHash"]) expect(serialized).not.toContain(`"${field}"`);
+      }
+      expect(send).toHaveBeenCalledTimes(14); expect(resolveStage).toHaveBeenCalledTimes(1);
+      await reliability.complete(replacement);
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe("SUCCEEDED");
+        expect(await tx.snapshotBuildInput.count({ where: setup.scope })).toBe(2);
+        expect(await tx.projectCurrentSnapshotManifest.count({ where: setup.scope })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: setup.scope })).toBe(0);
+      });
+      const { lookup } = operationalSnapshotBuildRequest(setup.scope, accepted.requestId);
+      expect(await inspectStagedSnapshotServer(setup.principal, lookup)).toMatchObject({ publishSequence: 2 });
+    } finally { completion?.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
+  it("recovers a concurrently committed stage after cancellation following the initial replay miss", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519"); const controller = new AbortController();
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const build = createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+      keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+      trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+        publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } });
+    let committed: Awaited<ReturnType<typeof build>> | undefined;
+    cuts.afterInitialStageReplay = async () => {
+      committed = await build(setup.principal, setup.lookup);
+      controller.abort("Synthetic private cancellation reason");
+    };
+    try {
+      const replay = await build(createProjectJobPrincipal({ ...setup.scope, jobName: "snapshot-input",
+        correlationId: "synthetic-stage-replay-race" }), setup.lookup, controller.signal);
+      expect(committed).toBeDefined(); expect(replay).toEqual(committed); expect(send).toHaveBeenCalledTimes(14);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotArtifactStageReceipt.count()).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+    } finally { cuts.afterInitialStageReplay = null; send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
+  it("records BUILD only after settled artifacts/manifest, replays without configuration and never writes current", async () => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let manifests = 0;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      await observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.count().then((count) => expect(count).toBe(0)));
+      if (command instanceof PutObjectCommand && command.input.ContentType === "application/json") manifests++;
+      return { ETag: "synthetic-stage" } as never;
+    });
+    const bound = { ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }), keyId: "synthetic-stage-key",
+      privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"), trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null,
+        revokedKeyIds: [], publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    try {
+      expect(await inspectStagedSnapshotServer(setup.principal, setup.lookup)).toBeNull();
+      const receipt = await createSnapshotStagedBuildServer(bound)(setup.principal, setup.lookup);
+      expect(send).toHaveBeenCalledTimes(14); expect(manifests).toBe(1);
+      expect(receipt).toMatchObject({ ...setup.scope, buildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash,
+        publishSequence: setup.receipt.publishSequence, idempotencyKeyHash: setup.lookup.idempotencyKeyHash });
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotArtifactStageReceipt.count()).toBe(1);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+      const pins = { organizationId: receipt.organizationId, projectId: receipt.projectId, buildInputId: receipt.buildInputId,
+        inputHash: receipt.inputHash, idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash,
+        publishSequence: receipt.publishSequence, manifestSha256: receipt.manifestSha256 };
+      await expect(observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.create({
+        data: { ...pins, manifestSha256: "e".repeat(64) },
+      }))).rejects.toThrow("SNAPSHOT_STAGE_RECEIPT_INVALID"); // Guard rejects before duplicate-key checks.
+      await expect(observer(setup.scope, (tx) => tx.snapshotArtifactStageReceipt.create({
+        data: pins,
+      }), "snapshot-input")).rejects.toThrow("SNAPSHOT_STAGE_SCOPE_DENIED"); // Scope guard, not duplicate-key rejection.
+      await expect(observer(setup.scope, (tx) => tx.$executeRaw`UPDATE "SnapshotArtifactStageReceipt"
+        SET "manifestSha256" = ${"e".repeat(64)} WHERE "buildInputId" = ${receipt.buildInputId}`)).rejects.toThrow();
+      const immutableAdmin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-immutable", correlationId: randomUUID() };
+      await expect(runInPrincipalDatabaseTransaction(immutableAdmin, (tx) => tx.$executeRaw`
+        UPDATE "SnapshotArtifactStageReceipt" SET "manifestSha256" = ${"e".repeat(64)}
+        WHERE "buildInputId" = ${receipt.buildInputId}`)).rejects.toThrow("SNAPSHOT_STAGE_RECEIPT_IMMUTABLE"); // Privileged rewrite is guarded too.
+      vi.stubEnv("SYNTHETIC_STAGE_KEY", "");
+      const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-replay", correlationId: randomUUID() };
+      await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
+        await tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+      });
+      const replay = await createSnapshotStagedBuildServer({ ...bound, keyId: "synthetic-rotated-unavailable",
+        trustSet: { ...bound.trustSet, revokedKeyIds: ["synthetic-stage-key"] } })(setup.principal, setup.lookup);
+      expect(replay).toEqual(receipt); expect(send).toHaveBeenCalledTimes(14);
+      await expect(inspectStagedSnapshotServer(createProjectJobPrincipal({ ...setup.scope, projectId: setup.foreignId,
+        jobName: "snapshot-input" }), setup.lookup)).resolves.toBeNull();
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+    } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
+
+  it.each(["manifest-failure", "cancel", "project-blocked", "freeze"])("does not record a staged BUILD after %s", async (mode) => {
+    const setup = await fixture(); const keys = generateKeyPairSync("ed25519"); const controller = new AbortController();
+    vi.stubEnv("SYNTHETIC_STAGE_KEY", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    let manifestStarted = false;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0); expect(command).toBeInstanceOf(PutObjectCommand);
+      if (command instanceof PutObjectCommand && command.input.ContentType === "application/json") {
+        manifestStarted = true;
+        if (mode === "manifest-failure") throw new Error("SYNTHETIC_STAGE_MANIFEST_FAILURE");
+        if (mode === "cancel") controller.abort("Synthetic private cancellation reason");
+        const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-stage-stale", correlationId: randomUUID() };
+        if (mode === "project-blocked") await runInPrincipalDatabaseTransaction(admin, (tx) =>
+          tx.project.update({ where: { id: setup.scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+        if (mode === "freeze") await runInPrincipalDatabaseTransaction(admin, (tx) =>
+          tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } }));
+      }
+      return { ETag: "synthetic-stage" } as never;
+    });
+    try {
+      await expect(createSnapshotStagedBuildServer({ ...setup.scope, storage: new S3ObjectStorage({ bucket: "synthetic-stage", client }),
+        keyId: "synthetic-stage-key", privateKeyRef: defineSecretRef("SYNTHETIC_STAGE_KEY"),
+        trustSet: { currentKeyId: "synthetic-stage-key", nextKeyId: null, revokedKeyIds: [],
+          publicKeys: { "synthetic-stage-key": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } },
+      })(setup.principal, setup.lookup, controller.signal)).rejects.toThrow();
+      expect(manifestStarted).toBe(true); expect(send).toHaveBeenCalledTimes(14);
+      await observer(setup.scope, async (tx) => {
+        expect(await tx.snapshotPublicationBinding.count()).toBe(1); expect(await tx.snapshotArtifactStageReceipt.count()).toBe(0);
+        expect(await tx.projectCurrentSnapshotManifest.count()).toBe(0); expect(await tx.deliveryRun.count()).toBe(0);
+      });
+      expect(await inspectStagedSnapshotServer(setup.principal, setup.lookup)).toBeNull();
+    } finally { controller.abort(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
+  });
   it("executes a canonical GOOD intent through the enabled capability and replays committed publication after lease recovery", async () => {
     const setup = await fixture(); const { scope } = setup;
     const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-executor-setup", correlationId: randomUUID() };

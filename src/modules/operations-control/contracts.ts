@@ -24,6 +24,8 @@ export interface FleetProjectView {
   projectSlug: string;
   projectStatus: string;
   serviceState: string;
+  ackCredentialVersion?: number | null;
+  operationalRequests: FleetOperationalRequestView[];
   sources: FleetSourceView[];
   currentSnapshot: {
     publishSequence: number;
@@ -104,6 +106,8 @@ export interface FleetProjectRecord {
   projectSlug: string;
   projectStatus: string;
   serviceState: string;
+  ackCredentialVersion?: number | null;
+  operationalRequests?: FleetOperationalRequestRecord[];
   sources: FleetSourceRecord[];
   currentSnapshot: { publishSequence: number; publishedAt: Date } | null;
   latestDelivery: {
@@ -113,6 +117,27 @@ export interface FleetProjectRecord {
     acknowledgedAt: Date | null;
     safeErrorCode: string | null;
   } | null;
+}
+
+export interface FleetOperationalRequestRecord {
+  requestId: string;
+  action: string;
+  status: "REQUESTED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  safeErrorCode: string | null;
+  resultSummary?: FleetOperationalResultView | null;
+}
+export type FleetOperationalResultView =
+  | { action: "SNAPSHOT_BUILD" | "SNAPSHOT_PUBLISH"; buildInputId: string; publishSequence: number }
+  | { action: "SNAPSHOT_ROLLBACK"; sourcePublishSequence: number; publishSequence: number }
+  | { action: "ACK_ROTATE"; phase: "STAGE" | "PROMOTE"; credentialVersion: number }
+  | { action: "SUSPICIOUS_APPROVE" | "SUSPICIOUS_REJECT"; sourceRevisionId: string };
+export interface FleetOperationalRequestView extends Omit<FleetOperationalRequestRecord, "requestedAt" | "startedAt" | "finishedAt"> {
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 export interface FleetFailedJobRecord {
@@ -157,10 +182,22 @@ export const requestOperationalActionInputSchema = z.object({
   projectId: identifierSchema,
   sourceId: z.string().trim().max(128).default(""),
   sourceRevisionId: z.string().trim().max(128).default(""),
+  buildInputId: z.string().trim().max(128).optional(),
   sourcePublishSequence: z.coerce.number().int().positive().optional(),
+  ackRotationPhase: z.enum(["STAGE", "PROMOTE"]).optional(),
+  ackCredentialVersion: z.number().int().positive().max(2_147_483_646).optional(),
   reason: z.string().trim().max(500).default(""),
   idempotencyKey: identifierSchema,
 }).superRefine((value, context) => {
+  if (value.action === "ACK_ROTATE" && (!value.ackRotationPhase || value.ackCredentialVersion === undefined)) {
+    context.addIssue({ code: "custom", path: ["ackRotationPhase"], message: "Укажите фазу и ожидаемую версию ACK credential" });
+  }
+  if (value.action !== "ACK_ROTATE" && (value.ackRotationPhase !== undefined || value.ackCredentialVersion !== undefined)) {
+    context.addIssue({ code: "custom", path: ["ackRotationPhase"], message: "ACK параметры допустимы только для ACK_ROTATE" });
+  }
+  if (value.action === "SNAPSHOT_PUBLISH" && !/^[A-Za-z0-9_-]{1,128}$/u.test(value.buildInputId ?? "")) {
+    context.addIssue({ code: "custom", path: ["buildInputId"], message: "Укажите точный ID завершённой сборки" });
+  }
   if (["RUN_SOURCE", "SUSPICIOUS_APPROVE", "SUSPICIOUS_REJECT"].includes(value.action) && !value.sourceId) {
     context.addIssue({ code: "custom", path: ["sourceId"], message: "Выберите источник" });
   }
@@ -179,6 +216,22 @@ export const freezeJobsInputSchema = z.object({ reason: z.string().trim().min(3)
 export const unfreezeJobsInputSchema = z.object({});
 
 export type OperationalAction = z.infer<typeof operationalActionSchema>;
+export const operationalExecutionActionSchema = operationalActionSchema.exclude(["RUN_SOURCE"]);
+export const operationalActionIntentSchema = z.object({
+  schemaVersion: z.literal(1),
+  organizationId: identifierSchema,
+  projectId: identifierSchema,
+  requestId: identifierSchema,
+  action: operationalExecutionActionSchema,
+}).strict();
+export const OPERATIONAL_ACTION_TOPICS: Readonly<Record<z.infer<typeof operationalExecutionActionSchema>, string>> = Object.freeze({
+  SNAPSHOT_BUILD: "operations-control.snapshot.build.request",
+  SNAPSHOT_PUBLISH: "operations-control.snapshot.publish.request",
+  SNAPSHOT_ROLLBACK: "operations-control.snapshot.rollback.request",
+  ACK_ROTATE: "operations-control.ack.rotate.request",
+  SUSPICIOUS_APPROVE: "operations-control.suspicious.approve.request",
+  SUSPICIOUS_REJECT: "operations-control.suspicious.reject.request",
+});
 export type RequestOperationalActionInput = z.infer<typeof requestOperationalActionInputSchema>;
 export type FreezeJobsInput = z.infer<typeof freezeJobsInputSchema>;
 export type UnfreezeJobsInput = z.infer<typeof unfreezeJobsInputSchema>;
