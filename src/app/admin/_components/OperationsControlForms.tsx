@@ -50,6 +50,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
   const firstProject = projects[0];
   const form = useForm<RequestOperationalActionInput>({
     resolver: zodResolver(requestOperationalActionInputSchema) as Resolver<RequestOperationalActionInput>,
+    shouldUnregister: true,
     defaultValues: {
       action: "RUN_SOURCE",
       organizationId: firstProject?.organizationId ?? "",
@@ -109,6 +110,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
                   form.setValue("organizationId", next?.organizationId ?? "");
                   form.setValue("sourceId", next?.sources[0]?.sourceId ?? "");
                   form.setValue("buildInputId", "");
+                  form.resetField("ackCredentialVersion");
                 },
               })} />
             </FormField>
@@ -131,6 +133,16 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
               <FormField error={form.formState.errors.buildInputId?.message} label="ID завершённой сборки" helper="Точный buildInputId из результата BUILD; последняя сборка автоматически не выбирается." required>
                 <TextInput {...form.register("buildInputId")} />
               </FormField>
+            ) : null}
+            {action === "ACK_ROTATE" ? (
+              <>
+                <FormField error={form.formState.errors.ackRotationPhase?.message} label="Фаза ACK rotation" helper="STAGE сохраняет оба токена; PROMOTE отдельным запросом завершает overlap и отключает старый." required>
+                  <SelectInput options={[{ value: "", label: "Выберите фазу" }, { value: "STAGE", label: "STAGE — current + next" }, { value: "PROMOTE", label: "PROMOTE — только next" }]} {...form.register("ackRotationPhase")} />
+                </FormField>
+                <FormField error={form.formState.errors.ackCredentialVersion?.message} label="Ожидаемая версия ACK credential" helper={`Наблюдаемая версия: ${currentProject?.ackCredentialVersion ?? "credential не настроена"}. Токен задаётся сервером через SecretRef и не вводится в форму.`} required>
+                  <TextInput min={1} max={2_147_483_646} type="number" {...form.register("ackCredentialVersion", { valueAsNumber: true })} />
+                </FormField>
+              </>
             ) : null}
             <FormField error={form.formState.errors.idempotencyKey?.message} label="Ключ запроса" helper="Защищает от повторной отправки." required>
               <TextInput {...form.register("idempotencyKey")} />
