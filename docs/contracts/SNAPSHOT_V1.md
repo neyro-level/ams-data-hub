@@ -1,5 +1,41 @@
 # Snapshot V1 contract
 
+## Authenticated consumer HTTP
+
+`GET /api/snapshots/{organizationId}/{projectId}/current` returns the signed
+public manifest and logical artifact URLs. `GET` on
+`/api/snapshots/{organizationId}/{projectId}/{publishSequence}/files/{kind}`
+returns verified compressed bytes; a slash in kind is URL-encoded. Bytes use
+`application/gzip`, not Content-Encoding, preserving the signed compressed hash.
+Authentication is bounded Bearer-header-only, exact single-project scope; query
+credentials, cookies, wildcard scopes and caller-selected storage keys are not
+supported. Responses are no-store with Vary Authorization and nosniff.
+
+Server-owned storage/trust bindings and committed root/binding/run pins gate
+every read. Standalone BUILD staging alone is not publication. A narrow
+NOBYPASSRLS-owned function returns only bounded public signed manifest metadata,
+never private input parts. Storage IO occurs outside database transactions;
+length/hash/signature and fresh credential/trust cuts reject corruption,
+revocation or promotion during IO. SUSPENDED and frozen projects retain reads.
+
+`POST /api/snapshots/{organizationId}/{projectId}/ack` accepts bounded JSON
+(4096 bytes): projectId, publishSequence, manifestSha256, applied:true and
+idempotencyKey. Authentication remains in the header. Applied is the consumer's
+attestation after its atomic apply, not proof that Hub applied consumer data.
+The actual ACK service and publication/input/rotation locks atomically advance
+PENDING/NOTIFIED → DOWNLOADED → APPLIED → ACKNOWLEDGED. Exact replay is idempotent;
+conflicting replay, wrong manifest and FAILED/STALE runs do not advance.
+Consumer-only SQL guards prevent identity/manifest or unrelated field writes.
+Late cancellation rolls the transaction back. Errors use generic bounded
+400/401/404/409/413/503 responses without private DB/storage diagnostics.
+
+Native production-controller and staging regression proof: 106/106 tests with
+62 migrations and final reset; final ACK trust-cut regression run: 15/15,
+including rollback on signing-key revocation after the real ACK write.
+The combined run includes all six rollback modes followed by
+actual consumer reads. SDK/credentials are synthetic. This does not claim a
+Next-network/browser end-to-end run, live provider activation or production.
+
 ## Historical rollback admission prerequisite
 
 MP-08 rollback means old approved content with a new higher publication sequence,
@@ -37,8 +73,10 @@ fencing. Registration is not production capability activation.
 Rollback's snapshot-private repository now persists a request-owned immutable
 `SnapshotRollbackReservation`: exact scoped committed source DeliveryRun,
 source sequence, root capture/hash, allocated new sequence, database-minted time
-and initial lease history. Only exact matching completed normal stage/binding/run
-or a previously staged rollback binding/run qualifies as source. Stage alone,
+and initial lease history. Only exact matching committed normal root/binding/run
+(and matching stage receipt when present) or a previously staged rollback
+binding/run qualifies as source. Automatic GOOD publication does not require a
+standalone BUILD receipt. Stage alone,
 binding alone, foreign/mismatched root/hash/run do not qualify. Source consumer
 ACK status is not a new approval criterion. Reserved identity survives valid
 takeover without changing its initial lease tuple, sequence or timestamps.
@@ -496,7 +534,8 @@ own fresh consent-gated projection. Forward migration
 the server-owned `media-projection` database purpose; import writes and FORCE
 RLS are unchanged. Historical fact revisions for missing-grace inventory use the
 MP-05 captured path below; full snapshot build/publication composition is
-implemented. Consumer HTTP delivery and Operations executors remain MP-08 work.
+implemented. All six Operations executors and consumer HTTP delivery/ACK are
+implemented; notifier and complete runtime proof remain MP-08 work.
 
 `createSnapshotMediaProjectionServer` accepts only a server-loaded immutable
 SnapshotInput receipt and server-selected project-bound storage. It validates

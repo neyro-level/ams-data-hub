@@ -7,7 +7,7 @@ export type DatabaseTransaction = Parameters<
   Parameters<PrismaClient["$transaction"]>[0]
 >[0];
 
-type DatabasePrincipalKind = PrincipalContext["kind"] | "identity" | "system-job";
+type DatabasePrincipalKind = PrincipalContext["kind"] | "identity" | "system-job" | "snapshot-consumer";
 
 export interface DatabaseAuthorizationContext {
   principalKind: DatabasePrincipalKind;

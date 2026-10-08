@@ -1,4 +1,6 @@
 import "server-only";
+export { createSnapshotConsumerReadServer } from "./infrastructure/snapshot-consumer-read.ts";
+export { handleSnapshotConsumerGet, handleSnapshotConsumerAck } from "./infrastructure/snapshot-consumer-http.ts";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";
 export { createSnapshotSignedBuildServer } from "./infrastructure/snapshot-signed-build.ts";
 export { createSnapshotArtifactStagingServer } from "./infrastructure/snapshot-artifact-staging.ts";

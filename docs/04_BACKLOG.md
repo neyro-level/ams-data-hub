@@ -42,8 +42,19 @@ Production build и 20 scoped unit tests — PASS. Native staging suite — 92/9
 включая настоящий BUILD → Fleet result projection и privacy assertions.
 Browser proof подтверждает REQUESTED, а не исполнение worker или публикацию.
 Implementation closure и exact commit evidence принадлежат Task Manager.
-HTTP delivery/ACK, notifier,
-SUSPENDED pull и итоговое end-to-end proof ещё требуют работы.
+MP-08.7 consumer HTTP delivery и authenticated ACK реализованы в рабочей ветке:
+Bearer-only exact project scope, bounded immutable reads, fresh credential/trust
+cuts, no-store responses и атомарный ACK через существующий service. Native
+HTTP/read/ACK suite — 15/15 после final trust-cut исправления; до него
+совместно со staging regressions — 106/106,
+62 forward migrations и final reset — PASS. Проверены SUSPENDED/frozen pull/ACK,
+rotation/revocation, replay/conflict, late cancellation и private-write denial.
+Поздний отзыв signing key после настоящей ACK записи откатывает весь DeliveryRun.
+Все шесть rollback modes проверены настоящим consumer read после исполнения.
+Automatic GOOD publication без standalone BUILD stage receipt остаётся approved
+rollback source по exact root/binding/run pins; stage-only запрещён.
+Task closure/commit — по ledger после оставшихся проверок. Notifier и итоговое
+Next/browser end-to-end proof открыты.
 Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
 Source identity/lifecycle, GOOD/Last GOOD, snapshot intent, immutable manual

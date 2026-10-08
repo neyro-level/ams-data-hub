@@ -185,7 +185,8 @@ remediation program preserves these boundaries while connecting them:
   state and events. Verified agent media is a server-owned input, not proof of
   HEAD or fresh consent. MP-05.2 supplied these 11 projectors; subsequent tasks
   below add subscription filtering, inventory GOOD resolution and verified media
-  to the complete thirteen-dataset candidate. Fresh publication remains pending.
+  to the complete thirteen-dataset candidate. Fresh signed publication is
+  implemented with the scoped final admission cut described below.
   Generated stored payload byte/record counts avoid repeated JSON sizing in
   deferred commit checks without removing either header/part constraint trigger,
   contiguity/budget checks, immutability or RLS. Native proof retains 4100 inventory
@@ -198,7 +199,8 @@ remediation program preserves these boundaries while connecting them:
   oversized pages before transfer, and malformed components return marker-only
   failures. Its allowlisted candidates remain INTERNAL, not public DTOs: address
   and coordinates use the captured location policy in the candidate projector
-  described below. Full signed build/publication orchestration remains unfinished.
+  described below. Full signed build/publication orchestration is implemented
+  with immutable artifacts and persisted publication identity.
   GOOD resolution now excludes raw `draft.address` and private apartment fields
   from its result. Optional `addressPublic` passes bounded NFKC-aware unit
   redaction: explicit RU/EN unit components and exact captured apartment markers
@@ -377,8 +379,14 @@ remediation program preserves these boundaries while connecting them:
   Private request reason, actor, lease, hashes and raw result are not emitted. Acceptance
   feedback carries request ID and is never reported as publication success.
   The lifecycle UI presents persisted REQUESTED/RUNNING/SUCCEEDED/FAILED;
-  BUILD success is not presented as publication. HTTP discovery/delivery/ACK
-  remains unfinished.
+  BUILD success is not presented as publication. Consumer HTTP discovery and
+  immutable delivery use bounded Bearer-only project authentication, a narrow
+  snapshot-consumer database purpose and server-owned storage/trust resolution.
+  Final credential and trust cuts reject rotation/revocation during IO; private
+  input parts and physical storage keys are not response DTOs. Authenticated ACK
+  reuses the existing service under publication/input/rotation locks and records
+  the consumer's applied attestation atomically, not an apply performed by Hub.
+  SUSPENDED/frozen projects retain pull/ACK; notifier and full runtime proof remain.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

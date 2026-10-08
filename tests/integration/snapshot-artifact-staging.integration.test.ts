@@ -11,9 +11,10 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
-      const snapshot = ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
+      const consumer = context.principalKind === "snapshot-consumer";
+      const snapshot = consumer || ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
       if (snapshot) {
-        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
           .toEqual([{ rolbypassrls: false, rolsuper: false }]); cuts.roles++;
       }
@@ -45,6 +46,8 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
   createSnapshotStagedBuildServer, inspectStagedSnapshotServer, createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer,
   PrismaSnapshotPublicationRepository, PrismaSnapshotDeliveryRepository, createEd25519SecretRefSigner } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotConsumerReadServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/application/snapshot-ack.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction, type DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { calculateObjectSha256, createMediaKey, createProjectSnapshotKey } from "../../src/platform/storage/object-storage.ts";
@@ -202,6 +205,12 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       expect(result).toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
         sourceDeliveryRunId: sourceRun.deliveryRunId, publishSequence: stage.publishSequence + 1 });
       expect(getSigning).toHaveBeenCalledTimes(1);
+      const consumerToken = `synthetic-rollback-consumer-${randomUUID()}`;
+      await runInPrincipalDatabaseTransaction(admin, (tx) => createSnapshotAckService({ repository: new PrismaSnapshotDeliveryRepository(tx), now: () => new Date() })
+        .initializeCredential({ ...scope, token: consumerToken }));
+      const pulled = await createSnapshotConsumerReadServer({ resolveStorage: () => storage, resolveTrust: () => trustSet })
+        .current(scope, `Bearer ${consumerToken}`);
+      expect(pulled).toMatchObject({ projectId: scope.projectId, publishSequence: stage.publishSequence + 1 });
       const ioBefore = { puts, gets, resolves: resolveRollback.mock.calls.length };
       await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
       trustSet = { ...trustSet, revokedKeyIds: [...trustSet.revokedKeyIds, "synthetic-next"] }; resolveRollback.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
