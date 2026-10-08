@@ -19,6 +19,9 @@
 
 - [ ] Clean canonical SourceCraft `main`; exact SHA recorded.
 - [ ] Один green exact-head RISKY gate; push/PR остаются zero-CI.
+      При выборе native shutdown/restart suite обязателен `run_build=true`:
+      текущий standalone собирается в том же exact-head cube перед integration,
+      а не после него. Существующий optional-risk build выполняется один раз.
 - [x] Non-production Timeweb S3 A→B denial proof and temporary-resource cleanup
       recorded in `research/TIMEWEB_S3_ISOLATION_PROOF_2026-10-05.md`.
 - [ ] Project-owned Secret Master scope and separate managed PostgreSQL roles.

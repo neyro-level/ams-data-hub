@@ -3,6 +3,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createServer } from "node:net";
+import { hashPassword } from "better-auth/crypto";
 import { describe, expect, it } from "vitest";
 import type { PoolClient } from "pg";
 import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
@@ -114,10 +116,109 @@ async function setup() {
     // Exact mkdtemp-owned test directory only; never remove other spool artifacts.
     await rm(directory, { recursive: true, force: true });
   };
-  return { admin, target, directory, launch, healthcheck, readiness, request, read, nativeJob, spools, assertLocksFree, cleanup };
+  return { admin, target, directory, launch, healthcheck, readiness, request, read, nativeJob, spools, assertLocksFree, cleanup, webEnv: env };
+}
+
+async function reserveLoopbackPort() {
+  const server = createServer();
+  await new Promise<void>((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("SYNTHETIC_WEB_PORT_INVALID");
+  await new Promise<void>((done, reject) => server.close((error) => error ? reject(error) : done()));
+  return address.port;
+}
+
+function childWeb(env: NodeJS.ProcessEnv, port: number) {
+  // Current standalone is built before this proof. No env values enter argv/logs.
+  const child = spawn(process.execPath, [".next/standalone/server.js"], {
+    cwd: resolve(import.meta.dirname, "../.."), stdio: "ignore", env: { ...env,
+      NODE_ENV: "production", APP_ENV: "test", HOSTNAME: "127.0.0.1", PORT: String(port),
+      BETTER_AUTH_URL: `http://127.0.0.1:${port}`, BETTER_AUTH_TRUSTED_PROXY_CIDRS: "127.0.0.1",
+      BETTER_AUTH_SECRET: "synthetic-restart-only-secret-at-least-thirty-two-characters", NEXT_TELEMETRY_DISABLED: "1" },
+  });
+  const exited = new Promise<void>((done) => { child.once("error", () => done()); child.once("close", () => done()); });
+  const base = `http://127.0.0.1:${port}`;
+  const ready = () => eventually(async () => {
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error("SYNTHETIC_WEB_EXITED_BEFORE_READY");
+    try { return (await fetch(`${base}/api/health/live`, { signal: AbortSignal.timeout(1000) })).status === 200; }
+    catch { return false; }
+  }, Boolean, 30_000);
+  const stopOwned = async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([exited, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("SYNTHETIC_WEB_EXIT_TIMEOUT")); }, 10_000);
+    })]); } finally { clearTimeout(timer); await exited; }
+  };
+  return { child, base, ready, stopOwned };
 }
 
 describe(`actual source-worker child shutdown: ${evidence}; synthetic transport, owner-login DB (not queue ACL proof)`, () => {
+  it("preserves durable source, queue and authenticated Fleet state across worker, web and pg-boss restart", async () => {
+    const context = await setup(); const webChildren: ReturnType<typeof childWeb>[] = [];
+    try {
+      const requested = await context.request("restart-baseline"); const worker = context.launch("good");
+      await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      stop(worker.child); expect(await waitExit(worker)).toEqual({ code: 0, signal: null });
+      const baseline = await context.read(); expect(baseline.identities).toHaveLength(1);
+      expect(baseline.revisions).toHaveLength(1); expect(baseline.revisions[0]).toMatchObject({ status: "GOOD", sequence: 1 });
+      const queueBefore = await context.nativeJob(requested.requestId);
+      await stopPgBoss();
+      expect(await context.nativeJob(requested.requestId)).toEqual(queueBefore); // Fresh native client, same persisted job.
+      await stopPgBoss();
+      const deferred = await context.request("restart-deferred");
+      const username = `restart_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      const password = `Synthetic-restart-${randomUUID()}`; const passwordHash = await hashPassword(password);
+      const userId = await runInPrincipalDatabaseTransaction(context.admin, async (tx) => {
+        const user = await tx.user.create({ data: { id: randomUUID(), name: "Synthetic restart admin", username,
+          email: `${username}@example.test`, emailVerified: true, systemRole: "PLATFORM_ADMIN" } });
+        await tx.account.create({ data: { id: randomUUID(), userId: user.id, accountId: user.id, providerId: "credential", password: passwordHash } });
+        return user.id;
+      });
+      const project = await runInPrincipalDatabaseTransaction(context.admin, (tx) => tx.project.findUniqueOrThrow({
+        where: { id: context.target.projectId }, select: { slug: true } }));
+      const port = await reserveLoopbackPort(); const first = childWeb(context.webEnv, port); webChildren.push(first); await first.ready();
+      const login = await fetch(`${first.base}/api/auth/sign-in/username`, { method: "POST",
+        headers: { "content-type": "application/json", origin: first.base, "x-forwarded-for": "192.0.2.123" },
+        body: JSON.stringify({ username, password, rememberMe: true }), signal: AbortSignal.timeout(15_000) });
+      expect(login.status).toBe(200);
+      const cookie = login.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
+      expect(cookie.length).toBeGreaterThan(0);
+      const readSession = async (base: string) => {
+        const response = await fetch(`${base}/api/auth/get-session`, { headers: { cookie }, signal: AbortSignal.timeout(10_000) });
+        expect(response.status).toBe(200); return response.json() as Promise<{ session: { id: string }; user: { id: string } }>;
+      };
+      const sessionBefore = await readSession(first.base); expect(sessionBefore.user.id).toBe(userId);
+      const readFleet = async (base: string) => {
+        const response = await fetch(`${base}/admin/fleet`, { headers: { cookie }, redirect: "manual", signal: AbortSignal.timeout(15_000) });
+        expect(response.status).toBe(200); const html = await response.text();
+        expect(html).toContain(project.slug); expect(html).toContain("GOOD");
+      };
+      await readFleet(first.base); await first.stopOwned();
+      const second = childWeb(context.webEnv, port); webChildren.push(second); await second.ready();
+      expect(second.child.pid).not.toBe(first.child.pid);
+      const sessionAfter = await readSession(second.base);
+      expect(sessionAfter.user.id).toBe(userId); expect(sessionAfter.session.id).toBe(sessionBefore.session.id);
+      await readFleet(second.base);
+      const preserved = await context.read();
+      expect(preserved.source).toEqual(baseline.source); expect(preserved.identities).toEqual(baseline.identities);
+      expect(preserved.revisions).toEqual(baseline.revisions); expect(preserved.intents).toEqual(baseline.intents);
+      expect(preserved.requests.find((row) => row.id === deferred.requestId)?.status).toBe("REQUESTED");
+      await second.stopOwned();
+      const restarted = context.launch("good"); expect(restarted.child.pid).not.toBe(worker.child.pid);
+      await eventually(() => context.nativeJob(deferred.requestId), (job) => job?.state === "completed");
+      stop(restarted.child); expect(await waitExit(restarted)).toEqual({ code: 0, signal: null });
+      const final = await context.read();
+      expect(final.identities[0]!.uid).toBe(baseline.identities[0]!.uid);
+      expect(final.revisions.filter((row) => row.status === "GOOD")).toHaveLength(2);
+      expect(final.requests.find((row) => row.id === deferred.requestId)?.status).toBe("COMPLETED");
+      expect((await context.nativeJob(requested.requestId))?.state).toBe("completed");
+      await context.assertLocksFree();
+    } finally {
+      for (const web of webChildren) await web.stopOwned();
+      await context.cleanup();
+    }
+  }, 150_000);
   it("qualifies only its exact owner and refreshes during a stalled import; read-only CLI and shutdown agree", async () => {
     const context = await setup();
     try {

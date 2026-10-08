@@ -103,7 +103,22 @@ source/fact/approved head pins 2/2/1; candidate snapshot содержит три
 и цены 2100/2200/1000. Native `48666/6da3e0` — 4/4 PASS вместе с B–D,
 63 migrations и final DB reset; independent architect review без findings.
 Подменены только нижние DNS/HTTPS/S3 transports. Signed publication и HTTP
-этим scoped proof не заявлены. Следующий сценарий G — actual process restart.
+этим scoped proof не заявлены.
+Scenario G native proof — PASS: actual worker process импортирует GOOD и
+завершается; fresh pg-boss client читает тот же completed job. Actual Next
+standalone проходит login/session/private Fleet HTTP, затем новый Next process
+принимает прежний cookie с тем же session ID и показывает тот же project slug.
+Source, identities, revisions и build intents сохраняются. Отложенный manual
+request переживает web restart и завершается новым actual worker со стабильным
+inventory UID и вторым GOOD. Native `35502/54d160` — 7/7 PASS, включая шесть
+shutdown/recovery regressions, 63 migrations и final DB reset. Current standalone
+build `83913/74d61c` — PASS; CI policy regressions — 8/8 PASS. RISKY gate теперь
+собирает standalone перед integration в том же exact-head cube, один раз.
+Windows worker SIGTERM здесь вызывается registered handler через IPC; pg-boss
+client/runtime restart не означает PostgreSQL server restart. HTTP-auth/Fleet
+не выдаётся за browser E2E; child DB owner-login не выдаётся за queue ACL proof.
+Все семь MP-09 сценариев имеют scoped native proof; delivery gate/merge и MP-10
+остаются открыты до отдельного фактического evidence.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
