@@ -9,6 +9,7 @@ import { PrismaOperationsActionRepository } from "./infrastructure/prisma-operat
 export { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
 export { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 export { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
+export { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
 
 const operationsActions = createOperationsActions({
   createRepository: (transaction) => new PrismaOperationsActionRepository(transaction),

@@ -66,4 +66,17 @@ describe("finite operational queue adapter", () => {
     await expect(handleOperationalOutboxEvent(buildEvent, signal, build)).rejects.toMatchObject({
       message: "OPERATIONS_CONTROL_EXECUTION_FAILED", code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable: true });
   });
+  it("reserves ROLLBACK without its capability and forwards only the owned enabled adapter", async () => {
+    const rollbackEvent = { ...event, topic: OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK };
+    await expect(handleOperationalOutboxEvent(rollbackEvent)).rejects.toMatchObject({ code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false });
+    const rollback = vi.fn(async () => ({ action: "SNAPSHOT_ROLLBACK" as const, sourcePublishSequence: 1,
+      sourceDeliveryRunId: "synthetic-source", deliveryRunId: "synthetic-new", publishSequence: 2, manifestSha256: "a".repeat(64) }));
+    const signal = new AbortController().signal; const before = executor.mock.calls.length;
+    await expect(handleOperationalOutboxEvent(rollbackEvent, signal, undefined, undefined, rollback)).resolves.toBeUndefined();
+    expect(rollback).toHaveBeenCalledWith(rollbackEvent, signal); expect(executor.mock.calls.length).toBe(before);
+    rollback.mockRejectedValueOnce(new Error("SNAPSHOT_PUBLICATION_PROJECT_BLOCKED"));
+    await expect(handleOperationalOutboxEvent(rollbackEvent, signal, undefined, undefined, rollback)).resolves.toEqual({ deferred: true, code: "OPERATIONS_CONTROL_EXECUTION_DEFERRED" });
+    rollback.mockRejectedValueOnce(new Error("Synthetic private rollback diagnostic"));
+    await expect(handleOperationalOutboxEvent(rollbackEvent, signal, undefined, undefined, rollback)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable: true });
+  });
 });

@@ -3,7 +3,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
-import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability } from "./snapshot-build-capability.ts";
+import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "./snapshot-build-capability.ts";
 import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
 import { OPERATIONAL_EXECUTOR_TOPICS, handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../modules/operations-control/worker.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../modules/operations-control/index.ts";
@@ -79,8 +79,10 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   const snapshotBuild = createSnapshotBuildCapability(resolveStorage);
   const operationalBuild = createOperationalSnapshotBuildCapability(resolveStorage);
   const operationalPublish = createOperationalSnapshotPublishCapability(resolveStorage);
+  const operationalRollback = createOperationalSnapshotRollbackCapability(resolveStorage);
   const operationalTopics = [...OPERATIONAL_EXECUTOR_TOPICS, ...(operationalBuild ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD] : []),
-    ...(operationalPublish ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH] : [])];
+    ...(operationalPublish ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH] : []),
+    ...(operationalRollback ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK] : [])];
   const boss = await getPgBoss();
   let terminalCursor = "";
   const operationalTerminalCursors = new Map<string, string>();
@@ -106,6 +108,6 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
       handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
         : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
-          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined) : handleDefaultOutboxEvent(event) } }); }
+          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined, operationalRollback ?? undefined) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

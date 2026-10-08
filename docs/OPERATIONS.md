@@ -165,14 +165,15 @@ invalid registry before startup, recovery after an atomic late SUCCESS rollback,
 and queue-ACK-loss replay after freeze/SUSPENDED with unavailable public/storage
 refs. PUBLISH performs bounded GET only, no new capture/sign/PUT/HEAD; exact own
 heartbeat is observed active and cleared after joined stop. Runtime snapshot
-matrix — 12/12 PASS with synthetic SDK transport. Rollback, ACK rotation and
-approval executors still remain work; no production activation is implied.
+matrix now covers BUILD, PUBLISH and ROLLBACK — 17/17 PASS with synthetic SDK
+transport. ACK rotation and approval executors remain work; no production
+activation is implied.
 Startup revokes the previous exact-owner qualification before validating storage
 or capabilities. An invalid new configuration cannot leave a crashed process's
 fresh heartbeat reporting active until TTL; pre-aborted startup remains a no-op.
 
-Historical rollback now has an internal current-rights admission prerequisite,
-not an executable administrative action. It accepts old GOOD content after head
+Historical rollback uses a snapshot-owned current-rights admission prerequisite.
+It accepts old GOOD content after head
 advance but rejects current identity/consent/visibility/assignment/contact/media
 permission loss, EXCLUDE and disabled/SUSPENDED/frozen state. Agent contact
 fingerprints are value-free; assignment checks the current selected GOOD fact
@@ -194,8 +195,20 @@ the new manifest, awaits settlement and records staging after fresh lease/rights
 current-trust admission. Pending binding reuses exact bytes without signing;
 revoked pending key denies recovery. Snapshot-owned finish atomically publishes
 current/run under final full lease/current trust and permissions. Committed run
-replay needs no config/IO/fresh rights and does not rewind newer current. Operational
-SUCCESS must still be added to that atomic cut; adapter/registered runtime remain work.
+replay needs no config/IO/fresh rights and does not rewind newer current.
+The concrete operational adapter now commits current/run/request SUCCESS together
+under global → publication → input locks and the complete accepted event/job lease.
+The SQL success guard verifies exact source run, root capture, immutable staged
+binding, new run and the strict six-field result; late failure/cancellation rolls
+back all three states. Register it with SNAPSHOT_ROLLBACK_ENABLED=true (absent/false
+reserves the topic), independently of BUILD/PUBLISH. Startup validates the existing
+value-free signing/public registry; actual signing re-reads current configuration.
+Keep the approved source's PUBLIC key for archive authentication, never its private
+secret. New manifests must use a current/next non-revoked key. Committed operational
+replay precedes config/IO, including after freeze/SUSPENDED and unavailable refs.
+Native pg-boss proof covers enabled, disabled, invalid, late-SUCCESS crash recovery
+and queue-ACK-loss replay; own readiness is observed and cleared after joined stop.
+This remains local synthetic implementation proof, not live-provider/production proof.
 
 ## Streaming raw artifacts — remediation foundation
 

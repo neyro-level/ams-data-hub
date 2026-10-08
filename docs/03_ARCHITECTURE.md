@@ -338,8 +338,20 @@ remediation program preserves these boundaries while connecting them:
   uses request-owned capture identity and complete stage lookup pins with two
   full lease fences surrounding capture/IO. The existing enabled snapshot
   capability registers it in the same combined queue; it is never a PUBLISH
-  permission. Other four adapters and HTTP discovery/delivery/ACK
-  remain unfinished.
+  permission. Selected PUBLISH uses public-only bounded artifact GET and one
+  final full-lease cut for current/run/SUCCESS. Historical ROLLBACK authenticates
+  an already-approved source using its retained PUBLIC archive key, reuses the
+  thirteen immutable files and signs only a higher-sequence manifest under the
+  current non-revoked key. Its immutable request-owned reservation/binding/stage
+  survives takeover; fresh permission and full lease gates bracket external IO.
+  The operations-owned final cut locks global → publication → input before
+  event/job/request, then commits current/run/SUCCESS atomically through a fixed
+  same-scope actor bridge. Dedicated SQL independently validates exact source,
+  root, binding, run and full accepted lease/result. Committed replay reads only
+  metadata, needs no config/IO and never regresses newer current. PUBLISH and
+  ROLLBACK register independently in the same worker with default-false flags;
+  no new process, credentials or wider grants are introduced. ACK rotation,
+  suspicious approval and HTTP discovery/delivery/ACK remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

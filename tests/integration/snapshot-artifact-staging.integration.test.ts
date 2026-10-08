@@ -58,7 +58,7 @@ import { ReliabilityService } from "../../src/modules/platform-operations/applic
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { drainOutboxWithDependencies } from "../../src/modules/platform-operations/worker.ts";
-import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor, requestOperationalAction } from "../../src/modules/operations-control/server.ts";
+import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor, createOperationalSnapshotRollbackExecutor, requestOperationalAction } from "../../src/modules/operations-control/server.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../../src/modules/operations-control/index.ts";
 import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
 import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
@@ -118,6 +118,101 @@ function observer<T>(scope: { organizationId: string; projectId: string }, execu
 }
 
 describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
+  it.each(["success", "late-failure", "late-cancel", "takeover", "project", "trust"])("atomic operational ROLLBACK: %s", async (mode) => {
+    const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+    const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-ops-rollback", correlationId: randomUUID() };
+    const oldKey = generateKeyPairSync("ed25519"); const nextKey = generateKeyPairSync("ed25519");
+    vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_OLD", oldKey.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_NEXT", nextKey.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
+    let trustSet: SnapshotTrustSet = { currentKeyId: "synthetic-old", nextKeyId: null, revokedKeyIds: [],
+      publicKeys: { "synthetic-old": oldKey.publicKey.export({ format: "pem", type: "spki" }).toString(),
+        "synthetic-next": nextKey.publicKey.export({ format: "pem", type: "spki" }).toString() } };
+    const client = new S3Client({ region: "synthetic-1", credentials: { accessKeyId: "test-access-key", secretAccessKey: "test-secret-key" } });
+    const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0; let putHook: (() => Promise<void>) | null = null;
+    const send = vi.spyOn(client, "send").mockImplementation(async (command) => {
+      expect(cuts.active).toBe(0);
+      if (command instanceof PutObjectCommand) { puts++; objects.set(command.input.Key!, Uint8Array.from(command.input.Body as Uint8Array));
+        if (putHook) { const hook = putHook; putHook = null; await hook(); } return {} as never; }
+      if (command instanceof GetObjectCommand) { gets++; const body = objects.get(command.input.Key!); if (!body) throw new Error("SYNTHETIC_MISSING_OBJECT");
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0),
+          Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } as never; }
+      throw new Error("SYNTHETIC_UNEXPECTED_IO");
+    });
+    const storage = new S3ObjectStorage({ bucket: "synthetic-ops-rollback", client });
+    let now = new Date("1996-01-01T00:00:01Z");
+    const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+    let ownedLease: Awaited<ReturnType<typeof reliability.claim>> = null;
+    const actualSucceed = OperationalActionLifecycleRepository.prototype.succeedRolledBackSnapshot;
+    const succeed = vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedRolledBackSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, lease, run) {
+      const value = await actualSucceed.call(this, lease, run);
+      if (mode === "late-failure") throw new Error("SYNTHETIC_AFTER_ROLLBACK_SUCCESS");
+      if (mode === "late-cancel") controller.abort(); return value;
+    });
+    try {
+      const stage = await createSnapshotStagedBuildServer({ ...scope, storage, trustSet, keyId: "synthetic-old",
+        privateKeyRef: defineSecretRef("SYNTHETIC_OPS_ROLLBACK_OLD") })(setup.principal, setup.lookup);
+      const publish = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
+      const sourceRun = await observer(scope, publish);
+      trustSet = { ...trustSet, currentKeyId: "synthetic-next", revokedKeyIds: ["synthetic-old"] };
+      vi.stubEnv("SYNTHETIC_OPS_ROLLBACK_OLD", ""); // Historical signing secret is not used.
+      const accepted = await requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      const eventId = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
+        if (!request.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
+        await tx.outboxEvent.update({ where: { id: request.outboxEventId }, data: { availableAt: new Date("1996-01-01T00:00:00Z") } });
+        return request.outboxEventId;
+      });
+      ownedLease = await reliability.claim(`synthetic-ops-rollback-${randomUUID()}`, 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+      if (!ownedLease || ownedLease.outboxEventId !== eventId) throw new Error("SYNTHETIC_LEASE_MISSING");
+      const lease = ownedLease;
+      const getSigning = vi.fn(() => ({ keyId: "synthetic-next", privateKeyRef: defineSecretRef("SYNTHETIC_OPS_ROLLBACK_NEXT") }));
+      const resolveRollback = vi.fn(() => ({ ...scope, storage, getTrust: () => trustSet, getSigning }));
+      const execute = createOperationalSnapshotRollbackExecutor({ resolveRollback });
+      for (const altered of [{ ...lease, attempt: lease.attempt + 1 }, { ...lease, workerId: "synthetic-wrong-worker" },
+        { ...lease, jobRunId: "synthetic-missing-job" }, { ...lease, leaseAcquiredAt: "1996-01-01T00:00:02.000Z" }])
+        await expect(execute(altered)).rejects.toThrow("OUTBOX_OPERATION_LEASE_LOST");
+      expect(resolveRollback).not.toHaveBeenCalled(); expect(gets).toBe(14);
+      await observer(scope, (tx) => new OperationalActionLifecycleRepository(tx).begin(lease), "operations-executor");
+      await expect(observer(scope, (tx) => tx.operationalActionRequest.update({ where: { id: accepted.requestId }, data: {
+        status: "SUCCEEDED", finishedAt: new Date(), result: { action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+          sourceDeliveryRunId: sourceRun.deliveryRunId, deliveryRunId: "missing-run", publishSequence: stage.publishSequence + 1, manifestSha256: "a".repeat(64) },
+      } }), "operations-executor")).rejects.toThrow("OPERATIONS_CONTROL_RESULT_INVALID");
+      putHook = async () => {
+        if (mode === "takeover") { now = new Date("1996-01-01T00:06:00Z");
+          ownedLease = await reliability.claim("synthetic-rollback-takeover", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK]);
+          expect(ownedLease?.attempt).toBe(2); }
+        if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+        if (mode === "trust") trustSet = { ...trustSet, revokedKeyIds: [...trustSet.revokedKeyIds, "synthetic-next"] };
+      };
+      if (mode === "success") await expect(execute(lease, controller.signal)).resolves.toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourceDeliveryRunId: sourceRun.deliveryRunId });
+      else await expect(execute(lease, controller.signal)).rejects.toThrow({ "late-failure": "SYNTHETIC_AFTER_ROLLBACK_SUCCESS", "late-cancel": "OPERATIONS_CONTROL_EXECUTION_CANCELLED",
+        takeover: "OUTBOX_OPERATION_LEASE_LOST", project: "SNAPSHOT_PUBLICATION_PROJECT_BLOCKED", trust: "SNAPSHOT_ARTIFACT_REVOKED_KEY_ID" }[mode]);
+      await observer(scope, async (tx) => {
+        expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe(mode === "success" ? "SUCCEEDED" : "RUNNING");
+        expect(await tx.deliveryRun.count({ where: scope })).toBe(mode === "success" ? 2 : 1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: scope })).publishSequence).toBe(stage.publishSequence + (mode === "success" ? 1 : 0));
+        expect(await tx.snapshotRollbackBinding.findMany({ where: scope })).toEqual([]);
+        expect(await tx.snapshotBuildInputPart.findMany({ where: scope })).toEqual([]);
+      }, "operations-executor");
+      succeed.mockRestore(); trustSet.revokedKeyIds = ["synthetic-old"];
+      if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "ACTIVE" } }));
+      if (!ownedLease) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      const result = await execute(ownedLease);
+      expect(result).toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
+        sourceDeliveryRunId: sourceRun.deliveryRunId, publishSequence: stage.publishSequence + 1 });
+      expect(getSigning).toHaveBeenCalledTimes(1);
+      const ioBefore = { puts, gets, resolves: resolveRollback.mock.calls.length };
+      await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } }));
+      trustSet = { ...trustSet, revokedKeyIds: [...trustSet.revokedKeyIds, "synthetic-next"] }; resolveRollback.mockImplementation(() => { throw new Error("SYNTHETIC_CONFIG_MUST_NOT_BE_READ"); });
+      expect(await execute(ownedLease)).toEqual(result);
+      expect({ puts, gets, resolves: resolveRollback.mock.calls.length }).toEqual(ioBefore);
+      await reliability.complete(ownedLease); ownedLease = null;
+    } finally {
+      if (ownedLease) await reliability.complete(ownedLease);
+      succeed.mockRestore(); send.mockRestore(); client.destroy(); vi.unstubAllEnvs();
+    }
+  }, 60_000);
   it.each(["revoked", "noncurrent", "missing", "private", "invalid", "wrong", "unapproved", "foreign", "cancelled", "manifest-corrupt", "file-corrupt", "run-mismatch"])("approved rollback archival source: %s", async (mode) => {
     const setup = await fixture(true); const { scope } = setup;
     const keys = generateKeyPairSync("ed25519");

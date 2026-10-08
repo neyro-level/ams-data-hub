@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createProjectSnapshotTrustResolver } from "../src/modules/snapshot-delivery/infrastructure/project-snapshot-trust.ts";
-import { createOperationalSnapshotPublishCapability } from "../src/infrastructure/snapshot-build-capability.ts";
+import { createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "../src/infrastructure/snapshot-build-capability.ts";
 
 const scope = { organizationId: "synthetic-org", projectId: "synthetic-project" };
 const pair = generateKeyPairSync("ed25519");
@@ -10,6 +10,18 @@ const row = () => ({ ...scope, currentKeyId: "current", nextKeyId: null, revoked
 const environment = (rows: unknown = [row()]) => ({ PROJECT_SNAPSHOT_SIGNING_BINDINGS: JSON.stringify(rows), SYNTHETIC_PUBLIC_KEY: pem });
 
 describe("selected publication public-only project trust", () => {
+  it("rollback is independently disabled and validates existing refs without reading secrets at startup", () => {
+    const storage = vi.fn();
+    expect(createOperationalSnapshotRollbackCapability(storage, {})).toBeNull();
+    expect(createOperationalSnapshotRollbackCapability(storage, { SNAPSHOT_ROLLBACK_ENABLED: "false", PROJECT_SNAPSHOT_SIGNING_BINDINGS: "invalid" })).toBeNull();
+    expect(() => createOperationalSnapshotRollbackCapability(storage, { SNAPSHOT_ROLLBACK_ENABLED: "1" })).toThrow("SNAPSHOT_ROLLBACK_CAPABILITY_INVALID");
+    expect(() => createOperationalSnapshotRollbackCapability(storage, { SNAPSHOT_ROLLBACK_ENABLED: "true" })).toThrow("PROJECT_SNAPSHOT_SIGNING_BINDINGS_INVALID");
+    const env = { ...environment([{ ...row(), keyId: "current", privateKeyRef: "SYNTHETIC_PRIVATE_KEY" }]),
+      SNAPSHOT_ROLLBACK_ENABLED: "true", SNAPSHOT_BUILD_ENABLED: "false", SNAPSHOT_PUBLISH_ENABLED: "false" };
+    Object.defineProperty(env, "SYNTHETIC_PRIVATE_KEY", { get() { throw new Error("SYNTHETIC_PRIVATE_READ"); } });
+    expect(createOperationalSnapshotRollbackCapability(storage, env)).toBeTypeOf("function");
+    expect(storage).not.toHaveBeenCalled();
+  });
   it("accepts public-only or existing signing rows without requiring/resolving private refs", () => {
     for (const binding of [row(), { ...row(), keyId: "current", privateKeyRef: "SYNTHETIC_PRIVATE_KEY" }]) {
       const env = environment([binding]);

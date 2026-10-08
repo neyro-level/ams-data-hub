@@ -8,15 +8,18 @@ import { executeSuspiciousRejection } from "./infrastructure/suspicious-rejectio
 import { OperationalActionLifecycleRepository } from "./infrastructure/operational-action-lifecycle.ts";
 import type { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 import type { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
+import type { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
 
 export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
 
 /** No raw exception text, cancellation reason or arbitrary diagnostic code
  * reaches generic outbox persistence. Retry/defer is not request FAILED. */
 export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal,
-  build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>, publish?: ReturnType<typeof createOperationalSnapshotPublishExecutor>) {
+  build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>, publish?: ReturnType<typeof createOperationalSnapshotPublishExecutor>,
+  rollback?: ReturnType<typeof createOperationalSnapshotRollbackExecutor>) {
   if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)
-    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish)) {
+    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish)
+    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback)) {
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED"), {
       code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
     });
@@ -24,6 +27,7 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
   try {
     if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build) await build(event, signal);
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish) await publish(event, signal);
+    else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback) await rollback(event, signal);
     else await executeSuspiciousRejection(event, signal);
   }
   catch (error) {

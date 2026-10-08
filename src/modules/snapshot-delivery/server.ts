@@ -17,3 +17,4 @@ export { runInSnapshotInputTransaction } from "./infrastructure/snapshot-input-t
 export { captureSnapshotInput } from "./infrastructure/snapshot-input-capture-command.ts";
 export { createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer } from "./infrastructure/snapshot-selected-publication.ts";
 export { createProjectSnapshotTrustResolver } from "./infrastructure/project-snapshot-trust.ts";
+export { createSnapshotRollbackServer, inspectSnapshotRollbackRunServer } from "./infrastructure/snapshot-rollback-server.ts";

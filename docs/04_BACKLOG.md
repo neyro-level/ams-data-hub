@@ -232,7 +232,26 @@ review без новых findings. Final native matrix — 86/86 PASS, 56 migrat
 prod/test types, lint, architecture430/1471, docs/secrets PASS. Request в этих
 snapshot-owned fixtures остаётся RUNNING: operational SUCCESS в том же cut,
 реальный adapter и combined-worker runtime ещё не реализованы.
-MP-08.1 остаётся IN_PROGRESS, зарегистрированы только три из шести executors.
+Этот snapshot-owned checkpoint не включал operational SUCCESS/runtime.
+Следующий checkpoint добавил concrete ROLLBACK adapter и dedicated SQL result
+guard: current/run/SUCCESS атомарны, полный accepted event/job lease обязателен,
+exact source/root/reservation/staged binding/run/result проверяются независимо.
+Metadata-only committed replay не читает config/IO и не переписывает newer current.
+Независимая default-false SNAPSHOT_ROLLBACK_ENABLED capability использует existing
+combined worker, registry и refs; новые процессы/secrets/grants не создаются.
+Native request/rejection/staging matrix — 128/128 PASS, 3 suites, 57 migrations,
+87,66s, final reset: late SUCCESS failure/cancel, каждый forged lease field,
+post-PUT takeover/SUSPENDED/revocation, SQL fabricated success denial, retry и
+config-free replay. Actual combined-worker/pg-boss matrix — 17/17 PASS, 29,54s,
+final reset: пять ROLLBACK scenarios + прежние BUILD/PUBLISH regressions, exact
+own heartbeat active/cleared. Первый runtime прогон 16/17: replay fixture ошибочно
+отзывала active signer без нового; исправлена fixture ротации без ослабления
+startup guard. 29 scoped units PASS; types/lint, architecture432/1485, RLS53 PASS.
+Final совместный native прогон всех четырёх suites — 145/145 PASS, 57 migrations,
+110,81s, final reset. Read-only architect review без actionable findings;
+production не активирован.
+MP-08.1 остаётся IN_PROGRESS: зарегистрированы четыре из шести executors;
+ACK_ROTATE и SUSPICIOUS_APPROVE ещё в работе, HTTP/routes/ACK/UI и MP-09/10 открыты.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

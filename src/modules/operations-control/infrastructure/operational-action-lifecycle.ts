@@ -17,7 +17,12 @@ export const publishedSnapshotResultSchema = z.object({ action: z.literal("SNAPS
   buildInputId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u), deliveryRunId: z.string().min(1).max(128),
   manifestSha256: z.string().regex(/^[a-f0-9]{64}$/u), publishSequence: z.number().int().positive().max(2_147_483_647),
 }).strict();
-const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema, publishedSnapshotResultSchema]);
+export const rolledBackSnapshotResultSchema = z.object({ action: z.literal("SNAPSHOT_ROLLBACK"),
+  sourcePublishSequence: z.number().int().positive().max(2_147_483_647), sourceDeliveryRunId: z.string().min(1).max(128),
+  deliveryRunId: z.string().min(1).max(128), manifestSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  publishSequence: z.number().int().positive().max(2_147_483_647),
+}).strict();
+const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema, publishedSnapshotResultSchema, rolledBackSnapshotResultSchema]);
 
 /** Caller owns global -> domain locks -> outbox fence -> request and one atomic
  * domain/result commit. No outside IO, nested transaction or arbitrary principal
@@ -87,6 +92,7 @@ export class OperationalActionLifecycleRepository {
       }
       if (result.action === "SNAPSHOT_BUILD") await this.assertStagedResult(request, result);
       if (result.action === "SNAPSHOT_PUBLISH") await this.assertPublishedResult(request, result);
+      if (result.action === "SNAPSHOT_ROLLBACK") await this.assertRollbackResult(request, result);
       return { replayed: true as const, request, result };
     }
     if (request.status === "FAILED") throw new Error("OPERATIONS_CONTROL_ALREADY_FAILED");
@@ -155,6 +161,42 @@ export class OperationalActionLifecycleRepository {
     }, data: { status: "SUCCEEDED", result, finishedAt: new Date(Math.max(Date.now(), stage.stagedAt.getTime(), run.publishedAt.getTime(), request.startedAt?.getTime() ?? 0)) } });
     if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST");
     return result;
+  }
+
+  private async rollbackProof(scope: { organizationId: string; projectId: string; id: string; sourcePublishSequence: number | null }) {
+    if (scope.sourcePublishSequence === null) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    const access = await this.transaction.$queryRaw<{ allowed: boolean }[]>(Prisma.sql`SELECT operational_executor_scope(${scope.organizationId},${scope.projectId}) AS allowed`);
+    if (access[0]?.allowed !== true) throw new Error("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.actor_id','snapshot-publication',true)`);
+    const rows = await this.transaction.$queryRaw<{ sourceDeliveryRunId: string; deliveryRunId: string; publishSequence: number;
+      manifestSha256: string; stagedAt: Date; publishedAt: Date }[]>(Prisma.sql`
+      SELECT * FROM snapshot_rollback_operation_proof(${scope.organizationId},${scope.projectId},${scope.id},${scope.sourcePublishSequence}::integer)`);
+    await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.actor_id','operations-executor',true)`);
+    if (rows.length !== 1) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID"); return rows[0]!;
+  }
+
+  private async assertRollbackResult(scope: { organizationId: string; projectId: string; id: string; sourcePublishSequence: number | null }, result: z.output<typeof rolledBackSnapshotResultSchema>) {
+    const proof = await this.rollbackProof(scope);
+    if (result.sourcePublishSequence !== scope.sourcePublishSequence || result.sourceDeliveryRunId !== proof.sourceDeliveryRunId
+      || result.deliveryRunId !== proof.deliveryRunId || result.publishSequence !== proof.publishSequence
+      || result.manifestSha256 !== proof.manifestSha256) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    return proof;
+  }
+
+  async succeedRolledBackSnapshot(lease: ClaimedReliabilityEvent, run: { deliveryRunId: string; publishSequence: number; manifestSha256: string }) {
+    const intent = operationalActionIntentSchema.parse(lease.payload);
+    if (intent.action !== "SNAPSHOT_ROLLBACK") throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    await lockOperationalOutboxLease(this.transaction, lease, { organizationId: intent.organizationId, projectId: intent.projectId,
+      topic: OPERATIONAL_ACTION_TOPICS[intent.action], payload: intent });
+    const request = await this.read(lease); const proof = await this.rollbackProof(request);
+    const result = rolledBackSnapshotResultSchema.parse({ action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: request.sourcePublishSequence,
+      sourceDeliveryRunId: proof.sourceDeliveryRunId, ...run });
+    await this.assertRollbackResult(request, result);
+    const changed = await this.transaction.operationalActionRequest.updateMany({ where: { id: intent.requestId,
+      organizationId: intent.organizationId, projectId: intent.projectId, action: result.action, outboxEventId: lease.outboxEventId, status: "RUNNING",
+      leaseJobRunId: lease.jobRunId, leaseAttempt: lease.attempt, leaseWorkerId: lease.workerId, leaseAcquiredAt: new Date(lease.leaseAcquiredAt) },
+      data: { status: "SUCCEEDED", result, finishedAt: new Date(Math.max(Date.now(),proof.stagedAt.getTime(),proof.publishedAt.getTime(),request.startedAt?.getTime() ?? 0)) } });
+    if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST"); return result;
   }
 
   async succeedRejectedRevision(lease: ClaimedReliabilityEvent, rawResult: z.input<typeof rejectedRevisionResultSchema>) {

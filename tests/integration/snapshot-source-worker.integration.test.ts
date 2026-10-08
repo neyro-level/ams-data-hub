@@ -37,8 +37,8 @@ import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/t
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { requestOperationalAction } from "../../src/modules/operations-control/server.ts";
 import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
-import { createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability } from "../../src/infrastructure/snapshot-build-capability.ts";
-import { captureSnapshotInput, createSnapshotStagedBuildServer, createProjectSnapshotSigningResolver } from "../../src/modules/snapshot-delivery/server.ts";
+import { createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "../../src/infrastructure/snapshot-build-capability.ts";
+import { captureSnapshotInput, createSnapshotStagedBuildServer, createProjectSnapshotSigningResolver, createSelectedSnapshotPublicationServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectObjectStorageResolver } from "../../src/platform/storage/project-object-storage.ts";
 import { ReliabilityService } from "../../src/modules/platform-operations/application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
@@ -97,7 +97,9 @@ async function operationalFixture() {
 }
 
 describe("actual combined source-worker snapshot capability", () => {
-  it.each(["enabled", "disabled", "invalid", "recovery", "replay"])("public-only PUBLISH registration with real pg-boss: %s", async (mode) => {
+  it.each(["SNAPSHOT_PUBLISH", "SNAPSHOT_ROLLBACK"].flatMap((action) =>
+    ["enabled", "disabled", "invalid", "recovery", "replay"].map((mode) => ({ action: action as "SNAPSHOT_PUBLISH" | "SNAPSHOT_ROLLBACK", mode }))))("$action registration with real pg-boss: $mode", async ({ action, mode }) => {
+    const rollback = action === "SNAPSHOT_ROLLBACK";
     const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
     const keys = generateKeyPairSync("ed25519"); const bucket = `synthetic-publish-${setup.suffix}`;
     const binding = { ...scope, keyId: "synthetic", privateKeyRef: "SYNTHETIC_SNAPSHOT_PRIVATE", currentKeyId: "synthetic", nextKeyId: null,
@@ -111,7 +113,8 @@ describe("actual combined source-worker snapshot capability", () => {
     vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", JSON.stringify([binding]));
     vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString());
     vi.stubEnv("SYNTHETIC_SNAPSHOT_PUBLIC", keys.publicKey.export({ format: "pem", type: "spki" }).toString());
-    vi.stubEnv("SNAPSHOT_BUILD_ENABLED", "false"); vi.stubEnv("SNAPSHOT_PUBLISH_ENABLED", mode === "disabled" ? "false" : "true");
+    vi.stubEnv("SNAPSHOT_BUILD_ENABLED", "false"); vi.stubEnv("SNAPSHOT_PUBLISH_ENABLED", !rollback && mode !== "disabled" ? "true" : "false");
+    vi.stubEnv("SNAPSHOT_ROLLBACK_ENABLED", rollback && mode !== "disabled" ? "true" : "false");
     const objects = new Map<string, Uint8Array>(); let puts = 0; let gets = 0;
     const sdk = vi.spyOn(S3Client.prototype, "send").mockImplementation(async (command: unknown) => {
       expect(evidence.snapshotCuts).toBe(0);
@@ -135,7 +138,12 @@ describe("actual combined source-worker snapshot capability", () => {
       const stage = await createSnapshotStagedBuildServer({ ...scope, storage: createProjectObjectStorageResolver()(scope),
         ...createProjectSnapshotSigningResolver()(scope) })(principal, { idempotencyKeyHash: captured.idempotencyKeyHash, requestHash: captured.requestHash });
       expect(puts).toBe(14); expect(gets).toBe(0);
-      const accepted = await requestOperationalAction(setup.admin, { ...scope, action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId,
+      if (rollback) {
+        const publication = await createSelectedSnapshotPublicationServer({ ...scope, storage: createProjectObjectStorageResolver()(scope),
+          getTrust: () => ({ currentKeyId: "synthetic", nextKeyId: null, revokedKeyIds: [], publicKeys: { synthetic: process.env.SYNTHETIC_SNAPSHOT_PUBLIC! } }) })(principal, { buildInputId: stage.buildInputId });
+        await runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "snapshot-publication" }), publication);
+      }
+      const accepted = await requestOperationalAction(setup.admin, { ...scope, action, ...(rollback ? { sourcePublishSequence: stage.publishSequence } : { buildInputId: stage.buildInputId }),
         sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
       const eventId = await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
         await tx.outboxEvent.update({ where: { id: setup.intent.outboxEventId }, data: { availableAt: new Date("2050-01-01T00:00:00Z") } });
@@ -146,33 +154,42 @@ describe("actual combined source-worker snapshot capability", () => {
       });
       // Runtime receives only public registry fields and no signing secret.
       const { keyId, privateKeyRef, ...publicBinding } = binding; void keyId; void privateKeyRef;
-      vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", JSON.stringify([publicBinding])); vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", "");
+      if (!rollback) { vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", JSON.stringify([publicBinding])); vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", ""); }
       if (mode === "recovery" || mode === "replay") {
         const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => new Date("1994-01-01T00:00:01Z"));
-        const lease = await reliability.claim("synthetic-publish-before-crash", 300_000, [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH]);
+        const lease = await reliability.claim("synthetic-publish-before-crash", 300_000, [OPERATIONAL_ACTION_TOPICS[action]]);
         if (!lease || lease.outboxEventId !== eventId) throw new Error("SYNTHETIC_PUBLISH_LEASE_MISSING");
-        const execute = createOperationalSnapshotPublishCapability(createProjectObjectStorageResolver());
+        const execute = rollback ? createOperationalSnapshotRollbackCapability(createProjectObjectStorageResolver()) : createOperationalSnapshotPublishCapability(createProjectObjectStorageResolver());
         if (!execute) throw new Error("SYNTHETIC_PUBLISH_CAPABILITY_MISSING");
         if (mode === "recovery") {
-          const actualSucceed = OperationalActionLifecycleRepository.prototype.succeedPublishedSnapshot;
-          const crash = vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedPublishedSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, pendingLease, result) {
-            await actualSucceed.call(this, pendingLease, result); throw new Error("SYNTHETIC_PUBLISH_AFTER_SUCCESS_CRASH");
-          });
+          const actualRollback = OperationalActionLifecycleRepository.prototype.succeedRolledBackSnapshot;
+          const actualPublish = OperationalActionLifecycleRepository.prototype.succeedPublishedSnapshot;
+          const crash = rollback
+            ? vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedRolledBackSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, pendingLease, result) {
+              await actualRollback.call(this, pendingLease, result); throw new Error("SYNTHETIC_PUBLISH_AFTER_SUCCESS_CRASH");
+            })
+            : vi.spyOn(OperationalActionLifecycleRepository.prototype, "succeedPublishedSnapshot").mockImplementationOnce(async function (this: OperationalActionLifecycleRepository, pendingLease, result) {
+              await actualPublish.call(this, pendingLease, result); throw new Error("SYNTHETIC_PUBLISH_AFTER_SUCCESS_CRASH");
+            });
           try { await expect(execute(lease)).rejects.toThrow("SYNTHETIC_PUBLISH_AFTER_SUCCESS_CRASH"); } finally { crash.mockRestore(); }
           await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
-            expect(await tx.deliveryRun.count({ where: scope })).toBe(0); expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(0);
+            expect(await tx.deliveryRun.count({ where: scope })).toBe(rollback ? 1 : 0); expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(rollback ? 1 : 0);
             expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe("RUNNING");
           });
         } else {
-          await expect(execute(lease)).resolves.toMatchObject({ action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId });
+          await expect(execute(lease)).resolves.toMatchObject({ action, ...(rollback ? { sourcePublishSequence: stage.publishSequence } : { buildInputId: stage.buildInputId }) });
           await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
             await tx.dataSafetyState.update({ where: { id: "global" }, data: { jobsFrozen: true } });
             await tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "SUSPENDED" } });
           });
           vi.stubEnv("SYNTHETIC_SNAPSHOT_PUBLIC", ""); vi.stubEnv("SYNTHETIC_SNAPSHOT_BUCKET", ""); vi.stubEnv("SYNTHETIC_SNAPSHOT_SECRET", "");
-          vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", JSON.stringify([{ ...publicBinding, revokedKeyIds: ["synthetic"] }]));
+          vi.stubEnv("SYNTHETIC_SNAPSHOT_PRIVATE", "");
+          vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", JSON.stringify([rollback
+            ? { ...binding, keyId: "synthetic-next", currentKeyId: "synthetic-next", revokedKeyIds: ["synthetic"],
+              publicKeyRefs: { ...binding.publicKeyRefs, "synthetic-next": "SYNTHETIC_SNAPSHOT_PUBLIC" } }
+            : { ...publicBinding, revokedKeyIds: ["synthetic"] }]));
         }
-        expect(gets).toBe(14);
+        expect(gets).toBe(rollback ? 28 : 14);
       }
       if (mode === "disabled" || mode === "invalid") vi.stubEnv("PROJECT_SNAPSHOT_SIGNING_BINDINGS", "synthetic-invalid-registry");
       if (mode === "invalid") {
@@ -181,7 +198,7 @@ describe("actual combined source-worker snapshot capability", () => {
       }
       evidence.snapshotCuts = 0; evidence.snapshotRoles = 0; evidence.systemRoles = 0;
       if (mode === "invalid") {
-        await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 })).rejects.toThrow("PROJECT_SNAPSHOT_TRUST_BINDINGS_INVALID");
+        await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 })).rejects.toThrow(rollback ? "PROJECT_SNAPSHOT_SIGNING_BINDINGS_INVALID" : "PROJECT_SNAPSHOT_TRUST_BINDINGS_INVALID");
         expect(evidence.systemRoles).toBe(1); // Exact-owner clear only, before queue startup.
       } else {
         const boss = await getPgBoss(); const complete = boss.complete.bind(boss); const fetch = boss.fetch.bind(boss);
@@ -211,11 +228,12 @@ describe("actual combined source-worker snapshot capability", () => {
         }
       }
       const executed = !["disabled", "invalid"].includes(mode);
-      expect(puts).toBe(14); expect(gets).toBe(mode === "recovery" ? 28 : executed ? 14 : 0);
+      expect(puts).toBe(rollback && executed ? 15 : 14);
+      expect(gets).toBe((rollback ? 14 : 0) + (mode === "recovery" ? 28 : executed ? 14 : 0));
       await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
         expect((await tx.outboxEvent.findUniqueOrThrow({ where: { id: eventId } })).status).toBe(executed ? "PROCESSED" : "PENDING");
         expect((await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } })).status).toBe(executed ? "SUCCEEDED" : "REQUESTED");
-        expect(await tx.deliveryRun.count({ where: scope })).toBe(executed ? 1 : 0); expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(executed ? 1 : 0);
+        expect(await tx.deliveryRun.count({ where: scope })).toBe((rollback ? 1 : 0) + (executed ? 1 : 0)); expect(await tx.projectCurrentSnapshotManifest.count({ where: scope })).toBe(rollback || executed ? 1 : 0);
         expect(await tx.snapshotBuildInput.count({ where: scope })).toBe(1); expect(await tx.snapshotArtifactStageReceipt.count({ where: scope })).toBe(1);
         expect(await tx.runtimeHeartbeat.count({ where: { runtime: "source-worker", workerId } })).toBe(0);
         const jobs = await tx.jobRun.findMany({ where: { outboxEventId: eventId } });
