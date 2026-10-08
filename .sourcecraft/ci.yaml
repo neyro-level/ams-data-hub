@@ -119,8 +119,8 @@ workflows:
               - pnpm security:secrets
               - pnpm verify:quick
               - node scripts/ci/run-scoped-proof.mjs unit
-              - node scripts/ci/run-scoped-proof.mjs integration
               - node scripts/ci/run-scoped-proof.mjs optional-risk
+              - node scripts/ci/run-scoped-proof.mjs integration
 
   release:
     inputs:

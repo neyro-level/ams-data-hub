@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { classifyRisk } from "../scripts/ci/classify-risk.mjs";
-import { createRiskBuildEnvironment, parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
+import { assertIntegrationPrerequisites, createRiskBuildEnvironment, parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
 import { scanText } from "../scripts/ci/scan-secrets.mjs";
 import { verifyExactHead } from "../scripts/ci/verify-exact-head.mjs";
 import { validateSourcecraftPolicy } from "../scripts/ci/verify-sourcecraft-policy.mjs";
@@ -78,6 +78,19 @@ describe("SourceCraft gate policy", () => {
     expect(environment.DATABASE_USER).toBe("ams_data_hub_test");
     expect(environment.DATABASE_NAME).toBe("ams_data_hub_ci_test");
     expect(environment.DATABASE_URL).toContain("/ams_data_hub_ci_test");
+  });
+
+  it("requires the current standalone before native web restart and rejects reversed gate order", () => {
+    const files = ["tests/integration/source-worker-shutdown.integration.test.ts"];
+    expect(() => assertIntegrationPrerequisites(files, "true", true)).not.toThrow();
+    expect(() => assertIntegrationPrerequisites(files, "false", true)).toThrow(/REQUIRES_CURRENT_BUILD/u);
+    expect(() => assertIntegrationPrerequisites(files, "true", false)).toThrow(/REQUIRES_CURRENT_BUILD/u);
+    expect(() => assertIntegrationPrerequisites(["tests/integration/source-registry.integration.test.ts"], "false", false)).not.toThrow();
+    const ci = readFileSync(".sourcecraft/ci.yaml", "utf8");
+    const reversed = ci.replace("node scripts/ci/run-scoped-proof.mjs optional-risk", "SWAP_BUILD")
+      .replace("node scripts/ci/run-scoped-proof.mjs integration", "node scripts/ci/run-scoped-proof.mjs optional-risk")
+      .replace("SWAP_BUILD", "node scripts/ci/run-scoped-proof.mjs integration");
+    expect(() => validateSourcecraftPolicy(reversed, readFileSync(".sourcecraft/branches.yaml", "utf8"))).toThrow(/must precede/u);
   });
 
   it("treats classifier output as a conservative attention hint", () => {

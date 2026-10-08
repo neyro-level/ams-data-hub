@@ -30,7 +30,7 @@ Request automatically.
 | Screens, routes and flows | `02_PRODUCT_STRUCTURE.md` |
 | Architecture, profile, security and data policy | this file and ADRs |
 | Current schema and migrations | `prisma/schema.prisma`, `prisma.config.ts`, `prisma/migrations/` |
-| Current work | `04_BACKLOG.md`; execution state is local Task Manager `.beads` |
+| Current work | `04_BACKLOG.md`; execution state is local PlanDB `.plandb.db`; preserved Beads history: `PLANDB_MIGRATION_2026-10-08.md` |
 | Release template | `05_RELEASE_CHECKLIST.md`, Docker/Compose and `ops/` |
 | Final conformance, handover and rollback | `05_RELEASE_CHECKLIST.md`, `OPERATIONS.md` and ADR-014 |
 | Exact versions | `package.json`, `pnpm-lock.yaml`, `.node-version`, Dockerfile |

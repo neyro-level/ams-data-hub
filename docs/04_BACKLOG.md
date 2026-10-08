@@ -29,10 +29,120 @@
 
 ## Текущая граница
 
-MP-00–MP-07 доставлены. MP-08.1–MP-08.5 закрыты implementation ledger:
+MP-00–MP-08 доставлены. MP-08.1–MP-08.10 закрыты implementation ledger:
 все шесть concrete executors реализованы, зарегистрированы и проверены.
 SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
-в рабочую ветку; epic merge/gate ещё не выполнены. MP-08.6: action state
+в рабочую ветку; весь MP-08 впоследствии доставлен PR #26 после Gate #325.
+MP-09 Scenario A взят в работу: configured Vladis pipeline через реальный worker,
+затем публичные commands подготовки agents/media/URL, durable build intent,
+publication и consumer ACK. Implementation closure принадлежит Task Manager,
+а этот результат не является production readiness;
+явная подготовка публичными commands не выдаётся за автоматическую orchestration.
+Первый native участок Scenario A — PASS: configured Source/SecretRef, real worker
+и pg-boss, реальный Safe Intake с нижним synthetic DNS/HTTPS transport, raw bytes
+и SHA-256, десять известных property variants, повторный GOOD и стабильные UID,
+missing-grace с ACTIVE/counter, broken XML без изменения Last Good/identities.
+63 migrations и final test DB reset — PASS. Маленькая fixture использует явную
+project-owned policy, не изменение live Vladis calibration. Unknown category
+в диагностическом прогоне корректно дал REJECTED из-за invalid record;
+positive OTHER feed proof не заявлен. Extended native publication/portable files/ACK
+прогон — PASS: публичные subscription/contact/URL commands, exact second GOOD
+intent PROCESSED + JobRun SUCCESS + native queue completed, actual default worker,
+подписанная publication, actual current и 13 artifact HTTP responses, portable
+verification и authenticated ACK/replay с durable ACKNOWLEDGED. Первый extended
+прогон выявил неверный CURATED input fixture; исправлен на реальный ALL_SHARED
+command contract, без прямой вставки подписки. Architect completion-oracle finding
+исправлен explicit own completion и persisted exact-intent assertions.
+Decoded inventory exact UID cohort, десять property types, SALE/RENT и текущая
+цена 1100 против historical grace price 1000 подтверждены повторным native PASS;
+private apartment, script, source-code и query-token sentinels отсутствуют.
+Расширенный native Scenario A — PASS: извлечение agent evidence из actual GOOD
+raw records, matching/replay со стабильными UID, две office-phone collision
+bindings и consent gate через действующие команды. Только подтверждённый агент
+попадает в публичный dataset; неподтверждённый и office phone исключены.
+Реальный media mirror через Safe Outbound сохраняет повторяющиеся изображения
+на позициях 0/2 и producer order flag; broken image исключён с WARNING.
+Приватный номер квартиры в combined address отсутствует, STREET geo отличается
+от точных координат и воспроизводится повторной сборкой неизменённых фактов.
+Отдельный configured source с unknown category получает REJECTED/invalidRecordCount=1,
+без identities/Last Good/build intent и без изменения текущего manifest.
+Native прогон — 1/1 PASS, 63 migrations и final test DB reset; full Next/browser
+runtime и process restart не заявлены (restart proof принадлежит Scenario G).
+Exact checkpoint, проверки и implementation ledger принадлежат Task Manager;
+они не заменяют оставшиеся Scenario B–G и MP-09 delivery gate.
+Scenario B–D native proof — PASS (3/3): configured Domclick/Avito v3/CIAN v2
+через real worker/Safe Intake, raw bytes/SHA, format-specific normalized draft,
+GOOD и публичные commands → actual snapshot assembly → strict public inventory DTO.
+Чужой формат даёт FAILED без изменения Last Good, identities, records и build
+intent. После этих assertions отменяется только собственный synthetic RETRY job,
+чтобы следующий case не получил его с другим transport. Final native run:
+`64239/67891d`, 63 migrations и test DB reset — PASS; architect review без findings.
+Implementation closure B–D записано native PlanDB `done` после checkpoint
+`fa0e78bfb3f8796d4a7a3c805ee613ec924fbdc3` в SourceCraft. 2026-10-08 владелец удалил Beads
+в отдельном workflow, затем явно разрешил перенос graph в PlanDB. AMS Data Hub backup сохранён в
+`C:/Users/User/Desktop/Data-skill/beads-uninstall-backup-20261008/payload/store-7`;
+PlanDB `.plandb.db` теперь содержит весь исходный graph с notes/evidence/statuses
+и зависимостями; migration verification — PASS. Mapping и границы находятся в
+`PLANDB_MIGRATION_2026-10-08.md`. Старый v4 не переоткрывается.
+Scenario E native proof — PASS (1/1): реальный registered disabled Source,
+dry-run без записи, diff/review hash и explicit confirmation, отказ stale review,
+transactional import с identity/price/audit/catalog revision, затем публичные
+subscription/URL commands → capture → actual snapshot candidate assembly.
+Development и price DTO получены из сохранённых фактов; приватная provenance
+отсутствует. Native run `56361/f7b73c`, 63 migrations и final test DB reset — PASS;
+test types `73222/1bd046` — PASS. Первый прогон выявил несовместимый fixture profile;
+выбран действующий `default-v1`, registry и защитные правила не изменены.
+Проверка ограничена candidate assembly без media: signed publication, web-role
+NOBYPASS и process restart этим сценарием не заявлены. Следующие сценарии F–G;
+общий MP-09 delivery gate и MP-10 ещё не завершены.
+Scenario F native proof — PASS: три real configured Source в одном synthetic
+project. A/B получают второй GOOD с ценами 2100/2200; C после первого GOOD
+получает malformed XML → FAILED без GOOD sequence и без изменения Last Good,
+identities, records, build intents или состояния A/B. Actual capture фиксирует
+source/fact/approved head pins 2/2/1; candidate snapshot содержит три distinct UID
+и цены 2100/2200/1000. Native `48666/6da3e0` — 4/4 PASS вместе с B–D,
+63 migrations и final DB reset; independent architect review без findings.
+Подменены только нижние DNS/HTTPS/S3 transports. Signed publication и HTTP
+этим scoped proof не заявлены.
+Scenario G full scoped native proof — PASS: actual worker process импортирует GOOD и
+завершается; fresh pg-boss client читает тот же completed job. Actual Next
+standalone проходит login/session/private Fleet HTTP, затем новый Next process
+принимает прежний cookie с тем же session ID и показывает тот же project slug.
+Source, identities, revisions и build intents сохраняются. Отложенный manual
+request переживает web restart и завершается новым actual worker со стабильным
+inventory UID и вторым GOOD. Actual publication сохраняет signed current и все
+13 artifacts. Каждый fresh Next process читает current/files через actual HTTP,
+проходит signature/schema/hash/privacy/integrity verification и повторяет ACK
+идемпотентно. Delivery/current/credential version и timestamps остаются теми же,
+в том числе после второго Source GOOD; child PID-scoped SDK evidence подтверждает
+реальные чтения из synthetic lower transport. Native `6277/91ebbe` — 7/7 PASS,
+включая шесть
+shutdown/recovery regressions, 63 migrations и final DB reset. Current standalone
+build `83913/74d61c` — PASS; CI policy regressions — 8/8 PASS. RISKY gate теперь
+собирает standalone перед integration в том же exact-head cube, один раз.
+Windows worker SIGTERM здесь вызывается registered handler через IPC; pg-boss
+client/runtime restart не означает PostgreSQL server restart. HTTP-auth/Fleet
+не выдаётся за browser E2E; child DB owner-login не выдаётся за queue ACL proof.
+Completion audit выявил недостающее publication/ACK restart evidence и вернул
+преждевременный `done` в RUNNING, сохранив partial results. Расширенный actual
+proof теперь покрывает исходное acceptance; independent architect review без
+открытых замечаний по G. `verify:quick` — PASS (`43380/0c7094`). Scoped completion
+не заменяет MP-09 delivery gate/merge или оставшийся MP-10; production не разрешён.
+Whole-MP09 review также исправил Scenario A fixture isolation: actual broken и
+unsupported RETRY jobs отменяются только по собственным exact IDs после всех
+retry/rejection/preservation assertions, до чужого transport/suite. Foreign jobs
+не очищаются. Native `81765/4dfcc4` — 1/1 PASS, 63 migrations и final DB reset;
+independent correction review без открытых замечаний.
+MP-09 gate `337` на `9b0ddaa...` — FAIL: 91 unit PASS, build PASS,
+38/39 native PASS, final DB reset; Linux fatal guardian-loss проверка получила
+`SOURCE_EXECUTION_BUSY` при немедленной reacquisition после Node exit.
+Test-only correction фиксирует original source-lock PID/database/scope до fatal
+exit и ограниченно (5 s) наблюдает исчезновение именно этого lock; затем прежняя
+реальная reacquisition обоих guards обязательна. Graceful checks не изменены,
+дополнительных terminate/reset/BUSY retries нет. Native `6277/91ebbe`, test types
+`93184/8451dd`, scoped lint `98743/de02d6` — PASS; independent review без findings.
+Failed run сохранён; новый reviewed exact-head gate требуется до merge.
+MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
 общую strict result schema и scalar allowlist; raw result, hashes и private proof
@@ -82,7 +192,14 @@ suite вызваны unfiltered fixture claims, захватывавшими ret
 suites. Test-only fix использует стабильный unique per-key topic и own event ID;
 реальные concurrency/stale lease/retry/dead-letter assertions сохранены, foreign
 events не удаляются и не переносятся. Production claim implementation неизменна.
-Merge не выполнен; новое exact-head provider evidence требуется после checkpoint.
+На новом exact-head `ad09ecab9ade1e4b0d1abcfb494a82fb92c9c27a` Gate #325
+завершился SUCCESS: 233/233 units, 349/349 native, 63 migrations, final reset
+и production build PASS. Independent full-range architect review — PASS.
+PR #26 MERGED без force/rebase/squash; canonical main
+`a71c3a01b062b314df392c2e305ddd7c9ec07a1e`, tree равен gated candidate.
+Публичное GitHub main зеркало и локальный main приведены к тому же SHA;
+старый локальный MP-08 branch удалён после проверки merge. Delivery ledger закрыт,
+graph reconciliation CLEAN; production не затронут. Gate #322 сохранён как FAIL.
 Исправление подтверждено локально: consumer/notifier + outbox-reliability на
 одной native PostgreSQL базе — 31/31, 63 migrations и final reset PASS;
 test types, scoped lint, docs/secrets/diff — PASS. Независимый review patch

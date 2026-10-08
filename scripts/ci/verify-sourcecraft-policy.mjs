@@ -40,6 +40,12 @@ export function validateSourcecraftPolicy(ci, branches) {
       `SourceCraft policy FAIL: missing CI=${missingCi.join(",") || "none"}; forbidden=${forbiddenMatches.length}; missing branch=${missingBranchRules.join(",") || "none"}`,
     );
   }
+  const risky = ci.split("  merge-risky:")[1]?.split("  release:")[0] ?? "";
+  const buildIndex = risky.indexOf("node scripts/ci/run-scoped-proof.mjs optional-risk");
+  const integrationIndex = risky.indexOf("node scripts/ci/run-scoped-proof.mjs integration");
+  if (buildIndex < 0 || integrationIndex < 0 || buildIndex >= integrationIndex) {
+    throw new Error("SourceCraft policy FAIL: optional-risk build must precede integration web restart proof");
+  }
 }
 
 const isMain = process.argv[1]

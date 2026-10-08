@@ -68,6 +68,13 @@ function runUnitProof() {
   run(process.execPath, ["node_modules/vitest/vitest.mjs", "run", ...files]);
 }
 
+export function assertIntegrationPrerequisites(files, runBuild, standaloneReady = existsSync(path.join(rootDir, ".next/standalone/server.js"))) {
+  if (files.includes("tests/integration/source-worker-shutdown.integration.test.ts")
+    && (runBuild !== "true" || !standaloneReady)) {
+    throw new Error("SCOPED_WEB_RESTART_REQUIRES_CURRENT_BUILD: run optional-risk with RUN_BUILD=true before integration");
+  }
+}
+
 function runIntegrationProof() {
   const files = parseTestFiles(
     process.env.INTEGRATION_TEST_FILES,
@@ -78,6 +85,7 @@ function runIntegrationProof() {
     console.log("Scoped integration proof: skipped (reviewed scope has no DB risk)");
     return;
   }
+  assertIntegrationPrerequisites(files, process.env.RUN_BUILD);
   run(process.execPath, ["scripts/run-integration-tests.mjs", ...files]);
 }
 

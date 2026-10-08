@@ -1,9 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { createServer } from "node:net";
+import { hashPassword } from "better-auth/crypto";
+import { describe, expect, it, vi } from "vitest";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
+import { snapshotManifestV1Schema } from "@ams-data-hub/snapshot-verifier";
+import { verifySnapshotPublicArtifacts } from "../../src/modules/snapshot-delivery/application/snapshot-public-verification.ts";
 import type { PoolClient } from "pg";
 import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { getSourceWorkerReadiness } from "../../src/modules/platform-operations/server.ts";
@@ -11,9 +17,16 @@ import { SOURCE_IMPORT_QUEUE, sourceManualJobId } from "../../src/modules/ingest
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
-import { acquireSourceExecutionGuard } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { acquireSourceExecutionGuard, sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 import { acquirePermanentOutboxWorkerGuard } from "../../src/modules/platform-operations/infrastructure/permanent-worker-guard.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import { createProjectObjectStorageResolver } from "../../src/platform/storage/project-object-storage.ts";
+import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
+import { catalogSubscriptionCommands } from "../../src/modules/shared-catalog/server.ts";
+import { projectPublicContactCommands, projectUrlRegistryCommands } from "../../src/modules/project-state/server.ts";
+import { captureSnapshotInput, createSnapshotPublicationServer, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
+import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/application/snapshot-ack.ts";
 
 const evidence = process.platform === "win32" ? "Windows registered SIGTERM handler via IPC (not Unix OS signal)" : "actual OS SIGTERM";
 async function eventually<T>(read: () => Promise<T>, ready: (value: T) => boolean, timeout = 30_000): Promise<T> {
@@ -55,7 +68,7 @@ async function waitExit(worker: ReturnType<typeof childWorker>, timeout = 15_000
     timer = setTimeout(() => reject(new Error("SYNTHETIC_CHILD_EXIT_TIMEOUT")), timeout);
   })]); } finally { clearTimeout(timer); }
 }
-async function setup() {
+async function setup(publicSnapshot = false) {
   const suffix = randomUUID().slice(0, 8);
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-shutdown-admin", correlationId: randomUUID() };
   const scope = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -66,13 +79,14 @@ async function setup() {
     return { organizationId: org.id, projectId: project.id };
   });
   const source = await sourceRegistryCommands.createSource(admin, { ...scope, sourceKey: "synthetic", name: "Synthetic shutdown",
-    endpointCredentialRef: "SYNTHETIC_SHUTDOWN_FEED", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0",
+    endpointCredentialRef: "SYNTHETIC_SHUTDOWN_FEED", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: publicSnapshot ? "joywork-domclick-v1" : "default-v1", profileVersion: "1.0.0",
     datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
     safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" });
   const target = { ...scope, sourceId: source.sourceId };
   await sourceRegistryCommands.setSourceEnabled(admin, { ...target, version: source.version, enabled: true });
   const directory = await mkdtemp(join(tmpdir(), "ams-shutdown-proof-"));
-  const env = { ...process.env, TMPDIR: directory, TMP: directory, TEMP: directory,
+  const env: NodeJS.ProcessEnv & { OUTBOX_WORKER_ID: string } = { ...process.env, TMPDIR: directory, TMP: directory, TEMP: directory,
+    SYNTHETIC_SHUTDOWN_PUBLIC_FEED: String(publicSnapshot),
     APP_ENV: "test", OUTBOX_WORKER_ID: `shutdown-${suffix}`, OUTBOX_POLL_DELAY_MS: "10", OUTBOX_SHUTDOWN_DRAIN_TIMEOUT_MS: "3000",
     SYNTHETIC_SHUTDOWN_FEED: "https://synthetic-shutdown.example.invalid/feed.xml",
     PROJECT_STORAGE_BINDINGS: JSON.stringify([{ ...scope, bucketRef: "SYNTHETIC_SHUTDOWN_BUCKET", endpointRef: "SYNTHETIC_SHUTDOWN_ENDPOINT",
@@ -114,10 +128,208 @@ async function setup() {
     // Exact mkdtemp-owned test directory only; never remove other spool artifacts.
     await rm(directory, { recursive: true, force: true });
   };
-  return { admin, target, directory, launch, healthcheck, readiness, request, read, nativeJob, spools, assertLocksFree, cleanup };
+  return { admin, target, directory, launch, healthcheck, readiness, request, read, nativeJob, spools, assertLocksFree, cleanup, webEnv: env };
+}
+
+async function reserveLoopbackPort() {
+  const server = createServer();
+  await new Promise<void>((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("SYNTHETIC_WEB_PORT_INVALID");
+  await new Promise<void>((done, reject) => server.close((error) => error ? reject(error) : done()));
+  return address.port;
+}
+
+function childWeb(env: NodeJS.ProcessEnv, port: number) {
+  // Current standalone is built before this proof. No env values enter argv/logs.
+  const child = spawn(process.execPath, ["--import", "./tests/helpers/snapshot-restart-s3-preload.mjs", ".next/standalone/server.js"], {
+    cwd: resolve(import.meta.dirname, "../.."), stdio: "ignore", env: { ...env,
+      NODE_ENV: "production", APP_ENV: "test", HOSTNAME: "127.0.0.1", PORT: String(port),
+      BETTER_AUTH_URL: `http://127.0.0.1:${port}`, BETTER_AUTH_TRUSTED_PROXY_CIDRS: "127.0.0.1",
+      BETTER_AUTH_SECRET: "synthetic-restart-only-secret-at-least-thirty-two-characters", NEXT_TELEMETRY_DISABLED: "1" },
+  });
+  const exited = new Promise<void>((done) => { child.once("error", () => done()); child.once("close", () => done()); });
+  const base = `http://127.0.0.1:${port}`;
+  const ready = () => eventually(async () => {
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error("SYNTHETIC_WEB_EXITED_BEFORE_READY");
+    try { return (await fetch(`${base}/api/health/live`, { signal: AbortSignal.timeout(1000) })).status === 200; }
+    catch { return false; }
+  }, Boolean, 30_000);
+  const stopOwned = async () => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([exited, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("SYNTHETIC_WEB_EXIT_TIMEOUT")); }, 10_000);
+    })]); } finally { clearTimeout(timer); await exited; }
+  };
+  return { child, base, ready, stopOwned };
 }
 
 describe(`actual source-worker child shutdown: ${evidence}; synthetic transport, owner-login DB (not queue ACL proof)`, () => {
+  it("preserves durable source, queue and authenticated Fleet state across worker, web and pg-boss restart", async () => {
+    const context = await setup(true); const webChildren: ReturnType<typeof childWeb>[] = [];
+    let sdk: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      const requested = await context.request("restart-baseline"); const worker = context.launch("good");
+      await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      stop(worker.child); expect(await waitExit(worker)).toEqual({ code: 0, signal: null });
+      const baseline = await context.read(); expect(baseline.identities).toHaveLength(1);
+      expect(baseline.revisions).toHaveLength(1); expect(baseline.revisions[0]).toMatchObject({ status: "GOOD", sequence: 1 });
+      const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+      await catalogSubscriptionCommands.replaceProjectSubscription(context.admin, { ...scope, version: 0, mode: "ALL_SHARED",
+        cityUids: ["01M41T6Q04BADHXSERJHZFXKCH"], selections: [] });
+      await projectPublicContactCommands.replaceProjectPublicContact(context.admin, { ...scope, version: 0, phone: "+70000000077",
+        email: "", addressPublic: "", messengers: [], hours: "" });
+      await projectUrlRegistryCommands.replaceProjectUrlPolicy(context.admin, { ...scope, version: 0, policyKey: "synthetic-restart",
+        pathTemplates: [{ entityType: "INVENTORY", template: "/inventory/{slug}" }], reservedNamespaces: [] });
+      const entry = await projectUrlRegistryCommands.createProjectUrlEntry(context.admin, { ...scope, entityType: "INVENTORY",
+        entityUid: baseline.identities[0]!.uid, slug: "synthetic-restart", canonicalPath: "/inventory/synthetic-restart" });
+      await projectUrlRegistryCommands.publishProjectUrlEntry(context.admin, { ...scope, urlEntryId: entry.urlEntryId, version: entry.version });
+      const token = `synthetic-restart-${randomUUID()}`;
+      await runInPrincipalDatabaseTransaction(context.admin, (tx) => createSnapshotAckService({
+        repository: new PrismaSnapshotDeliveryRepository(tx), now: () => new Date() }).initializeCredential({ ...scope, token }));
+      const keys = generateKeyPairSync("ed25519");
+      const publicKey = keys.publicKey.export({ format: "pem", type: "spki" }).toString();
+      Object.assign(context.webEnv, { SYNTHETIC_RESTART_OBJECT_DIRECTORY: context.directory,
+        SYNTHETIC_RESTART_BUCKET: context.webEnv.SYNTHETIC_SHUTDOWN_BUCKET,
+        SYNTHETIC_RESTART_PRIVATE: keys.privateKey.export({ format: "pem", type: "pkcs8" }).toString(),
+        SYNTHETIC_RESTART_PUBLIC: publicKey,
+        PROJECT_SNAPSHOT_SIGNING_BINDINGS: JSON.stringify([{ ...scope, keyId: "synthetic", privateKeyRef: "SYNTHETIC_RESTART_PRIVATE",
+          currentKeyId: "synthetic", nextKeyId: null, revokedKeyIds: [], publicKeyRefs: { synthetic: "SYNTHETIC_RESTART_PUBLIC" } }]),
+        SNAPSHOT_BUILD_ENABLED: "false", SNAPSHOT_PUBLISH_ENABLED: "false", SNAPSHOT_ROLLBACK_ENABLED: "false", SNAPSHOT_WEBHOOK_ENABLED: "false" });
+      for (const name of ["PROJECT_STORAGE_BINDINGS", "PROJECT_SNAPSHOT_SIGNING_BINDINGS", "SYNTHETIC_RESTART_PRIVATE", "SYNTHETIC_RESTART_PUBLIC",
+        "SYNTHETIC_SHUTDOWN_BUCKET", "SYNTHETIC_SHUTDOWN_ENDPOINT", "SYNTHETIC_SHUTDOWN_REGION", "SYNTHETIC_SHUTDOWN_ACCESS", "SYNTHETIC_SHUTDOWN_SECRET"])
+        vi.stubEnv(name, context.webEnv[name]!);
+      sdk = vi.spyOn(S3Client.prototype, "send").mockImplementation(async (command: unknown) => {
+        if (!(command instanceof PutObjectCommand) && !(command instanceof GetObjectCommand) && !(command instanceof HeadObjectCommand))
+          throw new Error("SYNTHETIC_RESTART_UNEXPECTED_SDK_OPERATION");
+        expect(command.input.Bucket).toBe(context.webEnv.SYNTHETIC_SHUTDOWN_BUCKET);
+        const path = join(context.directory, `${createHash("sha256").update(command.input.Key!).digest("hex")}.bin`);
+        if (command instanceof PutObjectCommand) {
+          const chunks: Uint8Array[] = [];
+          if (command.input.Body instanceof Uint8Array) chunks.push(command.input.Body);
+          else for await (const chunk of command.input.Body as AsyncIterable<Uint8Array>) chunks.push(Uint8Array.from(chunk));
+          await writeFile(path, Buffer.concat(chunks)); return { ETag: "synthetic" } as never;
+        }
+        const body = await readFile(path);
+        return { ContentLength: body.length, ContentType: "application/octet-stream", LastModified: new Date(0), ETag: "synthetic",
+          ...(command instanceof GetObjectCommand ? { Body: { destroy() {}, async *[Symbol.asyncIterator]() { yield body; } } } : {}) } as never;
+      });
+      const job = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+      const receipt = await captureSnapshotInput(job, { ...scope, schemaMinor: 0, idempotencyKey: randomUUID() });
+      const trustSet = { currentKeyId: "synthetic", nextKeyId: null, revokedKeyIds: [], publicKeys: { synthetic: publicKey } };
+      await createSnapshotPublicationServer({ ...scope, storage: createProjectObjectStorageResolver()(scope), trustSet,
+        keyId: "synthetic", privateKeyRef: defineSecretRef("SYNTHETIC_RESTART_PRIVATE") })(job,
+      { idempotencyKeyHash: receipt.idempotencyKeyHash, requestHash: receipt.requestHash });
+      const queueBefore = await context.nativeJob(requested.requestId);
+      await stopPgBoss();
+      expect(await context.nativeJob(requested.requestId)).toEqual(queueBefore); // Fresh native client, same persisted job.
+      await stopPgBoss();
+      const deferred = await context.request("restart-deferred");
+      const username = `restart_${randomUUID().replaceAll("-", "").slice(0, 20)}`;
+      const password = `Synthetic-restart-${randomUUID()}`; const passwordHash = await hashPassword(password);
+      const userId = await runInPrincipalDatabaseTransaction(context.admin, async (tx) => {
+        const user = await tx.user.create({ data: { id: randomUUID(), name: "Synthetic restart admin", username,
+          email: `${username}@example.test`, emailVerified: true, systemRole: "PLATFORM_ADMIN" } });
+        await tx.account.create({ data: { id: randomUUID(), userId: user.id, accountId: user.id, providerId: "credential", password: passwordHash } });
+        return user.id;
+      });
+      const project = await runInPrincipalDatabaseTransaction(context.admin, (tx) => tx.project.findUniqueOrThrow({
+        where: { id: context.target.projectId }, select: { slug: true } }));
+      const port = await reserveLoopbackPort(); const first = childWeb(context.webEnv, port); webChildren.push(first); await first.ready();
+      const readSnapshot = async (base: string) => {
+        const prefix = `${base}/api/snapshots/${scope.organizationId}/${scope.projectId}`;
+        const response = await fetch(`${prefix}/current`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+        expect(response.status).toBe(200);
+        const manifest = snapshotManifestV1Schema.parse((await response.json()).manifest);
+        expect(manifest.publishSequence).toBe(receipt.publishSequence); expect(manifest.sourceRevisions).toContain(baseline.source.lastGoodRevisionId);
+        const files: Record<string, Uint8Array> = {};
+        for (const file of manifest.files) {
+          const artifact = await fetch(`${prefix}/${manifest.publishSequence}/files/${encodeURIComponent(file.kind)}`, {
+            headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+          expect(artifact.status).toBe(200); files[file.key] = new Uint8Array(await artifact.arrayBuffer());
+        }
+        const verified = verifySnapshotPublicArtifacts({ manifest, files, trustSet, expectedProjectId: scope.projectId, supportedSchemaMajor: 1, lastGood: null });
+        expect(verified.accepted).toBe(true);
+        if (!verified.accepted) throw new Error("SYNTHETIC_RESTART_PORTABLE_VERIFY_FAILED");
+        expect(verified.datasets.inventory).toContainEqual(expect.objectContaining({ uid: baseline.identities[0]!.uid, price: 2000 }));
+        return manifest;
+      };
+      const manifest = await readSnapshot(first.base);
+      expect(manifest.files).toHaveLength(13);
+      const ack = { projectId: scope.projectId, publishSequence: manifest.publishSequence, applied: true,
+        manifestSha256: createHash("sha256").update(canonicalJsonBytes(manifest as CanonicalJsonValue)).digest("hex"), idempotencyKey: randomUUID() };
+      const acknowledge = async (base: string, idempotent: boolean) => {
+        const response = await fetch(`${base}/api/snapshots/${scope.organizationId}/${scope.projectId}/ack`, { method: "POST",
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(ack), signal: AbortSignal.timeout(10_000) });
+        expect(response.status).toBe(200); expect((await response.json()).idempotent).toBe(idempotent);
+      };
+      await acknowledge(first.base, false);
+      const readPublication = () => runInPrincipalDatabaseTransaction(context.admin, async (tx) => ({
+        delivery: await tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: receipt.publishSequence } }),
+        current: await tx.projectCurrentSnapshotManifest.findUniqueOrThrow({ where: { organizationId_projectId: scope } }),
+        credential: await tx.projectAckCredential.findUniqueOrThrow({ where: { organizationId_projectId: scope },
+          select: { organizationId: true, projectId: true, version: true, createdAt: true, updatedAt: true } }),
+      }));
+      const acknowledged = await readPublication(); expect(acknowledged.delivery.status).toBe("ACKNOWLEDGED");
+      expect(acknowledged.current.manifestSha256).toBe(ack.manifestSha256);
+      expect(acknowledged.delivery.manifestSha256).toBe(ack.manifestSha256);
+      const assertChildStorageRead = async (pid: number | undefined) => {
+        const events = (await readFile(join(context.directory, "snapshot-restart-sdk-events.jsonl"), "utf8"))
+          .trim().split("\n").map((line) => JSON.parse(line) as { pid: number; operation: string });
+        expect(events.filter((event) => event.pid === pid && event.operation === "GET").length).toBeGreaterThanOrEqual(14);
+      };
+      await assertChildStorageRead(first.child.pid);
+      const login = await fetch(`${first.base}/api/auth/sign-in/username`, { method: "POST",
+        headers: { "content-type": "application/json", origin: first.base, "x-forwarded-for": "192.0.2.123" },
+        body: JSON.stringify({ username, password, rememberMe: true }), signal: AbortSignal.timeout(15_000) });
+      expect(login.status).toBe(200);
+      const cookie = login.headers.getSetCookie().map((value) => value.split(";")[0]).join("; ");
+      expect(cookie.length).toBeGreaterThan(0);
+      const readSession = async (base: string) => {
+        const response = await fetch(`${base}/api/auth/get-session`, { headers: { cookie }, signal: AbortSignal.timeout(10_000) });
+        expect(response.status).toBe(200); return response.json() as Promise<{ session: { id: string }; user: { id: string } }>;
+      };
+      const sessionBefore = await readSession(first.base); expect(sessionBefore.user.id).toBe(userId);
+      const readFleet = async (base: string) => {
+        const response = await fetch(`${base}/admin/fleet`, { headers: { cookie }, redirect: "manual", signal: AbortSignal.timeout(15_000) });
+        expect(response.status).toBe(200); const html = await response.text();
+        expect(html).toContain(project.slug); expect(html).toContain("GOOD");
+      };
+      await readFleet(first.base); await first.stopOwned();
+      const second = childWeb(context.webEnv, port); webChildren.push(second); await second.ready();
+      expect(second.child.pid).not.toBe(first.child.pid);
+      const sessionAfter = await readSession(second.base);
+      expect(sessionAfter.user.id).toBe(userId); expect(sessionAfter.session.id).toBe(sessionBefore.session.id);
+      expect(await readSnapshot(second.base)).toEqual(manifest); await acknowledge(second.base, true);
+      expect(await readPublication()).toEqual(acknowledged); await assertChildStorageRead(second.child.pid);
+      await readFleet(second.base);
+      const preserved = await context.read();
+      expect(preserved.source).toEqual(baseline.source); expect(preserved.identities).toEqual(baseline.identities);
+      expect(preserved.revisions).toEqual(baseline.revisions); expect(preserved.intents).toEqual(baseline.intents);
+      expect(preserved.requests.find((row) => row.id === deferred.requestId)?.status).toBe("REQUESTED");
+      await second.stopOwned();
+      const restarted = context.launch("good"); expect(restarted.child.pid).not.toBe(worker.child.pid);
+      await eventually(() => context.nativeJob(deferred.requestId), (job) => job?.state === "completed");
+      stop(restarted.child); expect(await waitExit(restarted)).toEqual({ code: 0, signal: null });
+      const final = await context.read();
+      expect(final.identities[0]!.uid).toBe(baseline.identities[0]!.uid);
+      expect(final.revisions.filter((row) => row.status === "GOOD")).toHaveLength(2);
+      expect(final.requests.find((row) => row.id === deferred.requestId)?.status).toBe("COMPLETED");
+      expect((await context.nativeJob(requested.requestId))?.state).toBe("completed");
+      await stopPgBoss(); expect((await context.nativeJob(requested.requestId))?.state).toBe("completed");
+      const third = childWeb(context.webEnv, port); webChildren.push(third); await third.ready();
+      expect(await readSnapshot(third.base)).toEqual(manifest); await acknowledge(third.base, true);
+      expect(await readPublication()).toEqual(acknowledged); await assertChildStorageRead(third.child.pid); await third.stopOwned();
+      await context.assertLocksFree();
+    } finally {
+      const stopped = await Promise.allSettled(webChildren.map((web) => web.stopOwned()));
+      try { try { sdk?.mockRestore(); } finally { vi.unstubAllEnvs(); } }
+      finally { await context.cleanup(); }
+      const failure = stopped.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    }
+  }, 150_000);
   it("qualifies only its exact owner and refreshes during a stalled import; read-only CLI and shutdown agree", async () => {
     const context = await setup();
     try {
@@ -141,10 +353,23 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
     const context = await setup();
     try {
       await context.request("guardian-loss"); const worker = context.launch("upload"); await worker.event("upload-consumed");
+      const key = sourceExecutionGuardKey(context.target);
+      const sourceLock = await getPrismaPool().query<{ pid: number; database: number }>(
+        "SELECT pid, database FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ShareLock' AND objsubid = 2 AND granted "
+        + "AND classid::bigint = $1::bigint AND objid::bigint = $2::bigint "
+        + "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())", [key[0] >>> 0, key[1] >>> 0]);
+      expect(sourceLock.rows).toHaveLength(1);
+      const owner = sourceLock.rows[0]!;
       const lock = await getPrismaPool().query<{ pid: number }>("SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 4278803 AND objid = 17311 AND objsubid = 2 AND granted");
       expect(lock.rows).toHaveLength(1);
       await getPrismaPool().query("SELECT pg_terminate_backend($1)", [lock.rows[0]!.pid]);
       expect(await waitExit(worker)).toEqual({ code: 1, signal: null }); expect(worker.guardLost()).toBe(true); expect(worker.stopped()).toBe(false);
+      // Fatal Node exit does not await PostgreSQL's socket/backend cleanup.
+      // Observe only the pinned own source lock, bounded; a leak still fails.
+      await eventually(async () => (await getPrismaPool().query<{ held: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ShareLock' AND objsubid = 2 AND granted "
+        + "AND pid = $1 AND database = $2::oid AND classid::bigint = $3::bigint AND objid::bigint = $4::bigint) AS held",
+        [owner.pid, owner.database, key[0] >>> 0, key[1] >>> 0])).rows[0]?.held === false, Boolean, 5_000);
       await context.assertLocksFree(); const facts = await context.read();
       expect(facts.source.lastGoodRevisionId).toBeNull(); expect(facts.identities).toEqual([]);
       // Fatal loss can leave a TTL-qualified row and a crash orphan in this exact test-owned directory.
