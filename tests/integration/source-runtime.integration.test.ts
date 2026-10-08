@@ -23,9 +23,10 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
   return { ...actual, safeOutboundStream: gateway };
 });
-import { createSourceExecutionServer, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { createSourceExecutionServer, createRawArtifactRetentionSourceReader, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { planRawArtifactRetention } from "../../src/modules/ingestion-core/domain/raw-artifact-retention.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
-import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { createDatabaseAuthorizationContext, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import type { DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal, PrincipalContext, ProjectJobPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -99,6 +100,97 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("reads actual last GOOD, missing-grace provenance, shared SHA and unfinished PUT pins under a narrow retention purpose", async () => {
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, maxDropPercent: 100, requireManualApprovalAboveDrop: false });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const retention = createProjectJobPrincipal({ ...scope, jobName: "raw-artifact-retention" });
+    const readCut = () => runInPrincipalDatabaseTransaction(retention, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      return createRawArtifactRetentionSourceReader(tx).read(scope);
+    });
+    const originalSend = context.client.send;
+    let restoreSend: (() => void) | undefined;
+    try {
+      context.provide(feed(offer("one"), offer("grace")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      for (let sequence = 2; sequence <= 5; sequence++) {
+        context.provide(feed(offer("one", sequence * 1000)));
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence });
+      }
+      const beforeShared = await readCut();
+      expect(beforeShared.sourceCoverage).toBe("COMPLETE"); expect(beforeShared.jobsFrozen).toBe(false);
+      const first = beforeShared.references.find((row) => row.sequence === 1)!;
+      const second = beforeShared.references.find((row) => row.sequence === 2)!;
+      expect(beforeShared.pinnedRevisionIds).toContain(first.revisionId); // Still-active missing-grace fact outside last three.
+      expect(beforeShared.pinnedRevisionIds).not.toContain(second.revisionId);
+      // This controlled project has no captured/current/rollback roots; this
+      // explicit check is not a substitute for the forthcoming snapshot reader.
+      expect(await runInPrincipalDatabaseTransaction(context.principal, async (tx) => ({
+        captures: await tx.snapshotBuildInput.count({ where: scope }),
+        runs: await tx.deliveryRun.count({ where: scope }),
+        rollbacks: await tx.snapshotRollbackReservation.count({ where: scope }),
+        operations: await tx.operationalActionRequest.count({ where: scope }),
+      }))).toEqual({ captures: 0, runs: 0, rollbacks: 0, operations: 0 });
+      const now = new Date(beforeShared.now.getTime() + 31 * 24 * 60 * 60 * 1000);
+      const planned = planRawArtifactRetention({ ...scope, now, references: beforeShared.references,
+        pinnedRevisionIds: beforeShared.pinnedRevisionIds, coverage: "COMPLETE", jobsFrozen: false });
+      expect(planned.find((row) => row.rawArtifactHash === first.rawArtifactHash)).toMatchObject({ eligible: false, reasons: ["PINNED_REVISION"] });
+      expect(planned.find((row) => row.rawArtifactHash === second.rawArtifactHash)).toMatchObject({ eligible: true });
+      const initial = await context.read();
+      const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+        tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+      const other = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+        sourceKey: "synthetic-retention-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+        safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+      });
+      await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: other.sourceId, version: other.version, enabled: true });
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run({ ...scope, sourceId: other.sourceId })).toMatchObject({ state: "GOOD", sequence: 1 });
+      const send = vi.spyOn(context.client, "send").mockImplementationOnce(async (...args) => {
+        await originalSend(...args); throw new Error("SYNTHETIC_PUT_REPLY_LOST");
+      });
+      restoreSend = () => { send.mockRestore(); };
+      context.provide(feed(offer("one", 6000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT" });
+      send.mockRestore();
+      const cut = await readCut();
+      expect(cut.sourceCoverage).toBe("COMPLETE"); expect(cut.references).toHaveLength(7);
+      const unfinished = cut.references.find((row) => row.status === "PENDING")!;
+      expect(unfinished).toBeDefined();
+      const guarded = planRawArtifactRetention({ ...scope, now, references: cut.references,
+        pinnedRevisionIds: cut.pinnedRevisionIds, coverage: "COMPLETE", jobsFrozen: false });
+      expect(guarded.find((row) => row.rawArtifactHash === second.rawArtifactHash)).toMatchObject({ eligible: false, referenceCount: 2 });
+      expect(guarded.find((row) => row.rawArtifactHash === unfinished.rawArtifactHash)).toMatchObject({ eligible: false, reasons: ["UNSETTLED_REFERENCE"] });
+      await expect(runInPrincipalDatabaseTransaction(retention, (tx) => createRawArtifactRetentionSourceReader(tx).read({ ...scope, projectId: "foreign-project" })))
+        .rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+      await expect(runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "source-import" }),
+        (tx) => createRawArtifactRetentionSourceReader(tx).read(scope))).rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+      await expect(transactionRuntime.runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(retention), (tx) => createRawArtifactRetentionSourceReader(tx).read(scope),
+        { isolationLevel: "RepeatableRead" })).rejects.toThrow("RAW_RETENTION_FRESH_CUT_REQUIRED");
+      // Controlled database-size fixture, not invented successful imports.
+      // No raw receipts, GOOD rows or outbox intents are created by this probe.
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.$executeRawUnsafe(`
+        INSERT INTO public."SourceRevision" (id,"organizationId","projectId","sourceId","sourceVersion",status,
+          "adapterKey","adapterVersion","profileKey","profileVersion","safetyPolicy","startedAt","completedAt")
+        SELECT 'synthetic-overflow-'||n::text,s."organizationId",s."projectId",s.id,s.version,'FAILED',
+          s."adapterKey",s."adapterVersion",s."profileKey",s."profileVersion",'{}'::jsonb,
+          transaction_timestamp(),transaction_timestamp()
+        FROM public."Source" s CROSS JOIN generate_series(1,5001) n
+        WHERE s."organizationId"=$1 AND s."projectId"=$2 AND s.id=$3`, scope.organizationId, scope.projectId, context.target.sourceId));
+      const overflow = await readCut();
+      expect(overflow.sourceCoverage).toBe("INCOMPLETE");
+      expect(planRawArtifactRetention({ ...scope, now, references: overflow.references,
+        pinnedRevisionIds: overflow.pinnedRevisionIds, coverage: "INCOMPLETE", jobsFrozen: overflow.jobsFrozen })
+        .every((row) => !row.eligible && row.reasons.includes("INCOMPLETE_COVERAGE"))).toBe(true);
+    } finally { restoreSend?.(); context.cleanup(); }
+    // Seven actual streaming imports plus a bounded 5,001-row overflow probe;
+    // this is a lifecycle test, not a single operation's latency budget.
+  }, 60_000);
+
   it("excludes retention during actual PUT and receipt registration, preserving malformed XML provenance", async () => {
     const context = await setup();
     const xml = "<realty-feed>";

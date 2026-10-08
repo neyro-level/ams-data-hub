@@ -47,3 +47,4 @@ export {
   type SourceImportTarget,
   type StagingReceipt,
 } from "./application/import-pipeline.ts";
+export { createRawArtifactRetentionSourceReader, type RawArtifactRetentionSourceCut } from "./infrastructure/raw-artifact-retention-source-reader.ts";

@@ -302,7 +302,16 @@ The pure retention planner preserves the union of the last three GOOD revisions
 per Source and references from the last 30 days, across all Sources sharing the
 project/SHA. Pins, unsettled references, frozen jobs and incomplete coverage
 retain the object; overrides require a documented purpose. Planner decisions are
-not DELETE authorization. `RawArtifactDeletion` persists immutable project/SHA,
+not DELETE authorization. The ingestion-owned source reader uses a fresh
+ReadCommitted transaction under the global safety fence and a SELECT-only
+`raw-artifact-retention` project-job purpose. It collects actual Last GOOD,
+ACTIVE inventory historical facts and raw provenance (including missing-grace),
+deduplicated project/SHA references and unfinished PUT intents. Its bounded cut
+allows at most 500 Sources, 5,000 revisions/PUT intents and 50,000 ACTIVE
+identities; overflow or missing/inconsistent provenance marks source coverage
+INCOMPLETE and keeps all candidate objects. Source coverage is not overall
+coverage: snapshot/current/pending/rollback pins must be composed separately.
+`RawArtifactDeletion` persists immutable project/SHA,
 key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
 deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and
 for another Source in the same project. The journal has no web grants and

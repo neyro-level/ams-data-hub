@@ -190,6 +190,15 @@ exact project-job purposes; source-import may read deletion state but not write
 it, and web has no journal grants. These models do not activate object deletion
 or prove a completed retention/restore/provider policy gate.
 
+Forward migration `20261008190000_raw_retention_source_reads` adds SELECT-only
+policies for the exact scoped `raw-artifact-retention` worker purpose on Project,
+Source, SourceRevision, SourceRevisionRecord, InventoryIdentity and global
+DataSafetyState. It adds no mutation, web journal or snapshot permissions.
+The ingestion-owned reader includes Last GOOD, ACTIVE historical fact/provenance
+pins and unresolved PUT intents. Bounded overflow fails coverage closed; its
+COMPLETE result covers only Source metadata, never snapshot/rollback coverage
+or object deletion admission.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record
