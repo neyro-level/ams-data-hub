@@ -58,7 +58,10 @@ active_plan:
       gate_head_sha: ad09ecab9ade1e4b0d1abcfb494a82fb92c9c27a
       merge_sha: a71c3a01b062b314df392c2e305ddd7c9ec07a1e
   readiness: NOT_PRODUCTION_READY
-  reconciliation: CLEAN
+  reconciliation: UNAVAILABLE
+  last_verified_reconciliation: CLEAN
+  execution_store_status: OWNER_ARCHIVED_BEADS_NOT_IMPORTED_TO_PLANDB
+  execution_store_backup: C:/Users/User/Desktop/Data-skill/beads-uninstall-backup-20261008/payload/store-7
   managed_nodes: 97
   epics: 11
   implementation_tasks: 75

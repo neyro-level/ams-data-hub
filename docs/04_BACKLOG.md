@@ -70,6 +70,18 @@ Native прогон — 1/1 PASS, 63 migrations и final test DB reset; full Nex
 runtime и process restart не заявлены (restart proof принадлежит Scenario G).
 Exact checkpoint, проверки и implementation ledger принадлежат Task Manager;
 они не заменяют оставшиеся Scenario B–G и MP-09 delivery gate.
+Scenario B–D native proof — PASS (3/3): configured Domclick/Avito v3/CIAN v2
+через real worker/Safe Intake, raw bytes/SHA, format-specific normalized draft,
+GOOD и публичные commands → actual snapshot assembly → strict public inventory DTO.
+Чужой формат даёт FAILED без изменения Last Good, identities, records и build
+intent. После этих assertions отменяется только собственный synthetic RETRY job,
+чтобы следующий case не получил его с другим transport. Final native run:
+`64239/67891d`, 63 migrations и test DB reset — PASS; architect review без findings.
+Implementation closure B–D пока не записано: 2026-10-08 владелец удалил Beads
+в отдельном workflow. AMS Data Hub graph сохранён в
+`C:/Users/User/Desktop/Data-skill/beads-uninstall-backup-20261008/payload/store-7`;
+в PlanDB он ещё не импортирован. Последнее Reconcile было CLEAN, но текущая
+проверка graph недоступна. Не создавать новый пустой graph и не переоткрывать v4.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
