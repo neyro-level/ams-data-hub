@@ -283,8 +283,12 @@ MP-10.3 adds an internal project/SHA lifetime guardian before raw PUT and keeps
 it through receipt registration, staging/apply or failure settlement. Successful
 verified receipts are registered on the PENDING revision before parsing, so a
 malformed XML attempt retains its raw provenance without producing GOOD or a
-snapshot intent. This does not cover a process crash between PUT and receipt
-commit; that gap requires the pending-operation journal below.
+snapshot intent. Before external PUT, `RawArtifactPutAttempt` commits the exact
+project/Source/revision/hash/key/byte intent. Verified receipt registration
+atomically settles that intent to STORED and records the revision receipt;
+deferred SQL guards verify the final agreement at commit. A failed or unknown
+PUT remains PENDING, including after a later successful attempt for the same
+SHA. It is neither a fabricated successful receipt nor automatically collectible.
 
 Shared producer session locks allow deduplicated uploads; retention requires an
 exclusive lifetime lock. A separate admission key is held only during acquisition
@@ -298,8 +302,14 @@ The pure retention planner preserves the union of the last three GOOD revisions
 per Source and references from the last 30 days, across all Sources sharing the
 project/SHA. Pins, unsettled references, frozen jobs and incomplete coverage
 retain the object; overrides require a documented purpose. Planner decisions are
-not DELETE authorization. Raw deletion is **not enabled**: complete repository
-pin coverage, durable pending-delete/PUT admission journal, idempotent deletion
+not DELETE authorization. `RawArtifactDeletion` persists immutable project/SHA,
+key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
+deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and
+for another Source in the same project. The journal has no web grants and
+source-import cannot write deletion records. Unknown deletion outcomes must stay
+pending; an object existence probe alone does not settle still-possible external
+IO. Raw deletion is **not enabled**: complete repository pin/unfinished-PUT
+coverage, the actual journal-backed DELETE executor, idempotent provider handling
 and crash settlement with audit are still required before activating cleanup.
 
 ## Production deployment

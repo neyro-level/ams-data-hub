@@ -29,6 +29,8 @@ export const TENANT_OWNED_MODELS = [
   "SourceSafetyPolicy",
   "SourceRevision",
   "SourceRevisionRecord",
+  "RawArtifactPutAttempt",
+  "RawArtifactDeletion",
   "ListingDevelopmentLink",
   "Agent",
   "ListingAgentBinding",

@@ -172,6 +172,24 @@ durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
 persisted without moving Last Good. GOOD records and revision metadata are
 immutable, protected by database triggers as well as application checks.
 
+MP-10.3 adds private `RawArtifactPutAttempt` and `RawArtifactDeletion` journals
+through forward migration `20261008180000_raw_artifact_operation_journals`.
+A PUT intent pins one exact organization/project/Source/revision and the
+content-addressed key/hash/byte count before external IO. PENDING is incomplete
+operation evidence; STORED must agree with the revision's verified raw receipt
+at commit through deferred consistency guards. Settled intent identity is
+immutable. Failed/unknown IO retains its pending record; historical revisions
+are not backfilled with invented operations.
+
+The deletion journal pins project/hash/key/policy independently of Source,
+with one unsettled operation per project/SHA and strictly ordered
+PENDING → ACKNOWLEDGED → DELETED phases. Identity and policy cannot be retargeted;
+terminal rows are immutable and cannot be deleted. Unsettled deletion blocks
+the actual Source PUT admission even without a live guardian. FORCE RLS admits
+exact project-job purposes; source-import may read deletion state but not write
+it, and web has no journal grants. These models do not activate object deletion
+or prove a completed retention/restore/provider policy gate.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record

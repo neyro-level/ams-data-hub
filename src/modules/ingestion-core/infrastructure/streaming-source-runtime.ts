@@ -36,6 +36,7 @@ const knownFailures = new Set([
   "MARKETPLACE_XML_FIELD_TOO_LONG", "MARKETPLACE_XML_RECORD_TOO_COMPLEX", "MARKETPLACE_XML_ROOT_INVALID", "MARKETPLACE_XML_UTF8_INVALID",
   "RAW_ARTIFACT_BUSY", "RAW_ARTIFACT_GUARD_UNAVAILABLE", "RAW_ARTIFACT_LEASE_LOST",
   "RAW_ARTIFACT_RECEIPT_INVALID",
+  "RAW_ARTIFACT_DELETE_PENDING",
 ]);
 
 async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage, lease: SourceExecutionLease, manualRequestId?: string, shutdownSignal?: AbortSignal): Promise<SourceImportResult> {
@@ -72,6 +73,10 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
         // staging/apply or failure settlement, not merely through external IO.
         rawLease = await acquireRawArtifactLifetimeGuard(getPrismaPool(), { ...context.target,
           rawArtifactHash: input.sha256 }, "producer");
+        assertRunning();
+        await transaction((repository) => repository.beginRawArtifactPut(context, revisionId!, {
+          rawArtifactHash: input.sha256, storageKey: input.key, byteCount: input.contentLength,
+        }));
         assertRunning();
         return storage.putStream({ ...input, signal: input.signal
           ? AbortSignal.any([input.signal, rawLease.signal]) : rawLease.signal });

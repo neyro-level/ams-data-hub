@@ -9,10 +9,11 @@ const matchingRuntime = vi.hoisted(() => ({ cuts: 0 }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const run: typeof actual.runInPrincipalDatabaseTransaction = (principal, execute) => actual.runInPrincipalDatabaseTransaction(principal, async (tx) => {
-    if (principal.kind === "project-job" && principal.jobName === "agent-matching") {
+    if (principal.kind === "project-job" && ["agent-matching", "source-import"].includes(principal.jobName)) {
       await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
       expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
-        .toEqual([{ rolbypassrls: false, rolsuper: false }]); matchingRuntime.cuts++;
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      if (principal.jobName === "agent-matching") matchingRuntime.cuts++;
     }
     return execute(tx);
   });
@@ -89,6 +90,7 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
     revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { startedAt: "asc" } }),
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     records: await tx.sourceRevisionRecord.findMany({ where: target }),
+    putAttempts: await tx.rawArtifactPutAttempt.findMany({ where: target, orderBy: { createdAt: "asc" } }),
     events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
     intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
       payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
@@ -106,6 +108,12 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
     let uploadCut = 0; let registrationCut = 0;
     const send = vi.spyOn(context.client, "send").mockImplementation(async (...args) => {
       await expect(acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention")).rejects.toThrow("RAW_ARTIFACT_BUSY");
+      const beforePut = await context.read();
+      expect(beforePut.putAttempts).toHaveLength(1);
+      expect(beforePut.putAttempts[0]).toMatchObject({ revisionId: beforePut.revisions[0]!.id,
+        status: "PENDING", rawArtifactHash, storageKey: `source-artifacts/${rawArtifactHash}`,
+        byteCount: Buffer.byteLength(xml), storedAt: null });
+      expect(beforePut.revisions[0]).toMatchObject({ rawArtifactHash: null, rawStorageKey: null, rawByteCount: null });
       uploadCut++;
       return originalSend(...args);
     });
@@ -124,11 +132,148 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       expect(state.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash,
         rawStorageKey: `source-artifacts/${rawArtifactHash}`, rawByteCount: Buffer.byteLength(xml) });
       expect(state.source.lastGoodRevisionId).toBeNull();
+      expect(state.putAttempts[0]).toMatchObject({ status: "STORED", revisionId: state.revisions[0]!.id });
+      expect(state.putAttempts[0]!.storedAt).toBeInstanceOf(Date);
+      await expect(runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "SourceRevision" SET "rawArtifactHash"=NULL,"rawStorageKey"=NULL,"rawByteCount"=NULL WHERE id=$1', state.revisions[0]!.id);
+        await tx.$executeRawUnsafe('SET CONSTRAINTS "SourceRevision_raw_journal_guard" IMMEDIATE');
+      })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_RECEIPT_MISMATCH" } } } });
       expect(state.identities).toHaveLength(0); expect(state.intents).toHaveLength(0);
       expect(uploadCut).toBe(1); expect(registrationCut).toBe(1);
       const settled = await acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention");
       await settled.release();
     } finally { send.mockRestore(); register.mockRestore(); context.cleanup(); }
+  });
+
+  it("keeps an unknown PUT durable without manufacturing a receipt, including after a new successful attempt", async () => {
+    const context = await setup("vladis-vt24-v1");
+    const xml = feed(offer("unknown-put"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const originalSend = context.client.send;
+    const send = vi.spyOn(context.client, "send").mockImplementationOnce(async (...args) => {
+      await originalSend(...args);
+      throw new Error("SYNTHETIC_PUT_REPLY_LOST");
+    });
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT" });
+      const failed = await context.read();
+      expect(failed.putAttempts).toHaveLength(1);
+      expect(failed.putAttempts[0]).toMatchObject({ status: "PENDING", rawArtifactHash, storedAt: null });
+      expect(failed.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash: null, rawStorageKey: null });
+      expect(failed.identities).toHaveLength(0); expect(failed.intents).toHaveLength(0);
+      const sourcePrincipal = createProjectJobPrincipal({ organizationId: context.target.organizationId,
+        projectId: context.target.projectId, jobName: "source-import" });
+      await expect(runInPrincipalDatabaseTransaction(sourcePrincipal, async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactPutAttempt" SET status=\'STORED\',"storedAt"=transaction_timestamp()::timestamptz(3) WHERE "revisionId"=$1', failed.revisions[0]!.id);
+        await tx.$executeRawUnsafe('SET CONSTRAINTS "RawArtifactPutAttempt_receipt_guard" IMMEDIATE');
+      })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_RECEIPT_MISMATCH" } } } });
+      send.mockRestore();
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const retried = await context.read();
+      expect(retried.putAttempts).toHaveLength(2);
+      expect(retried.putAttempts[0]).toEqual(failed.putAttempts[0]);
+      expect(retried.putAttempts[1]).toMatchObject({ status: "STORED", rawArtifactHash });
+      expect(retried.source.lastGoodRevisionId).toBe(retried.putAttempts[1]!.revisionId);
+    } finally { send.mockRestore(); context.cleanup(); }
+  });
+
+  it.each(["PENDING", "ACKNOWLEDGED"])("blocks actual PUT from durable %s deletion after guardian release", async (status) => {
+    const context = await setup("vladis-vt24-v1");
+    const xml = feed(offer("blocked-put"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const target = { ...context.target, rawArtifactHash };
+    const guardian = await acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention");
+    try {
+      // Synthetic persisted operation, not a real DELETE or an authorization
+      // claim. Releasing its guardian models the process-restart boundary.
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        await guardian.fence(tx);
+        const row = await tx.rawArtifactDeletion.create({ data: {
+          organizationId: context.target.organizationId, projectId: context.target.projectId, rawArtifactHash,
+          storageKey: `source-artifacts/${rawArtifactHash}`, policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null },
+        } });
+        if (status === "ACKNOWLEDGED") {
+          await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', row.id);
+        }
+      });
+      await guardian.release();
+      const send = vi.spyOn(context.client, "send");
+      try {
+        context.provide(xml);
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT", code: "RAW_ARTIFACT_DELETE_PENDING" });
+        const initial = await context.read();
+        const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+          tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+        const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+        const second = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+          sourceKey: "synthetic-deletion-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+          adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+          datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+          safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+        });
+        await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: second.sourceId, version: second.version, enabled: true });
+        context.provide(xml);
+        expect(await context.runtime.run({ ...scope, sourceId: second.sourceId })).toMatchObject({ state: "FAILED", code: "RAW_ARTIFACT_DELETE_PENDING" });
+        expect(send).not.toHaveBeenCalled(); expect(context.uploaded()).toBe(0);
+        const state = await context.read();
+        expect(state.putAttempts).toHaveLength(0); expect(state.identities).toHaveLength(0); expect(state.intents).toHaveLength(0);
+        expect(state.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash: null, rawStorageKey: null });
+      } finally { send.mockRestore(); }
+    } finally { await guardian.release(); context.cleanup(); }
+  });
+
+  it("isolates pending deletion by project and protects journal identities, lifecycle and private grants", async () => {
+    const context = await setup("vladis-vt24-v1");
+    const foreign = await setup("vladis-vt24-v1");
+    const xml = feed(offer("journal-isolation"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const scope = { organizationId: foreign.target.organizationId, projectId: foreign.target.projectId };
+    const worker = <T>(run: (tx: DatabaseTransaction) => Promise<T>) => runInPrincipalDatabaseTransaction(foreign.principal, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker"); return run(tx);
+    });
+    const data = { ...scope, rawArtifactHash, storageKey: `source-artifacts/${rawArtifactHash}`,
+      policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null } };
+    try {
+      const deletion = await worker((tx) => tx.rawArtifactDeletion.create({ data }));
+      await expect(worker((tx) => tx.rawArtifactDeletion.create({ data }))).rejects.toMatchObject({ code: "P2002" });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET "storageKey"=$1 WHERE id=$2', `source-artifacts/${"a".repeat(64)}`, deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_TRANSITION_INVALID" } } } });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_TRANSITION_INVALID" } } } });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "23514" } } } });
+      for (const table of ["RawArtifactPutAttempt", "RawArtifactDeletion"]) {
+        await expect(runInPrincipalDatabaseTransaction(foreign.principal, async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+          return tx.$queryRawUnsafe(`SELECT 1 FROM "${table}" LIMIT 1`);
+        })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "42501" } } } });
+      }
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read();
+      expect(state.putAttempts[0]).toMatchObject({ status: "STORED", rawArtifactHash });
+      await expect(runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.$executeRawUnsafe(
+        'UPDATE "RawArtifactPutAttempt" SET "byteCount"="byteCount"+1 WHERE "revisionId"=$1', state.putAttempts[0]!.revisionId)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_IMMUTABLE" } } } });
+      const sourcePrincipal = createProjectJobPrincipal({ organizationId: context.target.organizationId,
+        projectId: context.target.projectId, jobName: "source-import" });
+      const hidden = await runInPrincipalDatabaseTransaction(sourcePrincipal, (tx) => tx.rawArtifactDeletion.findMany({ where: { id: deletion.id } }));
+      expect(hidden).toEqual([]);
+      await expect(runInPrincipalDatabaseTransaction(sourcePrincipal, (tx) => tx.$executeRawUnsafe(
+        'INSERT INTO "RawArtifactDeletion" (id,"organizationId","projectId","rawArtifactHash","storageKey",policy) VALUES ($1,$2,$3,$4,$5,$6::jsonb)',
+        randomUUID(), context.target.organizationId, context.target.projectId, rawArtifactHash,
+        `source-artifacts/${rawArtifactHash}`, JSON.stringify(data.policy),
+      ))).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "42501" } } } });
+      // Synthetic ACK and completion only exercise SQL transitions. This is
+      // not provider deletion, a cleanup audit or proof of retention readiness.
+      await worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+      await worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\',"completedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET "lastFailureCode"=\'RAW_DELETE_IO_UNKNOWN\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_IMMUTABLE" } } } });
+    } finally { context.cleanup(); foreign.cleanup(); }
   });
 
   it("assembles two policy-approved Sources while broken attempts preserve their own and other GOOD contributions", async () => {
