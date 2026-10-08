@@ -76,6 +76,17 @@ polling fallback сохраняется. Native notifier/consumer + staging — 
 «missing executors»; заменён актуальными runtime/readiness boundary assertions,
 не weakening security. Внешний HTTP/SDK synthetic;
 итоговое registered-worker/Next/browser end-to-end proof остаётся открытым.
+MP-08 delivery: PR #26, первый exact-head RISKY Gate #322 на `77b2bc9` — FAIL:
+233 scoped units PASS, 346/349 native PASS. Три сбоя общей outbox-reliability
+suite вызваны unfiltered fixture claims, захватывавшими retained intents других
+suites. Test-only fix использует стабильный unique per-key topic и own event ID;
+реальные concurrency/stale lease/retry/dead-letter assertions сохранены, foreign
+events не удаляются и не переносятся. Production claim implementation неизменна.
+Merge не выполнен; новое exact-head provider evidence требуется после checkpoint.
+Исправление подтверждено локально: consumer/notifier + outbox-reliability на
+одной native PostgreSQL базе — 31/31, 63 migrations и final reset PASS;
+test types, scoped lint, docs/secrets/diff — PASS. Независимый review patch
+без actionable findings. Build/worker production code и конфигурация не менялись.
 Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
 Source identity/lifecycle, GOOD/Last GOOD, snapshot intent, immutable manual

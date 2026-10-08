@@ -16,7 +16,9 @@ function command(key: string, payload: Record<string, unknown> = { operation: "s
     organizationScope: "platform",
     idempotencyScope: "e05.reliability",
     idempotencyKey: key,
-    topic: "platform.maintenance.requested",
+    // Claims must compete for this fixture's queue, not retained events from
+    // independent suites. The same idempotency key keeps the same topic.
+    topic: `synthetic.reliability.${key}`,
     payload,
     actorType: "SYSTEM" as const,
     actorId: null,
@@ -29,13 +31,15 @@ function command(key: string, payload: Record<string, unknown> = { operation: "s
 }
 
 async function enqueue(now: Date, key: string, payload?: Record<string, unknown>) {
-  return runInSystemJobDatabaseTransaction(
+  const input = command(key, payload);
+  const result = await runInSystemJobDatabaseTransaction(
     { jobName: "e05-enqueue", correlationId: randomUUID() },
     (transaction) =>
       new ReliabilityService(new PrismaReliabilityRepository(transaction), () => now).enqueue(
-        command(key, payload),
+        input,
       ),
   );
+  return { ...result, topic: input.topic };
 }
 
 function service(now: Date) {
@@ -66,26 +70,29 @@ describe("E05 outbox reliability", () => {
   });
   it("allows only one competing worker to claim an event", async () => {
     const now = new Date("2026-01-01T00:00:00.000Z");
-    await enqueue(now, `claim-${randomUUID()}`);
+    const created = await enqueue(now, `claim-${randomUUID()}`);
 
     const claims = await Promise.all([
-      service(now).claim("worker-a"),
-      service(now).claim("worker-b"),
+      service(now).claim("worker-a", 300_000, [created.topic]),
+      service(now).claim("worker-b", 300_000, [created.topic]),
     ]);
 
     expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(claims.find(Boolean)?.outboxEventId).toBe(created.outboxEventId);
     await service(now).complete(claims.find(Boolean)!);
   });
 
   it("rejects stale completion after lease recovery even for the same worker id", async () => {
     const startedAt = new Date("2026-01-02T00:00:00.000Z");
-    await enqueue(startedAt, `lease-${randomUUID()}`);
-    const first = await service(startedAt).claim("stable-worker", 1_000);
+    const created = await enqueue(startedAt, `lease-${randomUUID()}`);
+    const first = await service(startedAt).claim("stable-worker", 1_000, [created.topic]);
     expect(first).not.toBeNull();
+    expect(first?.outboxEventId).toBe(created.outboxEventId);
 
     const recoveredAt = new Date(startedAt.getTime() + 2_000);
-    const recovered = await service(recoveredAt).claim("stable-worker", 1_000);
+    const recovered = await service(recoveredAt).claim("stable-worker", 1_000, [created.topic]);
     expect(recovered).not.toBeNull();
+    expect(recovered?.outboxEventId).toBe(created.outboxEventId);
     expect(recovered?.attempt).toBe(2);
     expect(recovered?.leaseAcquiredAt).not.toBe(first?.leaseAcquiredAt);
 
@@ -98,8 +105,9 @@ describe("E05 outbox reliability", () => {
 
   it("rolls back lease takeover when its job run precondition is missing", async () => {
     const startedAt = new Date("2026-01-02T01:00:00.000Z");
-    await enqueue(startedAt, `takeover-${randomUUID()}`);
-    const claimed = await service(startedAt).claim("publisher-worker");
+    const created = await enqueue(startedAt, `takeover-${randomUUID()}`);
+    const claimed = await service(startedAt).claim("publisher-worker", 300_000, [created.topic]);
+    expect(claimed?.outboxEventId).toBe(created.outboxEventId);
     await runInSystemJobDatabaseTransaction(
       { jobName: "e05-remove-job-run", correlationId: randomUUID() },
       (transaction) => transaction.jobRun.delete({ where: { id: claimed!.jobRunId } }),
@@ -142,19 +150,22 @@ describe("E05 outbox reliability", () => {
       (transaction) => transaction.outboxEvent.count({ where: { id: first.outboxEventId } }),
     );
     expect(count).toBe(1);
-    const claimed = await service(now).claim("idempotency-worker");
+    const claimed = await service(now).claim("idempotency-worker", 300_000, [first.topic]);
+    expect(claimed?.outboxEventId).toBe(first.outboxEventId);
     await service(now).complete(claimed!);
   });
 
   it("creates one deduplicated notification after retry exhaustion", async () => {
     const startedAt = new Date("2026-01-04T00:00:00.000Z");
     const created = await enqueue(startedAt, `retry-${randomUUID()}`);
-    const first = await service(startedAt).claim("retry-worker");
+    const first = await service(startedAt).claim("retry-worker", 300_000, [created.topic]);
+    expect(first?.outboxEventId).toBe(created.outboxEventId);
     const retry = await service(startedAt).fail(first!, "TEMPORARY_FAILURE", true, 2);
     expect(retry.status).toBe("pending");
 
     const retriedAt = new Date(retry.availableAt!);
-    const second = await service(retriedAt).claim("retry-worker");
+    const second = await service(retriedAt).claim("retry-worker", 300_000, [created.topic]);
+    expect(second?.outboxEventId).toBe(created.outboxEventId);
     const terminal = await service(retriedAt).fail(second!, "TEMPORARY_FAILURE", true, 2);
     expect(terminal.status).toBe("dead_letter");
     await expect(service(retriedAt).fail(second!, "TEMPORARY_FAILURE", true, 2)).rejects.toMatchObject({
