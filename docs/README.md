@@ -14,7 +14,7 @@
 | Завершённая программа реализации v4 | `AMS Data Hub Master Plan v1.md` и `AMS_DATA_HUB_MASTER_PLAN_V1.inventory.json` |
 
 Утверждённый план остаётся на exact-пути, к которому привязаны inventory,
-Beads и execution ledger. Он не заменяет продуктовый backlog.
+execution ledger и PlanDB (owner-approved migration 2026-10-08). Он не заменяет продуктовый backlog.
 Exact v4 — неизменяемый approval artifact с исходным SHA-256; execution graph
 завершён (82/82). Текущие статусы и дополнительные работы после v4 принадлежат
 `04_BACKLOG.md`, `DELIVERY_STATE.yaml` и Task Manager, а не тексту approval handoff.
@@ -39,6 +39,7 @@ non-production проверки, не production rollout.
 | `ENVIRONMENT.md` | реестр переменных окружения без значений |
 | `OPERATIONS.md` | local runtime, deploy, rollback, backup/restore и incident recovery |
 | `DELIVERY_STATE.yaml` | machine-readable pointers на фактические delivery и restore proofs |
+| `PLANDB_MIGRATION_2026-10-08.md` | owner-approved перенос сохранённого Beads graph, mapping IDs и preservation evidence |
 | `AMS_DATA_HUB_REMEDIATION_ARCHITECT_HANDOFF_V1.md` | граф нового remediation plan, архитектурные зависимости, 30 DoD и границы доказательств |
 | `DH-00_CANON_MAPPING.md` | доказательство нормализации и переноса legacy-документов |
 | `research/VLADIS_VT24_CALIBRATION_2026-10-05.md` | обезличенное evidence трёх реальных тестовых прогонов профиля Vladis/VT24 и калиброванная safety policy |

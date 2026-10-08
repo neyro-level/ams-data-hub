@@ -25,6 +25,9 @@
 .DS_Store
 *.log
 *.tsbuildinfo
+# Local task graph and owner-approved migration source (may contain private notes)
+/.plandb.db*
+/beads-migration-source.jsonl
 
 # env
 .env*

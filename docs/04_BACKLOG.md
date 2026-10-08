@@ -77,11 +77,13 @@ GOOD и публичные commands → actual snapshot assembly → strict publ
 intent. После этих assertions отменяется только собственный synthetic RETRY job,
 чтобы следующий case не получил его с другим transport. Final native run:
 `64239/67891d`, 63 migrations и test DB reset — PASS; architect review без findings.
-Implementation closure B–D пока не записано: 2026-10-08 владелец удалил Beads
-в отдельном workflow. AMS Data Hub graph сохранён в
+Implementation closure B–D записано native PlanDB `done` после checkpoint
+`fa0e78bfb3f8796d4a7a3c805ee613ec924fbdc3` в SourceCraft. 2026-10-08 владелец удалил Beads
+в отдельном workflow, затем явно разрешил перенос graph в PlanDB. AMS Data Hub backup сохранён в
 `C:/Users/User/Desktop/Data-skill/beads-uninstall-backup-20261008/payload/store-7`;
-в PlanDB он ещё не импортирован. Последнее Reconcile было CLEAN, но текущая
-проверка graph недоступна. Не создавать новый пустой graph и не переоткрывать v4.
+PlanDB `.plandb.db` теперь содержит весь исходный graph с notes/evidence/statuses
+и зависимостями; migration verification — PASS. Mapping и границы находятся в
+`PLANDB_MIGRATION_2026-10-08.md`. Старый v4 не переоткрывается; следующие задачи E–G.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
