@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { inspectSource } from "./architecture-source-guards.mjs";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 const sourceDir = path.join(rootDir, "src");
@@ -114,6 +115,7 @@ for (const relativePath of [
 for (const filePath of await collectFiles(sourceDir)) {
   const source = await readFile(filePath, "utf8");
   const relativePath = path.relative(rootDir, filePath).replaceAll("\\", "/");
+  failures.push(...inspectSource(relativePath, source));
   if (source.includes('from "@prisma/client"') || source.includes("from '@prisma/client'")) {
     failures.push(`Legacy generated Prisma import: ${relativePath}`);
   }

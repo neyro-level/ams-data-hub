@@ -63,8 +63,16 @@ export function createRiskBuildEnvironment(environment) {
   };
 }
 
+export function mandatoryUnitProofFiles(selectedFiles) {
+  return [...new Set([
+    ...selectedFiles,
+    "tests/architecture-source-guards.test.ts",
+    "tests/sourcecraft-policy.test.ts",
+  ])];
+}
+
 function runUnitProof() {
-  const files = parseTestFiles(process.env.UNIT_TEST_FILES, "UNIT_TEST_FILES");
+  const files = mandatoryUnitProofFiles(parseTestFiles(process.env.UNIT_TEST_FILES, "UNIT_TEST_FILES"));
   run(process.execPath, ["node_modules/vitest/vitest.mjs", "run", ...files]);
 }
 
