@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 const executor = vi.hoisted(() => vi.fn());
+const approvalExecutor = vi.hoisted(() => vi.fn());
 vi.mock("../src/modules/operations-control/infrastructure/suspicious-rejection-executor.ts", () => ({ executeSuspiciousRejection: executor }));
+vi.mock("../src/modules/operations-control/infrastructure/suspicious-approval-executor.ts", () => ({ executeSuspiciousApproval: approvalExecutor }));
 import { handleOperationalOutboxEvent, OPERATIONAL_EXECUTOR_TOPICS } from "../src/modules/operations-control/worker.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../src/modules/operations-control/index.ts";
 import type { ClaimedReliabilityEvent } from "../src/modules/platform-operations/index.ts";
@@ -22,11 +24,17 @@ describe("finite operational queue adapter", () => {
     ack.mockRejectedValueOnce(new Error("Synthetic private ACK diagnostic"));
     await expect(handleOperationalOutboxEvent(ackEvent,signal,undefined,undefined,undefined,ack)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED",retryable: true });
   });
-  it("registers only the real rejection adapter and forwards the owned signal", async () => {
-    expect(OPERATIONAL_EXECUTOR_TOPICS).toEqual([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
+  it("registers both real revision-review adapters and forwards the owned signal", async () => {
+    expect(OPERATIONAL_EXECUTOR_TOPICS).toEqual([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT,OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_APPROVE]);
     const signal = new AbortController().signal; executor.mockResolvedValueOnce({ action: "SUSPICIOUS_REJECT" });
     await expect(handleOperationalOutboxEvent(event, signal)).resolves.toBeUndefined();
     expect(executor).toHaveBeenLastCalledWith(event, signal);
+    const approvalEvent = { ...event,topic: OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_APPROVE };
+    approvalExecutor.mockResolvedValueOnce({ action: "SUSPICIOUS_APPROVE" });
+    await expect(handleOperationalOutboxEvent(approvalEvent,signal)).resolves.toBeUndefined();
+    expect(approvalExecutor).toHaveBeenLastCalledWith(approvalEvent,signal);
+    approvalExecutor.mockRejectedValueOnce(new Error("SOURCE_REVISION_MANUAL_APPROVAL_INVALID"));
+    await expect(handleOperationalOutboxEvent(approvalEvent,signal)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED",retryable: false });
   });
   it.each(["DATA_SAFETY_JOBS_FROZEN", "SOURCE_OPERATION_REVIEW_BLOCKED", "OPERATIONS_CONTROL_EXECUTION_CANCELLED", "OUTBOX_OPERATION_LEASE_LOST"])(
     "defers %s without declaring terminal request failure", async (code) => {

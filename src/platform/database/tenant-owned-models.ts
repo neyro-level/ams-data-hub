@@ -48,6 +48,8 @@ export const TENANT_OWNED_MODELS = [
   "DeliveryRun",
   "ProjectAckCredential",
   "SnapshotAckRotationReceipt",
+  "SourceManualApprovalReceipt",
+  "SourceManualApprovalMutation",
   "InventoryIdentity",
   "InventoryLifecycleEvent",
   "DevelopmentExternalIdentity",

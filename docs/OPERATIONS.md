@@ -166,8 +166,8 @@ and queue-ACK-loss replay after freeze/SUSPENDED with unavailable public/storage
 refs. PUBLISH performs bounded GET only, no new capture/sign/PUT/HEAD; exact own
 heartbeat is observed active and cleared after joined stop. Runtime snapshot
 matrix now covers BUILD, PUBLISH and ROLLBACK — 17/17 PASS with synthetic SDK
-transport. ACK rotation adds its separately verified executor below; suspicious
-approval remains work. No production
+transport. ACK rotation and manual approval add their separately verified
+executors below. No production
 activation is implied.
 Startup revokes the previous exact-owner qualification before validating storage
 or capabilities. An invalid new configuration cannot leave a crashed process's
@@ -230,6 +230,22 @@ recover SUCCESS; historical committed replay needs neither config nor current ri
 and never changes a newer credential. Fleet displays only version. Secrets stay
 server-side; the form accepts phase/version only. Native tests prove local synthetic
 behavior and real pg-boss execution, not browser/live-provider/production readiness.
+
+## Operational SUSPICIOUS approval — local implementation
+
+An accepted Admin APPROVE request pins the source/revision and private reason.
+The existing combined worker routes it beside REJECT; it does not fetch the feed,
+resolve endpoint/storage credentials, reparse XML or reinterpret staged records
+using a live producer profile. Revision-bound SUSPICIOUS analysis is recomputed;
+critical/invalid/rejected evidence is not approvable. Changed source version,
+LastGOOD baseline or policy requires revalidation, not silent adoption of latest.
+The source must be enabled and the project ACTIVE/unfrozen. Actual ingestion apply
+updates stable identities, missing grace/reactivation/events, GOOD/LastGOOD and
+snapshot intent atomically with audit and request SUCCESS. Independent SQL checks
+actual mutations, not a status-only receipt. Late failure/cancellation rolls the
+entire cut back. Exact historical replay reads durable proof before mutable rights
+and does not reapply inventory or enqueue another snapshot. Local synthetic proof
+does not activate production or establish HTTP delivery/browser readiness.
 
 ## Streaming raw artifacts — remediation foundation
 

@@ -5,13 +5,14 @@ import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction 
 import type { ClaimedReliabilityEvent } from "../platform-operations/index.ts";
 import { operationalActionIntentSchema, OPERATIONAL_ACTION_TOPICS } from "./contracts.ts";
 import { executeSuspiciousRejection } from "./infrastructure/suspicious-rejection-executor.ts";
+import { executeSuspiciousApproval } from "./infrastructure/suspicious-approval-executor.ts";
 import { OperationalActionLifecycleRepository } from "./infrastructure/operational-action-lifecycle.ts";
 import type { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 import type { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
 import type { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
 import type { createOperationalAckRotationExecutor } from "./infrastructure/ack-rotation-executor.ts";
 
-export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
+export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT,OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_APPROVE]);
 
 /** No raw exception text, cancellation reason or arbitrary diagnostic code
  * reaches generic outbox persistence. Retry/defer is not request FAILED. */
@@ -19,6 +20,7 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
   build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>, publish?: ReturnType<typeof createOperationalSnapshotPublishExecutor>,
   rollback?: ReturnType<typeof createOperationalSnapshotRollbackExecutor>, ackRotation?: ReturnType<typeof createOperationalAckRotationExecutor>) {
   if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)
+    && event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_APPROVE
     && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish)
     && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback)
     && !(event.topic === OPERATIONAL_ACTION_TOPICS.ACK_ROTATE && ackRotation)) {
@@ -31,6 +33,7 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish) await publish(event, signal);
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback) await rollback(event, signal);
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.ACK_ROTATE && ackRotation) await ackRotation(event,signal);
+    else if (event.topic === OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_APPROVE) await executeSuspiciousApproval(event,signal);
     else await executeSuspiciousRejection(event, signal);
   }
   catch (error) {
@@ -44,7 +47,10 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
     // budget. Deterministic invalid revision/request cases are terminal.
     const retryable = !["SOURCE_REVISION_SAFETY_INVALID", "SOURCE_OPERATION_REVIEW_INVALID",
       "OPERATIONS_CONTROL_REFERENCE_INVALID", "OPERATIONS_CONTROL_ALREADY_FAILED", "ACK_CREDENTIAL_STALE", "ACK_ROTATION_ALREADY_STAGED",
-      "ACK_ROTATION_NOT_STAGED", "ACK_ROTATION_TRANSITION_INVALID", "ACK_CREDENTIAL_NOT_CONFIGURED"].includes(message);
+      "ACK_ROTATION_NOT_STAGED", "ACK_ROTATION_TRANSITION_INVALID", "ACK_CREDENTIAL_NOT_CONFIGURED",
+      "SOURCE_REVISION_MANUAL_APPROVAL_INVALID","SOURCE_OPERATION_APPROVAL_INVALID","SOURCE_APPROVAL_APPLY_INVALID",
+      "SOURCE_APPROVAL_RECEIPT_IMMUTABLE","SOURCE_EXECUTION_STALE","SOURCE_EXECUTION_POLICY_STALE",
+      "SOURCE_EXECUTION_IDENTITY_STALE","SOURCE_SAFETY_REVIEW_NOT_PENDING"].includes(message);
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTION_FAILED"), {
       code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable,
     });

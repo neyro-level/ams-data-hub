@@ -24,7 +24,9 @@ export const rolledBackSnapshotResultSchema = z.object({ action: z.literal("SNAP
 }).strict();
 export const rotatedAckResultSchema = z.object({ action: z.literal("ACK_ROTATE"), phase: z.enum(["STAGE", "PROMOTE"]),
   previousCredentialVersion: z.number().int().positive().max(2_147_483_646), credentialVersion: z.number().int().positive().max(2_147_483_647) }).strict();
-const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema, publishedSnapshotResultSchema, rolledBackSnapshotResultSchema, rotatedAckResultSchema]);
+export const approvedRevisionResultSchema = z.object({ action: z.literal("SUSPICIOUS_APPROVE"),
+  sourceRevisionId: z.string().min(1).max(128),sequence: z.number().int().positive().max(2_147_483_647),snapshotTriggered: z.literal(true) }).strict();
+const operationalResultSchema = z.discriminatedUnion("action", [rejectedRevisionResultSchema, stagedSnapshotResultSchema, publishedSnapshotResultSchema, rolledBackSnapshotResultSchema, rotatedAckResultSchema, approvedRevisionResultSchema]);
 
 /** Caller owns global -> domain locks -> outbox fence -> request and one atomic
  * domain/result commit. No outside IO, nested transaction or arbitrary principal
@@ -96,6 +98,7 @@ export class OperationalActionLifecycleRepository {
       if (result.action === "SNAPSHOT_PUBLISH") await this.assertPublishedResult(request, result);
       if (result.action === "SNAPSHOT_ROLLBACK") await this.assertRollbackResult(request, result);
       if (result.action === "ACK_ROTATE") await this.assertRotatedAckResult(request, result);
+      if (result.action === "SUSPICIOUS_APPROVE") await this.assertApprovedResult(request,result);
       return { replayed: true as const, request, result };
     }
     if (request.status === "FAILED") throw new Error("OPERATIONS_CONTROL_ALREADY_FAILED");
@@ -226,6 +229,31 @@ export class OperationalActionLifecycleRepository {
       organizationId: request.organizationId, projectId: request.projectId, action: result.action, outboxEventId: lease.outboxEventId,
       status: "RUNNING", leaseJobRunId: lease.jobRunId, leaseAttempt: lease.attempt, leaseWorkerId: lease.workerId, leaseAcquiredAt: new Date(lease.leaseAcquiredAt) },
       data: { status: "SUCCEEDED", result, finishedAt: new Date(Math.max(Date.now(),proof.createdAt.getTime(),request.startedAt?.getTime() ?? 0)) } });
+    if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST"); return result;
+  }
+
+  private async assertApprovedResult(request: { organizationId: string; projectId: string; id: string; sourceId: string | null; sourceRevisionId: string | null }, result: z.output<typeof approvedRevisionResultSchema>) {
+    if (!request.sourceId || request.sourceRevisionId !== result.sourceRevisionId) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    const access = await this.transaction.$queryRaw<{ allowed: boolean }[]>(Prisma.sql`SELECT operational_executor_scope(${request.organizationId},${request.projectId}) AS allowed`);
+    if (access[0]?.allowed !== true) throw new Error("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.actor_id','source-import',true)`);
+    const proofs = await this.transaction.$queryRaw<{ sequence: number; createdAt: Date }[]>(Prisma.sql`
+      SELECT * FROM source_manual_approval_operation_proof(${request.organizationId},${request.projectId},${request.sourceId},${request.sourceRevisionId},${request.id})`);
+    await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.actor_id','operations-executor',true)`);
+    if (proofs.length !== 1 || proofs[0]?.sequence !== result.sequence) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    return proofs[0];
+  }
+
+  async succeedApprovedRevision(lease: ClaimedReliabilityEvent, rawResult: z.input<typeof approvedRevisionResultSchema>) {
+    const result = approvedRevisionResultSchema.parse(rawResult); const intent = operationalActionIntentSchema.parse(lease.payload);
+    if (intent.action !== result.action) throw new Error("OPERATIONS_CONTROL_RESULT_INVALID");
+    await lockOperationalOutboxLease(this.transaction,lease,{ organizationId: intent.organizationId,projectId: intent.projectId,
+      topic: OPERATIONAL_ACTION_TOPICS[intent.action],payload: intent });
+    const request = await this.read(lease); const proof = await this.assertApprovedResult(request,result);
+    const changed = await this.transaction.operationalActionRequest.updateMany({ where: { id: request.id,organizationId: request.organizationId,
+      projectId: request.projectId,action: result.action,status: "RUNNING",outboxEventId: lease.outboxEventId,leaseJobRunId: lease.jobRunId,
+      leaseAttempt: lease.attempt,leaseWorkerId: lease.workerId,leaseAcquiredAt: new Date(lease.leaseAcquiredAt) },
+      data: { status: "SUCCEEDED",result,finishedAt: new Date(Math.max(Date.now(),proof.createdAt.getTime(),request.startedAt?.getTime() ?? 0)) } });
     if (changed.count !== 1) throw new Error("OUTBOX_OPERATION_LEASE_LOST"); return result;
   }
 

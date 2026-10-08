@@ -7,6 +7,9 @@ import { PrismaDataSafetyRepository, assertMutatingJobsAllowed } from "../../pla
 import type { SourceExecutionState, ResolvedSourceExecution } from "../application/source-execution-service.ts";
 import { type RawArtifactReceipt } from "../application/import-pipeline.ts";
 import { assertSourceRevisionApproval } from "../application/source-revision-approval.ts";
+import { assertManualSourceRevisionApproval } from "../application/manual-source-revision-approval.ts";
+import { normalizedContentHash } from "../application/import-pipeline.ts";
+import { analyzeImportSafety, reviewSuspiciousImport } from "../domain/safety-engine.ts";
 import { type SafetyAnalysisResult } from "../domain/safety-engine.ts";
 import { reconcileMissingInventory, type InventoryIdentityState } from "../domain/inventory-lifecycle.ts";
 import { sourceSafetyPolicySchema } from "../domain/source-safety-policy-schema.ts";
@@ -31,6 +34,13 @@ export interface SourceRuntimeMutationPlan {
   updateCount: number;
   deactivateCount: number;
 }
+
+/** Applying persisted normalized records does not need intake credentials,
+ * live executable/profile resolution or a producer connection. */
+export type SourceApplyContext = Pick<ResolvedSourceExecution, "target" | "principal" | "safetyPolicy" | "lastGood"> & {
+  source: Pick<ResolvedSourceExecution["source"], "version" | "lastGoodRevisionId" | "safetyPolicyId">;
+};
+export interface SourceManualApproval { requestId: string; reviewedAt: Date }
 
 export class PrismaSourceExecutionRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
@@ -107,7 +117,7 @@ export class PrismaSourceExecutionRepository {
     if (updated.count !== 1) throw new Error("SOURCE_REVISION_STAGING_CLOSED");
   }
 
-  async lockSource(context: ResolvedSourceExecution) {
+  async lockSource(context: SourceApplyContext) {
     // Serialize with freeze before checking it; no HTTP/S3/parser work runs here.
     await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
     await assertMutatingJobsAllowed(new PrismaDataSafetyRepository(this.transaction));
@@ -127,9 +137,9 @@ export class PrismaSourceExecutionRepository {
     return source;
   }
 
-  async plan(context: ResolvedSourceExecution, revisionId: string): Promise<SourceRuntimeMutationPlan> {
-    const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: "STAGED" } });
-    this.assertSafeRevision(context, revision);
+  async plan(context: SourceApplyContext, revisionId: string, manual?: SourceManualApproval): Promise<SourceRuntimeMutationPlan> {
+    const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: manual ? "SUSPICIOUS" : "STAGED" } });
+    await this.assertAdmittedRevision(context, revision, manual);
     const counts = await this.transaction.$queryRaw<{ createCount: bigint; updateCount: bigint }[]>(Prisma.sql`
       select count(*) filter (where i."uid" is null) as "createCount", count(*) filter (where i."uid" is not null) as "updateCount"
       from "SourceRevisionRecord" r left join "InventoryIdentity" i on i."organizationId" = r."organizationId"
@@ -141,15 +151,32 @@ export class PrismaSourceExecutionRepository {
       deactivateCount: await this.reconcileMissing(context, revision, false) };
   }
 
-  private assertSafeRevision(context: ResolvedSourceExecution, revision: {
+  private async assertAdmittedRevision(context: SourceApplyContext, revision: {
+    organizationId: string; projectId: string; sourceId: string; id: string; sourceVersion: number;
+    safetyPolicyVersion: number | null; baseLastGoodRevisionId: string | null;
     safetyPolicy: Prisma.JsonValue; safetyAnalysis: Prisma.JsonValue; recordCount: number; invalidRecordCount: number;
-  }) {
-    // Do not trust a status label or caller-supplied mutation plan as approval.
-    // Revision-bound manual approval belongs to the explicit review executor.
-    assertSourceRevisionApproval(revision, context.lastGood?.recordCount ?? null);
+  }, manual?: SourceManualApproval) {
+    if (!manual) { assertSourceRevisionApproval(revision, context.lastGood?.recordCount ?? null); return null; }
+    const rows = await this.transaction.$queryRaw<{ id: string; requestHash: string; requestedBy: string; reason: string }[]>(Prisma.sql`
+      SELECT * FROM source_manual_approval_request(${revision.organizationId},${revision.projectId},${revision.sourceId},${revision.id},${manual.requestId})`);
+    const request = rows[0];
+    if (rows.length !== 1 || !request || !Number.isFinite(manual.reviewedAt.getTime())) throw new Error("SOURCE_REVISION_MANUAL_APPROVAL_INVALID");
+    const original = analyzeImportSafety({ recordCount: revision.recordCount, invalidRecordCount: revision.invalidRecordCount,
+      previousGoodRecordCount: context.lastGood?.recordCount ?? null, issues: revision.invalidRecordCount ? [{ severity: "CRITICAL", code: "SOURCE_RECORD_INVALID" }] : [] },
+      sourceSafetyPolicySchema.parse(revision.safetyPolicy));
+    if (normalizedContentHash(original) !== normalizedContentHash(revision.safetyAnalysis)) throw new Error("SOURCE_REVISION_MANUAL_APPROVAL_INVALID");
+    const reviewed = reviewSuspiciousImport(original, { decision: "APPROVE", reviewedBy: request.requestedBy,
+      reason: request.reason, reviewedAt: manual.reviewedAt.toISOString() });
+    assertManualSourceRevisionApproval({ ...revision, safetyAnalysis: reviewed }, context.lastGood?.recordCount ?? null,
+      { organizationId: revision.organizationId, projectId: revision.projectId, sourceId: revision.sourceId, revisionId: revision.id,
+        requestId: request.id, requestHash: request.requestHash, sourceVersion: revision.sourceVersion,
+        safetyPolicyVersion: revision.safetyPolicyVersion, baseLastGoodRevisionId: revision.baseLastGoodRevisionId,
+        previousGoodRecordCount: context.lastGood?.recordCount ?? null, policyHash: normalizedContentHash(sourceSafetyPolicySchema.parse(revision.safetyPolicy)),
+        originalAnalysisHash: normalizedContentHash(original), reviewedAnalysisHash: normalizedContentHash(reviewed) });
+    return reviewed;
   }
 
-  private async reconcileMissing(context: ResolvedSourceExecution, revision: {
+  private async reconcileMissing(context: SourceApplyContext, revision: {
     id: string; startedAt: Date; recordCount: number; safetyPolicy: Prisma.JsonValue;
   }, apply: boolean): Promise<number> {
     // A baseline never removes previous inventory, even if legacy identities
@@ -199,10 +226,10 @@ export class PrismaSourceExecutionRepository {
     return deactivated;
   }
 
-  async apply(context: ResolvedSourceExecution, revisionId: string, plan: SourceRuntimeMutationPlan, manualRequestId?: string) {
+  async apply(context: SourceApplyContext, revisionId: string, plan: SourceRuntimeMutationPlan, manualRequestId?: string, manual?: SourceManualApproval) {
     await this.lockSource(context);
-    const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: "STAGED" } });
-    this.assertSafeRevision(context, revision);
+    const revision = await this.transaction.sourceRevision.findFirstOrThrow({ where: { ...context.target, id: revisionId, status: manual ? "SUSPICIOUS" : "STAGED" } });
+    const reviewed = await this.assertAdmittedRevision(context, revision, manual);
     if (revision.sourceVersion !== context.source.version || revision.baseLastGoodRevisionId !== context.source.lastGoodRevisionId
       || plan.revisionId !== revisionId || plan.sourceVersion !== revision.sourceVersion || plan.baseLastGoodRevisionId !== revision.baseLastGoodRevisionId
       || plan.createCount + plan.updateCount !== revision.recordCount
@@ -216,6 +243,10 @@ export class PrismaSourceExecutionRepository {
       where r."revisionId" = ${revisionId} and (i."uid" <> r."inventoryUid" or i."lastSeenAt" > ${revision.startedAt})
     `);
     if (stale[0]?.count !== 0n) throw new Error("SOURCE_EXECUTION_IDENTITY_STALE");
+    if (manual) {
+      await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.source_approval_request_id',${manual.requestId},true)`);
+      await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.source_approval_revision_id',${revisionId},true)`);
+    }
     // Missing grace/state/events share the final GOOD transaction and roll back
     // with any later constraint/outbox failure. No broken run reaches this path.
     await this.reconcileMissing(context, revision, true);
@@ -251,7 +282,10 @@ export class PrismaSourceExecutionRepository {
       where: { ...context.target, id: context.lastGood.revisionId, status: "GOOD" }, select: { sequence: true },
     }) : null;
     const sequence = (previous?.sequence ?? 0) + 1;
-    await this.transaction.sourceRevision.update({ where: { id: revisionId }, data: { status: "GOOD", sequence, completedAt: new Date() } });
+    if (manual) await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.source_approval_request_id',${manual.requestId},true)`);
+    await this.transaction.sourceRevision.update({ where: { id: revisionId }, data: { status: "GOOD", sequence, completedAt: manual?.reviewedAt ?? new Date(),
+      ...(reviewed ? { safetyAnalysis: reviewed as unknown as Prisma.InputJsonObject } : {}) } });
+    if (manual) await this.transaction.$executeRaw(Prisma.sql`SELECT set_config('app.source_approval_request_id','',true),set_config('app.source_approval_revision_id','',true)`);
     await this.transaction.source.update({ where: { id: context.target.sourceId }, data: {
       lastGoodRevisionId: revisionId, lastSuccessAt: revision.startedAt,
     } });

@@ -72,7 +72,7 @@ review, audit and request completion share one transaction; rejection never
 changes inventory or Last GOOD. Replay of an already committed result precedes
 mutable freeze/project/revision admission. Policy/analysis JSON is SQL-bounded
 before transfer. The shared queue now registers rejection plus capability-gated
-BUILD, PUBLISH, ROLLBACK and ACK_ROTATE; SUSPICIOUS_APPROVE remains reserved.
+BUILD, PUBLISH, ROLLBACK, ACK_ROTATE and the concrete SUSPICIOUS_APPROVE adapter.
 Immutable FAILED carries one finite generic safeErrorCode
 and requires actual DEAD_LETTER/latest FAILED JobRun metadata. Retry/defer does
 not fail a request; committed success cannot be overwritten. Startup/60s paged
@@ -302,7 +302,7 @@ capture or PUT. The combined queue registers BUILD only with the existing
 SNAPSHOT_BUILD_ENABLED capability. Selected PUBLISH is independently registered
 under SNAPSHOT_PUBLISH_ENABLED with public trust only; ROLLBACK has its independent
 SNAPSHOT_ROLLBACK_ENABLED adapter and atomic current/run/SUCCESS cut described above.
-Suspicious approval remains reserved pending its concrete adapter.
+SUSPICIOUS_APPROVE uses the actual persisted-record apply path described below.
 
 Forward migration 58 adds immutable nullable ACK phase/version pins to operational
 requests (legacy NULL rows fail closed for ACK execution), and
@@ -318,6 +318,22 @@ All credential writers take the global safety lock; the rotation takes publicati
 input and ACK locks before credential/event/job/request row work. Replay proves the
 immutable accepted transition without depending on today's credential or token refs.
 Fleet selects only the safe credential version, not private transition metadata.
+
+Forward migration 59 adds `SourceManualApprovalReceipt` and
+`SourceManualApprovalMutation`. Both are immutable, FORCE-RLS private proofs with
+worker SELECT/INSERT only. Mutation witnesses are created solely by nested actual
+InventoryIdentity INSERT/UPDATE triggers under the current accepted APPROVE lease;
+they pin before/after identity metadata, not raw record bodies. Direct receipt or
+witness insertion is denied. Manual GOOD validates seen-record identity/hash/time,
+missing-run reconciliation and matching lifecycle events, source version/LastGOOD,
+policy version/known-key content, project state and global freeze. Its AFTER trigger
+captures scoped request hash, revision/source/policy versions, baseline/counts and
+bounded original/reviewed analysis. Operational SUCCESS additionally proves the
+actual GOOD/LastGOOD and exact IDs-only snapshot intent. No SUSPICIOUS→STAGED
+workaround or inferred LastGOOD backfill is used. Snapshot approval recomputes
+original SUSPICIOUS against this durable receipt; a review label alone is invalid.
+Historical automatic SAFE proof remains byte-compatible. Capture carries only
+value-free approval pins/hashes; public identity excludes the private proof.
 
 The forward publication Source-read migration adds exact-purpose scoped SELECT
 policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with

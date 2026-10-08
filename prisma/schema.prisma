@@ -1070,6 +1070,7 @@ model SourceRevision {
   records                SourceRevisionRecord[]
   agentBindings          ListingAgentBinding[]
   operationalActionRequests OperationalActionRequest[]
+  manualApprovalReceipt SourceManualApprovalReceipt?
 
   @@unique([organizationId, projectId, sourceId, id])
   @@unique([sourceId, sequence])
@@ -1222,9 +1223,47 @@ model OperationalActionRequest {
   selectedStage         SnapshotArtifactStageReceipt? @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, buildInputId], onDelete: Restrict, onUpdate: NoAction, map: "OperationalActionRequest_stage_fkey")
   rollbackReservation   SnapshotRollbackReservation?
   ackRotationReceipt    SnapshotAckRotationReceipt?
+  sourceApprovalReceipt SourceManualApprovalReceipt?
+  sourceApprovalMutations SourceManualApprovalMutation[]
 
   @@unique([organizationId, projectId, id], map: "OperationalActionRequest_scope_id_key")
   @@index([projectId, status, createdAt], map: "OperationalActionRequest_project_status_created_idx")
+}
+
+model SourceManualApprovalMutation {
+  organizationId String
+  projectId String
+  requestId String
+  inventoryUid String @db.VarChar(26)
+  beforeState Json?
+  afterState Json
+  request OperationalActionRequest @relation(fields: [organizationId, projectId, requestId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, requestId, inventoryUid])
+}
+
+model SourceManualApprovalReceipt {
+  organizationId String
+  projectId String
+  sourceId String
+  revisionId String
+  requestId String
+  requestHash String @db.Char(64)
+  sourceVersion Int
+  safetyPolicyVersion Int?
+  baseLastGoodRevisionId String?
+  previousGoodRecordCount Int?
+  policy Json
+  originalAnalysis Json
+  reviewedAnalysis Json
+  sequence Int
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  request OperationalActionRequest @relation(fields: [organizationId, projectId, requestId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+  revision SourceRevision @relation(fields: [organizationId, projectId, sourceId, revisionId], references: [organizationId, projectId, sourceId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, revisionId])
+  @@unique([organizationId, projectId, requestId])
+  @@unique([organizationId, projectId, sourceId, revisionId])
 }
 
 model SnapshotAckRotationReceipt {

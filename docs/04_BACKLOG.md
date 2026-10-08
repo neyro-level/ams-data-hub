@@ -27,7 +27,24 @@
 - Канон и delivery pointers сверены с действующими runtime-контрактами;
   GitHub остаётся односторонним зеркалом SourceCraft `main`.
 
-## Следующая граница
+## Текущая граница
+
+MP-00–MP-07 доставлены. MP-08.1 остаётся IN_PROGRESS: все шесть concrete
+executors реализованы и зарегистрированы, но закрытие требует сводки полного
+task DoD и проверенного checkpoint. Новый SUSPICIOUS_APPROVE переиспользует
+реальное ingestion apply, без повторного intake и обхода SAFE predicate.
+Source identity/lifecycle, GOOD/Last GOOD, snapshot intent, immutable manual
+receipt и operational SUCCESS фиксируются атомарно под полным lease fence.
+Snapshot читает отдельное durable manual proof; private review не входит в DTO.
+Финальная совместная регрессия — 237/237 в десяти integration suites с 59
+forward migrations и final reset. Дополнительная approval matrix — 20/20:
+actual combined worker/replay, late rollback/cancel, takeover, concurrent replay,
+scope/forgery denial, stale baseline/source/policy, REJECTED, новая identity и
+missing GRACE. PostgreSQL worker NOBYPASSRLS; fixture/SDK synthetic.
+Повторное scoped architect review — без actionable findings.
+Production, live provider и browser proof этим не заявлены.
+
+## История проверенных этапов
 
 MP-00 доставлен PR #18 после exact-head RISKY Gate #185, merge
 `23d1204fccb07afe25b8b8aa0c87ece0001e6b25`; GitHub mirror синхронизирован.
@@ -402,11 +419,9 @@ asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-05/MP-08–MP-10 нового remediation plan;
-MP-00–MP-04, MP-06 и MP-07 закрыты.
-Далее — snapshot public projectors, build/sign/publication orchestration,
-operations executors
-и синтетическое end-to-end proof. Реализация runtime adapters и расписаний
+Активная доработка: MP-08–MP-10 нового remediation plan;
+MP-00–MP-07 закрыты. Далее — оставшееся operations HTTP/UI и синтетическое
+end-to-end proof. Реализация runtime adapters и расписаний
 входит в утверждённую доработку; их включение на production — нет.
 
 Production feed credentials, миграция production и rollout — только отдельной

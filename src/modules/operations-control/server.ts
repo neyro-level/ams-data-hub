@@ -11,6 +11,7 @@ export { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapsho
 export { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
 export { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
 export { createOperationalAckRotationExecutor } from "./infrastructure/ack-rotation-executor.ts";
+export { executeSuspiciousApproval } from "./infrastructure/suspicious-approval-executor.ts";
 
 const operationsActions = createOperationsActions({
   createRepository: (transaction) => new PrismaOperationsActionRepository(transaction),

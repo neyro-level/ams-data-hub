@@ -358,7 +358,18 @@ remediation program preserves these boundaries while connecting them:
   credential CAS, trigger-created immutable private receipt and request SUCCESS
   commit together. Historical replay uses that receipt, not the latest credential
   or configuration. Fleet exposes only the credential version, never its hashes.
-  Suspicious approval and HTTP discovery/delivery/ACK remain unfinished.
+  Manual SUSPICIOUS approval reuses ingestion's actual persisted-record plan/apply
+  without endpoint resolution or live adapter/profile reinterpretation. A separate
+  predicate recomputes pinned SUSPICIOUS evidence and checks the accepted private
+  review; automatic SAFE admission stays independent. Under global → source locks
+  and a complete accepted lease, actual identity changes create immutable private
+  mutation witnesses. GOOD requires exact applied UID/hash/seen state, missing
+  reconciliation/events and fresh source/baseline/policy/project/freeze admission.
+  A trigger records the revision/request approval receipt; GOOD/LastGOOD, inventory,
+  lifecycle events, snapshot intent, audit and operational SUCCESS share one cut.
+  Snapshot capture accepts recomputed SAFE or durable, recomputed manual approval;
+  private review never enters public datasets. HTTP discovery/delivery/ACK and
+  lifecycle UI remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 
