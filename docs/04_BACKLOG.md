@@ -95,6 +95,15 @@ test types `73222/1bd046` — PASS. Первый прогон выявил не�
 Проверка ограничена candidate assembly без media: signed publication, web-role
 NOBYPASS и process restart этим сценарием не заявлены. Следующие сценарии F–G;
 общий MP-09 delivery gate и MP-10 ещё не завершены.
+Scenario F native proof — PASS: три real configured Source в одном synthetic
+project. A/B получают второй GOOD с ценами 2100/2200; C после первого GOOD
+получает malformed XML → FAILED без GOOD sequence и без изменения Last Good,
+identities, records, build intents или состояния A/B. Actual capture фиксирует
+source/fact/approved head pins 2/2/1; candidate snapshot содержит три distinct UID
+и цены 2100/2200/1000. Native `48666/6da3e0` — 4/4 PASS вместе с B–D,
+63 migrations и final DB reset; independent architect review без findings.
+Подменены только нижние DNS/HTTPS/S3 transports. Signed publication и HTTP
+этим scoped proof не заявлены. Следующий сценарий G — actual process restart.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит

@@ -54,5 +54,5 @@ non-production проверки, не production rollout.
 эталонного snapshot-потребителя, а
 [`PROJECT_EXIT_BUNDLE_V1.md`](contracts/PROJECT_EXIT_BUNDLE_V1.md) — typed
 handoff contract. Exit Bundle exporter реализован в `operations-control`;
-реальная передача остаётся отдельной owner/legal operation. Mutable epic/PR/SHA evidence хранится в Beads ledger;
+реальная передача остаётся отдельной owner/legal operation. Mutable epic/PR/SHA evidence хранится в PlanDB;
 `DELIVERY_STATE.yaml` содержит только machine-readable proof pointers.

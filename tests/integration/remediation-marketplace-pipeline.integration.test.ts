@@ -55,7 +55,7 @@ const families = [
     wrong: '<Ads formatVersion="3" target="Avito.ru"><Ad><Id>synthetic-one</Id></Ad></Ads>' },
 ];
 
-it.each(families)("executes $profile on native worker and projects compatible DTO while rejecting a foreign format", async (family) => {
+async function proveMarketplace(family: typeof families[number], mixed = false) {
   const suffix = randomUUID().slice(0, 8);
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-marketplace", correlationId: randomUUID() };
   const scope = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -106,15 +106,15 @@ it.each(families)("executes $profile on native worker and projects compatible DT
     return { ContentLength: body.length, ContentType: contentTypes.get(command.input.Key!), LastModified: new Date(0), ETag: "synthetic",
       ...(command instanceof GetObjectCommand ? { Body: { async *[Symbol.asyncIterator]() { yield body; }, destroy: vi.fn() } } : {}) } as never;
   });
-  const read = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
-    source: await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }),
-    revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { sequence: "asc" } }),
-    records: await tx.sourceRevisionRecord.findMany({ where: target }),
-    identities: await tx.inventoryIdentity.findMany({ where: target }),
+  const read = (sourceTarget = target) => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+    source: await tx.source.findUniqueOrThrow({ where: { id: sourceTarget.sourceId } }),
+    revisions: await tx.sourceRevision.findMany({ where: sourceTarget, orderBy: { sequence: "asc" } }),
+    records: await tx.sourceRevisionRecord.findMany({ where: sourceTarget }),
+    identities: await tx.inventoryIdentity.findMany({ where: sourceTarget }),
     intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
       payload: { path: ["projectId"], equals: scope.projectId } } }),
   }));
-  const execute = async (body: string, expected: "completed" | "retry") => {
+  const execute = async (body: string, expected: "completed" | "retry", sourceTarget = target) => {
     const bytes = new TextEncoder().encode(body);
     wire.https.mockImplementation((options, receive) => {
       expect(options).toMatchObject({ hostname: "93.184.216.34", servername: "feed.example.test", method: "GET" });
@@ -126,7 +126,7 @@ it.each(families)("executes $profile on native worker and projects compatible DT
     });
     const boss = await getPgBoss();
     await boss.createQueue(SOURCE_IMPORT_QUEUE, { policy: "exclusive", retryLimit: 3, retryDelay: 30 });
-    const jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...target, trigger: "MANUAL" }, { singletonKey: target.sourceId });
+    const jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...sourceTarget, trigger: "MANUAL" }, { singletonKey: sourceTarget.sourceId });
     expect(jobId).toEqual(expect.any(String));
     const controller = new AbortController(); const complete = boss.complete.bind(boss); const fail = boss.fail.bind(boss);
     const completed = vi.spyOn(boss, "complete").mockImplementation(async (name, id, data, options) => {
@@ -145,7 +145,7 @@ it.each(families)("executes $profile on native worker and projects compatible DT
   };
   try {
     await execute(family.xml, "completed");
-    const good = await read();
+    let good = await read();
     expect(good.source).toMatchObject({ adapterKey: family.adapter, profileKey: family.profile });
     expect(good.revisions).toHaveLength(1); expect(good.revisions[0]).toMatchObject({ status: "GOOD", recordCount: 1 });
     const revision = good.revisions[0]!;
@@ -156,23 +156,77 @@ it.each(families)("executes $profile on native worker and projects compatible DT
     expect(good.records[0]!.payload).toMatchObject({ draft: { externalId: "synthetic-one", sourceFormat: family.format,
       propertyType: "APARTMENT", transactionType: "SALE", price: 1000 } });
     const uid = good.identities[0]!.uid;
+    const expectedRows = [{ uid, price: 1000, sourceId: target.sourceId, headId: good.source.lastGoodRevisionId!, sequence: 1 }];
+    if (mixed) {
+      const otherTargets: typeof target[] = [];
+      for (const [index, other] of families.slice(1).entries()) {
+        const registered = await sourceRegistryCommands.createSource(admin, { ...scope,
+          sourceKey: `synthetic-mixed-${index}`, name: "Synthetic mixed source", endpointCredentialRef: feedRef,
+          adapterKey: other.adapter, adapterVersion: "1.0.0", profileKey: other.profile, profileVersion: "1.0.0",
+          datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY",
+          schedulePolicy: { mode: "MANUAL_ONLY" }, safetyPolicyId: policy.id, expectedNamespace: "", expectedProducer: "" });
+        const otherTarget = { ...scope, sourceId: registered.sourceId };
+        await sourceRegistryCommands.setSourceEnabled(admin, { ...otherTarget, version: registered.version, enabled: true });
+        await execute(other.xml, "completed", otherTarget);
+        const baseline = await read(otherTarget);
+        expect(baseline.revisions).toHaveLength(1);
+        expect(baseline.revisions[0]).toMatchObject({ status: "GOOD", sequence: 1, recordCount: 1 });
+        expect(baseline.identities).toHaveLength(1);
+        otherTargets.push(otherTarget);
+      }
+      await execute(family.xml.replace("1000", "2100"), "completed");
+      good = await read();
+      expect(good.revisions.at(-1)).toMatchObject({ status: "GOOD", sequence: 2 });
+      expect(good.identities[0]!.uid).toBe(uid);
+      expectedRows[0] = { uid, price: 2100, sourceId: target.sourceId, headId: good.source.lastGoodRevisionId!, sequence: 2 };
+      const bTarget = otherTargets[0]!; const cTarget = otherTargets[1]!;
+      await execute(families[1]!.xml.replace("1000", "2200"), "completed", bTarget);
+      const bGood = await read(bTarget); const cGood = await read(cTarget);
+      good = await read(); // Project-wide intents now include B's own new GOOD.
+      expect(bGood.revisions.at(-1)).toMatchObject({ status: "GOOD", sequence: 2 });
+      const cFailedJob = await execute("<Feed>", "retry", cTarget);
+      const cFailed = await read(cTarget);
+      expect(cFailed.revisions).toHaveLength(2);
+      expect(cFailed.revisions.at(-1)).toMatchObject({ status: "FAILED", sequence: null });
+      expect(cFailed.source.lastGoodRevisionId).toBe(cGood.source.lastGoodRevisionId);
+      expect(cFailed.identities).toEqual(cGood.identities); expect(cFailed.records).toEqual(cGood.records);
+      expect(cFailed.intents).toEqual(cGood.intents);
+      expect(await read()).toEqual(good); expect(await read(bTarget)).toEqual(bGood);
+      // Preserve actual retry evidence, then cancel only C's own synthetic job.
+      const cleanupQueue = await getPgBoss(); await cleanupQueue.cancel(SOURCE_IMPORT_QUEUE, cFailedJob);
+      expect((await cleanupQueue.getJobById(SOURCE_IMPORT_QUEUE, cFailedJob))?.state).toBe("cancelled");
+      await stopPgBoss();
+      expectedRows.push({ uid: bGood.identities[0]!.uid, price: 2200, sourceId: bTarget.sourceId,
+        headId: bGood.source.lastGoodRevisionId!, sequence: 2 },
+      { uid: cGood.identities[0]!.uid, price: 1000, sourceId: cTarget.sourceId,
+        headId: cGood.source.lastGoodRevisionId!, sequence: 1 });
+    }
     await catalogSubscriptionCommands.replaceProjectSubscription(admin, { ...scope, version: 0, mode: "ALL_SHARED",
       cityUids: ["01M41T6Q04BADHXSERJHZFXKCH"], selections: [] });
     await projectPublicContactCommands.replaceProjectPublicContact(admin, { ...scope, version: 0, phone: "+70000000077",
       email: "", addressPublic: "", messengers: [], hours: "" });
     await projectUrlRegistryCommands.replaceProjectUrlPolicy(admin, { ...scope, version: 0, policyKey: "synthetic-marketplace",
       pathTemplates: [{ entityType: "INVENTORY", template: "/inventory/{slug}" }], reservedNamespaces: [] });
-    const entry = await projectUrlRegistryCommands.createProjectUrlEntry(admin, { ...scope, entityType: "INVENTORY", entityUid: uid,
-      slug: "synthetic-one", canonicalPath: "/inventory/synthetic-one" });
-    await projectUrlRegistryCommands.publishProjectUrlEntry(admin, { ...scope, urlEntryId: entry.urlEntryId, version: entry.version });
+    for (const [index, row] of expectedRows.entries()) {
+      const entry = await projectUrlRegistryCommands.createProjectUrlEntry(admin, { ...scope, entityType: "INVENTORY", entityUid: row.uid,
+        slug: `synthetic-${index}`, canonicalPath: `/inventory/synthetic-${index}` });
+      await projectUrlRegistryCommands.publishProjectUrlEntry(admin, { ...scope, urlEntryId: entry.urlEntryId, version: entry.version });
+    }
     const storage = createProjectObjectStorageResolver()(scope);
     const snapshotJob = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
     const capture = await captureSnapshotInput(snapshotJob, { ...scope, schemaMinor: 0, idempotencyKey: randomUUID() });
     const assembled = await createSnapshotCandidateAssemblyServer({ ...scope, storage })(snapshotJob,
       { idempotencyKeyHash: capture.idempotencyKeyHash, requestHash: capture.requestHash });
     const inventory = assembled.datasets.find((dataset) => dataset.kind === "inventory")!.records;
-    expect(inventory).toHaveLength(1);
-    expect(publicInventoryDtoSchema.parse(inventory[0]!.value)).toMatchObject({ uid, propertyType: "APARTMENT", transactionType: "SALE", price: 1000 });
+    expect(inventory).toHaveLength(expectedRows.length);
+    expect(new Set(expectedRows.map((row) => row.uid)).size).toBe(expectedRows.length);
+    const capturedInventory = capture.parts.filter((part) => part.kind === "inventory").flatMap((part) => part.payload);
+    for (const row of expectedRows) {
+      expect(publicInventoryDtoSchema.parse(inventory.find((record) => record.key === row.uid)!.value))
+        .toMatchObject({ uid: row.uid, propertyType: "APARTMENT", transactionType: "SALE", price: row.price });
+      expect(capturedInventory).toContainEqual(expect.objectContaining({ uid: row.uid, sourceId: row.sourceId,
+        factRevisionId: row.headId, factRevisionSequence: row.sequence, approvedHeadId: row.headId, approvedHeadSequence: row.sequence }));
+    }
     expect(JSON.stringify(assembled.datasets)).not.toMatch(/rawRecord|sourceFormat|normalizedHash|sourceHash|endpointCredentialRef|\?token=/u);
     const rejectedJobId = await execute(family.wrong, "retry");
     const rejected = await read();
@@ -189,4 +243,10 @@ it.each(families)("executes $profile on native worker and projects compatible DT
     await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs();
     wire.dns.mockReset(); wire.https.mockReset(); wire.http.mockReset(); wire.workerCuts = 0;
   }
-}, 120_000);
+}
+
+it.each(families)("executes $profile on native worker and projects compatible DTO while rejecting a foreign format",
+  (family) => proveMarketplace(family), 120_000);
+
+it("assembles A/B current GOOD and C previous Last Good after C fails on the real configured worker",
+  () => proveMarketplace(families[0]!, true), 120_000);
