@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
@@ -35,6 +35,7 @@ import { PrismaReliabilityRepository } from "../../src/modules/platform-operatio
 import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { acquireRawArtifactLifetimeGuard } from "../../src/modules/ingestion-core/infrastructure/raw-artifact-lifetime-guard.ts";
 import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
@@ -96,6 +97,40 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("excludes retention during actual PUT and receipt registration, preserving malformed XML provenance", async () => {
+    const context = await setup();
+    const xml = "<realty-feed>";
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const target = { ...context.target, rawArtifactHash };
+    const originalSend = context.client.send;
+    let uploadCut = 0; let registrationCut = 0;
+    const send = vi.spyOn(context.client, "send").mockImplementation(async (...args) => {
+      await expect(acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention")).rejects.toThrow("RAW_ARTIFACT_BUSY");
+      uploadCut++;
+      return originalSend(...args);
+    });
+    const originalRegister = PrismaSourceExecutionRepository.prototype.registerRawArtifact;
+    const register = vi.spyOn(PrismaSourceExecutionRepository.prototype, "registerRawArtifact")
+      .mockImplementation(async function (this: PrismaSourceExecutionRepository, ...args) {
+        await expect(acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention")).rejects.toThrow("RAW_ARTIFACT_BUSY");
+        registrationCut++;
+        return originalRegister.apply(this, args);
+      });
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "PARSE" });
+      const state = await context.read();
+      expect(state.revisions).toHaveLength(1);
+      expect(state.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash,
+        rawStorageKey: `source-artifacts/${rawArtifactHash}`, rawByteCount: Buffer.byteLength(xml) });
+      expect(state.source.lastGoodRevisionId).toBeNull();
+      expect(state.identities).toHaveLength(0); expect(state.intents).toHaveLength(0);
+      expect(uploadCut).toBe(1); expect(registrationCut).toBe(1);
+      const settled = await acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention");
+      await settled.release();
+    } finally { send.mockRestore(); register.mockRestore(); context.cleanup(); }
+  });
+
   it("assembles two policy-approved Sources while broken attempts preserve their own and other GOOD contributions", async () => {
     const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
     const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };

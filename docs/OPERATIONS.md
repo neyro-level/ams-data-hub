@@ -279,6 +279,29 @@ observed separately, not advertised as a fixed allocator budget. The complete
 MP-02 regression set covers overflow/timeout/redirect/truncation, deterministic
 raw hashes across chunk layouts and cancellation/cleanup races.
 
+MP-10.3 adds an internal project/SHA lifetime guardian before raw PUT and keeps
+it through receipt registration, staging/apply or failure settlement. Successful
+verified receipts are registered on the PENDING revision before parsing, so a
+malformed XML attempt retains its raw provenance without producing GOOD or a
+snapshot intent. This does not cover a process crash between PUT and receipt
+commit; that gap requires the pending-operation journal below.
+
+Shared producer session locks allow deduplicated uploads; retention requires an
+exclusive lifetime lock. A separate admission key is held only during acquisition
+and transaction fences. Business fences order global safety → admission → rows;
+retention fences do not reacquire their own exclusive lifetime key on a different
+connection. PID and two session markers fence lost guardians. Transaction locks
+continue excluding conflicting admissions until commit/rollback after guardian
+loss. External storage IO remains outside database transactions.
+
+The pure retention planner preserves the union of the last three GOOD revisions
+per Source and references from the last 30 days, across all Sources sharing the
+project/SHA. Pins, unsettled references, frozen jobs and incomplete coverage
+retain the object; overrides require a documented purpose. Planner decisions are
+not DELETE authorization. Raw deletion is **not enabled**: complete repository
+pin coverage, durable pending-delete/PUT admission journal, idempotent deletion
+and crash settlement with audit are still required before activating cleanup.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app

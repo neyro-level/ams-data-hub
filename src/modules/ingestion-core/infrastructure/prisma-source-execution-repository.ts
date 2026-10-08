@@ -85,6 +85,20 @@ export class PrismaSourceExecutionRepository {
     return revision;
   }
 
+  async registerRawArtifact(context: ResolvedSourceExecution, revisionId: string, receipt: RawArtifactReceipt) {
+    if (!/^[a-f0-9]{64}$/u.test(receipt.rawArtifactHash)
+      || receipt.storageKey !== `source-artifacts/${receipt.rawArtifactHash}`
+      || !Number.isSafeInteger(receipt.byteCount) || receipt.byteCount < 0 || receipt.byteCount > 268_435_456)
+      throw new Error("RAW_ARTIFACT_RECEIPT_INVALID");
+    await this.lockSource(context);
+    // An actual verified PUT receipt is recorded before parsing, including for
+    // malformed XML. Do not invent a receipt for an unfinished external PUT.
+    const updated = await this.transaction.sourceRevision.updateMany({ where: { ...context.target,
+      id: revisionId, status: "PENDING", rawStorageKey: null, rawArtifactHash: null, rawByteCount: null },
+    data: { rawStorageKey: receipt.storageKey, rawArtifactHash: receipt.rawArtifactHash, rawByteCount: receipt.byteCount } });
+    if (updated.count !== 1) throw new Error("SOURCE_REVISION_STAGING_CLOSED");
+  }
+
   async append(context: ResolvedSourceExecution, revisionId: string, records: readonly StagedSourceRecord[]) {
     const scope = { ...context.target, id: revisionId };
     const pending = await this.transaction.sourceRevision.findFirst({ where: { ...scope, status: "PENDING" }, select: { id: true } });
