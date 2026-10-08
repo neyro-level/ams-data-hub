@@ -2,8 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { defineSecretRef, resolveSecretRef } from "../security/secret-ref.ts";
-import { createTimewebS3ObjectStorage, type TimewebS3ObjectStorageOptions } from "./timeweb-s3-object-storage.ts";
-import type { ObjectStorage, StreamingObjectStorage, BoundedObjectStorage } from "./object-storage.ts";
+import { createTimewebS3ObjectStorage, createTimewebRawArtifactDeletionStorage, type TimewebS3ObjectStorageOptions } from "./timeweb-s3-object-storage.ts";
+import type { ObjectStorage, StreamingObjectStorage, BoundedObjectStorage, RawArtifactDeletionStorage } from "./object-storage.ts";
 
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);
 const reference = z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/u);
@@ -18,6 +18,16 @@ const scopeKey = (scope: ProjectStorageScope) => `${scope.organizationId}/${scop
 /** Value-free bindings only. A global S3 environment is never an implicit fleet binding. */
 export function createProjectObjectStorageResolver(environment: Environment = process.env,
   createStorage: (options: TimewebS3ObjectStorageOptions) => ProjectObjectStorage = createTimewebS3ObjectStorage) {
+  return createProjectStorageResolver(environment, createStorage);
+}
+
+/** Same exact-project registry and isolation checks; separate destructive port. */
+export function createProjectRawArtifactDeletionResolver(environment: Environment = process.env) {
+  return createProjectStorageResolver<RawArtifactDeletionStorage>(environment, createTimewebRawArtifactDeletionStorage);
+}
+
+function createProjectStorageResolver<TStorage>(environment: Environment,
+  createStorage: (options: TimewebS3ObjectStorageOptions) => TStorage) {
   let bindings;
   try {
     const raw = environment.PROJECT_STORAGE_BINDINGS;
@@ -30,9 +40,9 @@ export function createProjectObjectStorageResolver(environment: Environment = pr
     if (indexed.has(scopeKey(binding)) || accessReferences.has(binding.accessKeyIdRef)) throw new Error("PROJECT_STORAGE_BINDINGS_INVALID");
     indexed.set(scopeKey(binding), binding); accessReferences.add(binding.accessKeyIdRef);
   }
-  const cache = new Map<string, ProjectObjectStorage>();
+  const cache = new Map<string, TStorage>();
   const bucketOwners = new Map<string, string>(); const credentialOwners = new Map<string, string>();
-  return function resolveProjectStorage(rawScope: ProjectStorageScope): ProjectObjectStorage {
+  return function resolveProjectStorage(rawScope: ProjectStorageScope): TStorage {
     const parsed = scopeSchema.safeParse(rawScope);
     if (!parsed.success) throw new Error("PROJECT_STORAGE_BINDING_REQUIRED");
     const key = scopeKey(parsed.data); const binding = indexed.get(key);

@@ -233,6 +233,16 @@ duplicate revision/SHA pins are collapsed before metadata/journal joins. New
 requests deny PENDING/ACKNOWLEDGED intersections before audit/outbox writes.
 Existing durable replay and DELETED-backed normalized/artifact use remain valid.
 
+The ingestion-owned deletion repository uses existing journal/audit grants,
+not a new migration or web capability. A definitive DELETE settles PENDING to
+ACKNOWLEDGED under the guardian/global fence. ACK-to-DELETED and the unique
+`raw-delete:<operation-id>` audit commit together; restart recovery does not
+repeat storage IO. The audit contains only project, terminal state and current-key
+removal marker, never storage key/endpoint/credential. Unknown IO stays PENDING.
+Audited DELETED is not permanent absence after a new ordered STORED PUT; a PUT
+intent strictly newer than terminal deletion establishes resurrection, whereas
+late settlement or ambiguous clocks hold deletion. No raw receipt is cleared.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record

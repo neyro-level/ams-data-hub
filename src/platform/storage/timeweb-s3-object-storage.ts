@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { addAbortSignal, Readable } from "node:stream";
 
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -28,6 +29,8 @@ import {
   type StreamingObjectStorage,
   type BoundedObjectStorage,
   type ObjectStorageBoundedGetInput,
+  type RawArtifactDeletionStorage,
+  createSourceArtifactKey,
 } from "./object-storage.ts";
 
 const TIMEWEB_S3_BUCKET_PATTERN = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
@@ -49,6 +52,47 @@ export interface TimewebS3ObjectStorageOptions {
 export interface S3ObjectStorageOptions {
   bucket: string;
   client: S3Client;
+}
+
+/** Separate client: an unknown destructive response must never cause SDK retry. */
+export class S3RawArtifactDeletionStorage implements RawArtifactDeletionStorage {
+  private readonly bucket: string;
+  public constructor(private readonly options: S3ObjectStorageOptions) {
+    this.bucket = assertBucketName(options.bucket);
+  }
+  public async deleteRawArtifact(input: { rawArtifactHash: string; signal: AbortSignal }): Promise<void> {
+    const key = createSourceArtifactKey(input.rawArtifactHash);
+    // Also reject injected/misconfigured clients before the first request.
+    if (await this.options.client.config.maxAttempts() !== 1) throw new Error("RAW_DELETE_RETRY_CONFIGURATION_INVALID");
+    const signal = AbortSignal.any([input.signal, AbortSignal.timeout(60_000)]);
+    if (signal.aborted) throw new Error("RAW_DELETE_IO_UNKNOWN");
+    try {
+      const result = await this.options.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }), { abortSignal: signal });
+      const status = result.$metadata.httpStatusCode;
+      if (status === undefined || status < 200 || status >= 300 || (result.$metadata.attempts ?? 1) !== 1) {
+        throw new Error("RAW_DELETE_IO_UNKNOWN");
+      }
+    } catch (error) {
+      // A generic 404 could mean the bucket/binding is wrong, not a missing key.
+      const response = error as { name?: unknown; $metadata?: { httpStatusCode?: unknown; attempts?: unknown } } | null;
+      if (response?.name === "NoSuchKey" && response.$metadata?.httpStatusCode === 404
+        && (response.$metadata.attempts ?? 1) === 1 && !signal.aborted) return;
+      throw new Error("RAW_DELETE_IO_UNKNOWN");
+    }
+  }
+  public close(): void { this.options.client.destroy(); }
+}
+
+export function createTimewebRawArtifactDeletionStorage(options: TimewebS3ObjectStorageOptions): RawArtifactDeletionStorage {
+  const bucket = assertBucketName(options.bucket);
+  const endpoint = parseTimewebEndpoint(options.endpoint);
+  return new S3RawArtifactDeletionStorage({ bucket, client: new S3Client({
+    endpoint: endpoint.origin, region: requireNonBlank(options.region, "Timeweb S3 region"),
+    credentials: { accessKeyId: requireNonBlank(options.credentials.accessKeyId, "Timeweb S3 access key id"),
+      secretAccessKey: requireNonBlank(options.credentials.secretAccessKey, "Timeweb S3 secret access key"),
+      ...(options.credentials.sessionToken ? { sessionToken: options.credentials.sessionToken } : {}) },
+    forcePathStyle: true, maxAttempts: 1,
+  }) });
 }
 
 function requireNonBlank(value: string, label: string): string {

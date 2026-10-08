@@ -344,16 +344,47 @@ normal publication and staged rollback roots, and checks scoped captured GOOD
 revision/SHA pins. Web receives neither private payloads nor journal access.
 Unknown targets/provenance or budget overflow fail closed; PENDING/ACKNOWLEDGED
 intersections return retryable `RAW_RETENTION_IN_PROGRESS`. This admission
-mechanism does not enable the still-unimplemented DELETE executor.
+mechanism supplies the pending-operation barrier used by the one-shot executor.
 `RawArtifactDeletion` persists immutable project/SHA,
 key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
 deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and
 for another Source in the same project. The journal has no web grants and
 source-import cannot write deletion records. Unknown deletion outcomes must stay
 pending; an object existence probe alone does not settle still-possible external
-IO. Raw deletion is **not enabled**: complete repository pin/unfinished-PUT
-coverage, the actual journal-backed DELETE executor, idempotent provider handling
-and crash settlement with audit are still required before activating cleanup.
+IO.
+
+The explicit worker command is `raw-artifact-retention <organization-id>
+<project-id> [batch-limit]` (default 10, maximum 50). It never selects an implicit
+project or runs in the permanent-worker loop. Discovery is not authorization:
+each candidate takes an exclusive project/SHA guardian, then a fresh globally
+fenced complete cut and the default last-three-GOOD union 30-day policy before
+committing PENDING. Static project binding/capability validation occurs before
+that commit without provider IO: missing references or invalid configuration do
+not leave an unknown deletion intent, and correction permits a later run.
+ACK recovery does not require storage configuration. One narrow project-registry S3 capability removes only
+`source-artifacts/<sha>` outside transactions; its separate client has
+`maxAttempts: 1`, including SDK middleware. Only a definitive success or explicit
+NoSuchKey response becomes ACKNOWLEDGED. Generic 404/timeout/connection loss
+remain PENDING; restart never reissues DELETE or clears the operation using HEAD.
+An existing ACK completes DELETED and a deterministic one-shot audit in the same
+transaction, without storage IO. Cancellation waits for the owned request and
+settlement before guardian/client release. Unknown outcomes make the worker
+command exit nonzero. The one-shot lifecycle allows 120 seconds for shutdown,
+including the 60-second provider IO budget and bounded database settlement.
+An ACK completion is metadata recovery, not a new deletion
+admission, and can proceed while new mutations are frozen.
+
+DELETED means confirmed removal of the **current key**, not all historical S3
+versions: a versioned bucket may retain earlier versions behind a delete marker.
+Provider versioning/retention policy requires separate evidence. Provenance
+receipts remain immutable. A later STORED PUT is considered resurrection only
+when its intent began strictly after terminal deletion; late settlement alone
+or equal/contradictory timestamps are UNKNOWN and fail closed. Bulk bounded
+discovery skips audited removed/ambiguous histories so they do not starve later
+eligible SHAs. Journal/PUT history is capped at 5,000 records; overflow rejects
+the run before external IO. No schedule or production cleanup is activated by
+this implementation; actual runtime and crash proofs plus provider policy and
+backup/restore evidence remain required for the Data Safety Gate.
 
 ## Production deployment
 

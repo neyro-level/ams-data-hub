@@ -63,6 +63,12 @@ export interface BoundedObjectStorage {
   getBounded(input: ObjectStorageBoundedGetInput): Promise<ObjectStorageGetResult | null>;
 }
 
+/** Destructive worker-only capability. No caller key, bucket, version or retry. */
+export interface RawArtifactDeletionStorage {
+  deleteRawArtifact(input: { rawArtifactHash: string; signal: AbortSignal }): Promise<void>;
+  close(): void;
+}
+
 export interface ObjectStoragePresignGetInput {
   key: ObjectStorageKey;
   expiresInSeconds: number;

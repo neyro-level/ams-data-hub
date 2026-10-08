@@ -50,3 +50,5 @@ export {
 } from "./application/import-pipeline.ts";
 export { createRawArtifactRetentionSourceReader, type RawArtifactRetentionSourceCut } from "./infrastructure/raw-artifact-retention-source-reader.ts";
 export { createRawPinAdmissionReader } from "./infrastructure/raw-pin-admission-reader.ts";
+export { createRawArtifactDeletionRepository } from "./infrastructure/raw-artifact-deletion-repository.ts";
+export { acquireRawArtifactLifetimeGuard, type RawArtifactLifetimeLease } from "./infrastructure/raw-artifact-lifetime-guard.ts";
