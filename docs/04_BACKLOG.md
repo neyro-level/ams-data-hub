@@ -35,7 +35,8 @@ MP-00–MP-09 доставлены. MP-09: PR #27 MERGED после exact-head R
 в шести integration suites, current standalone build, 63 migrations и final test
 DB reset — PASS. Дерево merge идентично gated candidate; canonical main и
 публичное GitHub main-зеркало синхронизированы после merge.
-Активен MP-10; MP-10.7 RUNNING в PlanDB. Частичный checkpoint `e7c6ea9` добавляет
+Активен MP-10; MP-10.7 regression guards доказаны, MP-10.3 Data Safety RUNNING
+в PlanDB. Частичный checkpoint `e7c6ea9` добавляет
 AST source guards и обязательные self-tests; это не closure или readiness PASS.
 Actual-diff runtime selection и structural composition removal guards
 реализованы в checkpoint c91cfac: обязательные native suites вычисляются из Git,
@@ -44,8 +45,7 @@ Strict public-policy unit guards используют непустые 13 datase
 project-owned verifier и подписанные adversarial mutations: private/raw-Prisma
 fields, media provenance, references, signature/revocation/replay, bytes/hash/count
 и fixed gzip limit. Targeted 143/143 unit, architecture/lint/docs/secrets — PASS;
-independent review без findings. Real entrypoint native matrix ещё требуется до
-closure MP-10.7; structural/unit checks не заменяют runtime proof.
+independent review без findings. Structural/unit checks не заменяют runtime proof.
 Первый full native matrix на `181f902` — FAIL: 112/115 в 10 suites, final
 test DB reset выполнен. Исправлены два подтверждённых fixture defects: own
 retry job очищается только после LastGood/FAILED assertions, а multi-table
@@ -53,7 +53,12 @@ shutdown observation использует authorized RepeatableRead вместо
 Целевой прогон cron/source-worker → ACK rotation → shutdown/restart — 28/28
 PASS (`29705`, 63 migrations, final reset); lint/types — PASS. Первый restart
 timeout отдельно не доказан и не повторился; added own-scope status diagnostics
-не меняют timeout или assertions. Повторный full matrix остаётся обязательным.
+не меняют timeout или assertions. Повторный full mandatory runner на exact
+`8ce049dcdd7cc8063b0aacc13e4ccab5e66e694a` (`11409`) — PASS: 143/143 unit,
+fresh standalone build, 115/115 native в 10 suites, 63 migrations и final reset.
+Независимый requirement-by-requirement review MP-10.7 — PASS без findings.
+Этот результат закрывает regression guards, но не Code/Security/Data Safety/
+Runtime/Portability/Operations gates, общий readiness verdict или provider gate.
 Production по-прежнему не разрешён.
 
 ### История scoped checkpoints MP-08/MP-09
