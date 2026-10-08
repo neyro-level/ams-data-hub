@@ -489,12 +489,20 @@ production release.
 `pnpm test:data-safety-drill`, with `APP_ENV=test`, is the local restore command.
 It accepts only literal loopback port 5435 and the dedicated `ams_data_hub_test`
 source, restoring into the distinct `ams_data_hub_restore_test` database.
-The prepare process creates an actual synthetic GOOD import, UID, published URL,
-signed snapshot and stage receipt, then freezes through the actual web command.
+The prepare process creates an actual synthetic GOOD import and STORED raw PUT,
+UID, legally relinked published URL, signed minor-1 snapshot with thirteen file
+descriptors and stage receipt. It performs an actual leased operational rollback
+to a higher current sequence with the same file descriptors, and an audited
+DELETE of a separate policy-eligible legacy raw key (never the fresh GOOD raw).
+It then freezes through the actual web command.
 Logical dump/restore preserves runtime function ownership and grants; stripping
 these would invalidate NOBYPASS recovery proof. The restore process verifies
-PostgreSQL 18 and exact SHA-256 fingerprints of fifteen nonempty persisted
-tables before any transitions. Actual reconcile/unfreeze execute as NOBYPASS
+PostgreSQL 18 and exact SHA-256 fingerprints of twenty-two nonempty persisted
+tables before any transitions, including raw journals, rollback reservation and
+binding, operational request, outbox and job outcome. Explicit readback also
+checks STORED/GOOD receipt agreement, DELETED/audit, the immutable original URL
+reservation subject versus the relinked UID, and current rollback/run linkage.
+Actual reconcile/unfreeze execute as NOBYPASS
 web, reading persisted counts through the worker-owned counts-only capability;
 caller zeroes alone cannot authorize recovery. Jobs remain frozen through
 reconcile, stale publication-time disagreement blocks unfreeze without success

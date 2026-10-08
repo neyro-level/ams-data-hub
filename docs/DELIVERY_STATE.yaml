@@ -128,13 +128,18 @@ production:
   touched: false
 data_safety:
   status: PASS
+  verification_scope: nonproduction_dump_restore_only
   environment: isolated-local
   postgres_major: 18
   source_database: ams_data_hub_test
   restore_database: ams_data_hub_restore_test
   evidence_command: pnpm test:data-safety-drill
   evidence_pointer: .local/evidence/data-safety-drill.json
-  ledger_pointer: adh-dh-02-7
+  ledger_pointer: plandb://t-adh-mp-10-3
+  nonempty_fingerprint_tables: 22
+  raw_journals_restored: true
+  public_url_relink_preserved: true
+  rollback_current_linkage_preserved: true
   jobs_frozen_after_restore: true
   reconcile_conflicts: 0
   unfreeze_after_reconcile: true
