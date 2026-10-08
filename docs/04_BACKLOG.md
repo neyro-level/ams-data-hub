@@ -29,7 +29,22 @@
 
 ## Текущая граница
 
-MP-00–MP-08 доставлены. MP-08.1–MP-08.10 закрыты implementation ledger:
+MP-00–MP-09 доставлены. MP-09: PR #27 MERGED после exact-head RISKY Gate #340
+на `75796b20407ea204372d698820b61364d2fe436a`, merge
+`bc8e8c6d03183a591838fbd364e5cc5d43919589`. Gate: 91 unit и 39 native tests
+в шести integration suites, current standalone build, 63 migrations и final test
+DB reset — PASS. Дерево merge идентично gated candidate; canonical main и
+публичное GitHub main-зеркало синхронизированы после merge.
+Активен MP-10; MP-10.7 RUNNING в PlanDB. Частичный checkpoint `e7c6ea9` добавляет
+AST source guards и обязательные self-tests; это не closure или readiness PASS.
+Full actual-diff runtime selection и structural composition removal guards
+дорабатываются в этой ветке. Production по-прежнему не разрешён.
+
+### История scoped checkpoints MP-08/MP-09
+
+Ограничения и pending ниже относятся к моменту каждого checkpoint. Текущий
+delivery status указан выше; доказательства failed run не удаляются.
+MP-08.1–MP-08.10 закрыты implementation ledger:
 все шесть concrete executors реализованы, зарегистрированы и проверены.
 SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
 в рабочую ветку; весь MP-08 впоследствии доставлен PR #26 после Gate #325.
@@ -141,7 +156,8 @@ exit и ограниченно (5 s) наблюдает исчезновение
 реальная reacquisition обоих guards обязательна. Graceful checks не изменены,
 дополнительных terminate/reset/BUSY retries нет. Native `6277/91ebbe`, test types
 `93184/8451dd`, scoped lint `98743/de02d6` — PASS; independent review без findings.
-Failed run сохранён; новый reviewed exact-head gate требуется до merge.
+Failed run сохранён. Следующий reviewed candidate прошёл Gate #340 и merged
+через PR #27; точные SHA и итоговые проверки приведены в текущей границе выше.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
@@ -594,9 +610,10 @@ asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-08–MP-10 нового remediation plan;
-MP-00–MP-07 закрыты. Далее — оставшееся operations HTTP/UI и синтетическое
-end-to-end proof. Реализация runtime adapters и расписаний
+Активная доработка: MP-10 нового remediation plan;
+MP-00–MP-09 доставлены. Далее — итоговые Quality, Security, Data Safety,
+Runtime, Portability и Operations acceptance gates, обязательные regression
+guards и общий readiness verdict. Реализация runtime adapters и расписаний
 входит в утверждённую доработку; их включение на production — нет.
 
 Production feed credentials, миграция production и rollout — только отдельной

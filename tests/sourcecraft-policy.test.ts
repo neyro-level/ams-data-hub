@@ -10,10 +10,10 @@ import { validateSourcecraftPolicy } from "../scripts/ci/verify-sourcecraft-poli
 describe("SourceCraft gate policy", () => {
   it("cannot omit guard self-tests through caller-selected unit scope", () => {
     expect(mandatoryUnitProofFiles(["tests/principal.test.ts"])).toEqual([
-      "tests/principal.test.ts", "tests/architecture-source-guards.test.ts", "tests/sourcecraft-policy.test.ts",
+      "tests/principal.test.ts", "tests/architecture-source-guards.test.ts", "tests/architecture-runtime-guards.test.ts", "tests/sourcecraft-policy.test.ts", "tests/required-regression-proofs.test.ts",
     ]);
     expect(mandatoryUnitProofFiles(["tests/sourcecraft-policy.test.ts"])).toEqual([
-      "tests/sourcecraft-policy.test.ts", "tests/architecture-source-guards.test.ts",
+      "tests/sourcecraft-policy.test.ts", "tests/architecture-source-guards.test.ts", "tests/architecture-runtime-guards.test.ts", "tests/required-regression-proofs.test.ts",
     ]);
   });
   it("keeps gates manual-only and protects the default branch", () => {
