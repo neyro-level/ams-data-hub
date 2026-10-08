@@ -29,9 +29,14 @@
 
 ## Текущая граница
 
-MP-00–MP-07 доставлены. MP-08.1 остаётся IN_PROGRESS: все шесть concrete
-executors реализованы и зарегистрированы, но закрытие требует сводки полного
-task DoD и проверенного checkpoint. Новый SUSPICIOUS_APPROVE переиспользует
+MP-00–MP-07 доставлены. MP-08.1–MP-08.5 закрыты implementation ledger:
+все шесть concrete executors реализованы, зарегистрированы и проверены.
+SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
+в рабочую ветку; epic merge/gate ещё не выполнены. MP-08.6 IN_PROGRESS:
+Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
+а принятие запроса не выдаётся за завершение. HTTP delivery/ACK, notifier,
+SUSPENDED pull и итоговое end-to-end proof ещё требуют работы.
+Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
 Source identity/lifecycle, GOOD/Last GOOD, snapshot intent, immutable manual
 receipt и operational SUCCESS фиксируются атомарно под полным lease fence.

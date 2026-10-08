@@ -25,6 +25,7 @@ export interface FleetProjectView {
   projectStatus: string;
   serviceState: string;
   ackCredentialVersion?: number | null;
+  operationalRequests: FleetOperationalRequestView[];
   sources: FleetSourceView[];
   currentSnapshot: {
     publishSequence: number;
@@ -106,6 +107,7 @@ export interface FleetProjectRecord {
   projectStatus: string;
   serviceState: string;
   ackCredentialVersion?: number | null;
+  operationalRequests?: FleetOperationalRequestRecord[];
   sources: FleetSourceRecord[];
   currentSnapshot: { publishSequence: number; publishedAt: Date } | null;
   latestDelivery: {
@@ -115,6 +117,21 @@ export interface FleetProjectRecord {
     acknowledgedAt: Date | null;
     safeErrorCode: string | null;
   } | null;
+}
+
+export interface FleetOperationalRequestRecord {
+  requestId: string;
+  action: string;
+  status: "REQUESTED" | "RUNNING" | "SUCCEEDED" | "FAILED";
+  requestedAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  safeErrorCode: string | null;
+}
+export interface FleetOperationalRequestView extends Omit<FleetOperationalRequestRecord, "requestedAt" | "startedAt" | "finishedAt"> {
+  requestedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 export interface FleetFailedJobRecord {

@@ -368,7 +368,12 @@ remediation program preserves these boundaries while connecting them:
   A trigger records the revision/request approval receipt; GOOD/LastGOOD, inventory,
   lifecycle events, snapshot intent, audit and operational SUCCESS share one cut.
   Snapshot capture accepts recomputed SAFE or durable, recomputed manual approval;
-  private review never enters public datasets. HTTP discovery/delivery/ACK and
+  private review never enters public datasets. Fleet's admin-only projection
+  additionally selects at most 25 recent requests per project: IDs, action,
+  persisted lifecycle, timestamps and safe error code only. Private request
+  reason, actor, lease, hashes and raw result are not selected. Acceptance
+  feedback carries request ID and is never reported as publication success.
+  HTTP discovery/delivery/ACK and
   lifecycle UI remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.

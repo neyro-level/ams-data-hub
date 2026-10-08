@@ -88,14 +88,14 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
     }
     setFeedback({
       kind: "success",
-      message: result.data.duplicate ? "Повторный запрос найден по тому же ключу" : "Операционный запрос записан и добавлен в аудит",
+      message: `${result.data.duplicate ? "Повторный запрос найден" : "Запрос принят"}: ${result.data.requestId}. Это не подтверждение выполнения; ${values.action === "RUN_SOURCE" ? "проверяйте состояние источника и jobs" : "состояние смотрите в истории операций проекта"}.`,
     });
     form.setValue("idempotencyKey", newIdempotencyKey("operation"));
     router.refresh();
   });
 
   return (
-    <SectionCard title="Операционное действие" description="Действия создают проверяемый запрос и audit trail. Build, Publish, rollback и ACK rotation не запускают production executor из этого экрана.">
+    <SectionCard title="Операционное действие" description="Запрос передаётся исполнителю общей очереди. Принятие запроса не означает завершения: результат показывается в истории операций. Выключенные server capabilities ждут включения; этот экран не выполняет production rollout.">
       {projects.length === 0 ? <p className="text-sm text-app-secondary">Сначала создайте проект.</p> : (
         <form className="grid gap-4" onSubmit={submit}>
           <input type="hidden" {...form.register("organizationId")} />

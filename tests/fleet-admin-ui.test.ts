@@ -13,7 +13,10 @@ describe("fleet admin resource", () => {
     for (const label of ["Запросить запуск источника", "Запросить подтверждение SUSPICIOUS", "Запросить отклонение SUSPICIOUS", "Запросить Build Snapshot", "Запросить Publish Snapshot", "Запросить rollback новым sequence", "Запросить ротацию ACK-токена", "Freeze jobs", "Unfreeze jobs"]) {
       expect(forms).toContain(label);
     }
-    expect(forms).toContain("не запускают production executor");
+    expect(forms).toContain("Принятие запроса не означает завершения");
+    expect(forms).toContain("result.data.requestId");
+    expect(dashboard).toContain("История операций");
+    expect(dashboard).toContain("operationalRequestStateLabel(request)");
     expect(forms).toContain("reconcile");
     expect(forms).toContain('form.register("ackRotationPhase")');
     expect(forms).toContain('form.register("ackCredentialVersion", { valueAsNumber: true })');

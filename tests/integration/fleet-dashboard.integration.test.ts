@@ -73,6 +73,7 @@ describe("fleet dashboard persistence projection", () => {
     const project = dashboard.projects.find((item) => item.projectId === setup.projectId);
     expect(project).toMatchObject({ organizationId: setup.organizationId, ackCredentialVersion: 1, currentSnapshot: { publishSequence: 3 }, latestDelivery: { publishSequence: 3, status: "APPLIED", acknowledgedAt: null } });
     expect(project?.sources[0]).toMatchObject({ health: "GOOD", hasLastGoodRevision: true });
+    expect(project?.operationalRequests).toEqual([expect.objectContaining({ requestId: build.requestId, action: "SNAPSHOT_BUILD", status: "REQUESTED", startedAt: null, finishedAt: null })]);
     expect(dashboard.failedJobs.some((job) => job.safeErrorCode === "SYNTHETIC_TIMEOUT")).toBe(true);
     expect(dashboard.dataSafety.jobsFrozen).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "operations-control.snapshot.build.request")).toBe(true);
@@ -98,5 +99,6 @@ describe("fleet dashboard persistence projection", () => {
     expect(serialized).not.toContain("manifestSha256");
     expect(serialized).not.toContain("currentTokenHash");
     expect(serialized).not.toContain("nextTokenHash");
+    for (const privateField of ["requestedBy", "requestHash", "idempotencyKeyHash", "leaseWorkerId", "reason", "result"]) expect(serialized).not.toContain(`"${privateField}"`);
   });
 });

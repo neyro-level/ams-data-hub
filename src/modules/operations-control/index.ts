@@ -1,6 +1,7 @@
 export { getFleetDashboardWithRepository } from "./application/fleet-queries.ts";
 export { createOperationsActions } from "./application/operations-actions.ts";
 export { buildFleetDashboard } from "./domain/fleet-health.ts";
+export { operationalRequestStateLabel } from "./domain/operational-request-presentation.ts";
 export { OperationsControlError } from "./contracts.ts";
 export {
   freezeJobsInputSchema,

@@ -1,4 +1,5 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
+import type { Prisma } from "../../../generated/prisma/client.ts";
 import type { FleetRepository } from "../application/ports/fleet-repository.ts";
 import type { FleetFailedJobRecord, FleetProjectRecord } from "../contracts.ts";
 
@@ -24,6 +25,10 @@ export class PrismaFleetRepository implements FleetRepository {
         status: true,
         serviceState: true,
         ackCredential: { select: { version: true } },
+        operationalActionRequests: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 25,
+          select: { id: true, action: true, status: true, createdAt: true, startedAt: true, finishedAt: true, safeErrorCode: true },
+        },
         organization: { select: { name: true } },
         sources: {
           orderBy: { name: "asc" },
@@ -51,7 +56,7 @@ export class PrismaFleetRepository implements FleetRepository {
             safeErrorCode: true,
           },
         },
-      },
+      } satisfies Prisma.ProjectSelect,
     });
     return rows.map((row) => ({
       organizationId: row.organizationId,
@@ -62,6 +67,7 @@ export class PrismaFleetRepository implements FleetRepository {
       projectStatus: row.status,
       serviceState: row.serviceState,
       ackCredentialVersion: row.ackCredential?.version ?? null,
+      operationalRequests: row.operationalActionRequests.map(({ id, createdAt, ...request }) => ({ requestId: id, requestedAt: createdAt, ...request })),
       sources: row.sources,
       currentSnapshot: row.currentSnapshotManifest,
       latestDelivery: row.deliveryRuns[0] ?? null,
