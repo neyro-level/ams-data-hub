@@ -54,18 +54,20 @@ describe("native Source session admission and transaction fencing", () => {
   it("repeatedly defers native terminal-budget attempts and rejects stale active-attempt metadata", async () => {
     const scope = target(); const boss = await getPgBoss();
     await new PgBossSourceJobQueue(boss).reconcileSchedules([]);
-    const id = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...scope, trigger: "MANUAL", manualRequestId: randomUUID() }, { singletonKey: scope.sourceId });
+    const priority = 1_000_000;
+    const id = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...scope, trigger: "MANUAL", manualRequestId: randomUUID() },
+      { singletonKey: scope.sourceId, priority });
     expect(id).toEqual(expect.any(String));
     try {
       await boss.getDb().executeSql("UPDATE pgboss.job SET retry_count = 3, retry_limit = 3 WHERE name = $1 AND id = $2::uuid", [SOURCE_IMPORT_QUEUE, id]);
-      const [first] = await boss.fetch<SourceImportJob>(SOURCE_IMPORT_QUEUE, { batchSize: 1, includeMetadata: true });
+      const [first] = await boss.fetch<SourceImportJob>(SOURCE_IMPORT_QUEUE, { batchSize: 1, includeMetadata: true, minPriority: priority });
       expect(first!.id).toBe(id); await deferSourceImportJob(boss, first!);
       for (let cycle = 0; cycle < 3; cycle += 1) {
         expect(await boss.getJobById(SOURCE_IMPORT_QUEUE, id!)).toMatchObject({ state: "created", retryCount: 3, retryLimit: 3, startedOn: null });
         // Advance only this synthetic queued job's delay; no global fake clock.
         await new Promise((resolve) => setTimeout(resolve, 5));
         await boss.update(SOURCE_IMPORT_QUEUE, undefined, { id: id!, startAfter: new Date() });
-        const [next] = await boss.fetch<SourceImportJob>(SOURCE_IMPORT_QUEUE, { batchSize: 1, includeMetadata: true });
+        const [next] = await boss.fetch<SourceImportJob>(SOURCE_IMPORT_QUEUE, { batchSize: 1, includeMetadata: true, minPriority: priority });
         expect(next).toMatchObject({ id, retryCount: 3 });
         await expect(deferSourceImportJob(boss, first!)).rejects.toThrow("SOURCE_JOB_LEASE_LOST");
         expect((await boss.getJobById(SOURCE_IMPORT_QUEUE, id!))?.state).toBe("active");

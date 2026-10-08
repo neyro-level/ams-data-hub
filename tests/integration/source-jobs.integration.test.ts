@@ -27,6 +27,7 @@ describe("source job repository", () => {
     const boss = await getPgBoss();
     const queue = new PgBossSourceJobQueue(boss);
     const sourceId = `source-lock-${randomUUID()}`;
+    let jobId: string | null = null;
     try {
       await queue.reconcileSchedules([]);
       const payload = {
@@ -37,10 +38,12 @@ describe("source job repository", () => {
         trigger: "MANUAL",
       } as const;
       const first = await boss.send(SOURCE_IMPORT_QUEUE, payload, { singletonKey: sourceId });
+      jobId = first;
       const second = await boss.send(SOURCE_IMPORT_QUEUE, payload, { singletonKey: sourceId });
       expect(first).toEqual(expect.any(String));
       expect(second).toBeNull();
     } finally {
+      if (jobId) await boss.deleteJob(SOURCE_IMPORT_QUEUE, jobId);
       await stopPgBoss();
     }
   });

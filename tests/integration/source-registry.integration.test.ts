@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { readTestDatabaseTarget } from "../../scripts/verify-test-database-env.mjs";
-import { getSourceAdminData, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { listSourcesForAdmin, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
@@ -46,8 +46,8 @@ describe("source registry", () => {
         expectedNamespace: "urn:example:yrl",
         expectedProducer: "Synthetic producer",
       });
-      const adminData = await getSourceAdminData(principal);
-      const dto = adminData.sources.find((source) => source.sourceId === created.sourceId);
+      const sources = await listSourcesForAdmin(principal, firstScope);
+      const dto = sources.find((source) => source.sourceId === created.sourceId);
       expect(dto).toMatchObject({ enabled: false, credential: { configured: true, displayValue: "[REDACTED]" }, pendingManualRuns: 0 });
       expect(JSON.stringify(dto)).not.toContain(secretRefName);
       expect(JSON.stringify(dto)).not.toContain(syntheticEndpoint);

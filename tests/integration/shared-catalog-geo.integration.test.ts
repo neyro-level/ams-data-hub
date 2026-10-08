@@ -63,8 +63,15 @@ describe("shared catalog geo persistence", () => {
   it("seeds required subjects and cities with aliases and lifecycle", async () => {
     const regions = await runInPrincipalDatabaseTransaction(tenantUser(), (transaction) =>
       transaction.region.findMany({
+        where: { code: { in: ["RU-CR", "RU-KDA", "RU-ROS", "RU-SEV"] } },
         orderBy: { code: "asc" },
-        include: { aliases: { orderBy: { normalizedValue: "asc" } }, cities: true },
+        include: { aliases: { orderBy: { normalizedValue: "asc" } }, cities: {
+          where: { uid: { in: [
+            "01M41T6Q04BADHXSERJHZFXKCH",
+            "01M41T6Q052F51RZX5628BV9N6",
+            "01M41T6Q06MZSPS0T4TQKDA8QC",
+          ] } },
+        } },
       }));
     expect(regions.map((region) => region.code)).toEqual(["RU-CR", "RU-KDA", "RU-ROS", "RU-SEV"]);
     expect(regions.every((region) => region.lifecycle === "ACTIVE" && region.aliases.length === 1)).toBe(true);

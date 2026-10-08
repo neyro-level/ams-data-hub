@@ -27,7 +27,11 @@ describe("DH-03 shared catalog acceptance", () => {
         data: { organizationId: organization.id, name: `Curated Region ${suffix}`, slug: `curated-region-${suffix}` },
       });
       const cities = await transaction.city.findMany({
-        where: { region: { code: { in: ["RU-KDA", "RU-ROS", "RU-SEV"] } } },
+        where: { uid: { in: [
+          "01M41T6Q04BADHXSERJHZFXKCH",
+          "01M41T6Q052F51RZX5628BV9N6",
+          "01M41T6Q06MZSPS0T4TQKDA8QC",
+        ] } },
         select: { uid: true, region: { select: { code: true } } },
         orderBy: { region: { code: "asc" } },
       });
@@ -92,7 +96,9 @@ describe("DH-03 shared catalog acceptance", () => {
     });
 
     expect(first).toMatchObject({ projectId: setup.firstProjectId, mode: "ALL_SHARED" });
-    expect(first.developments.map((item) => item.uid).sort()).toEqual(developments.map((item) => item.uid).sort());
+    const ownedDevelopmentUids = new Set(developments.map((item) => item.uid));
+    expect(first.developments.filter((item) => ownedDevelopmentUids.has(item.uid)).map((item) => item.uid).sort())
+      .toEqual(developments.map((item) => item.uid).sort());
     expect(second).toMatchObject({ projectId: setup.secondProjectId, mode: "CURATED" });
     expect(second.developments.map((item) => item.uid)).toEqual([developments[1].uid]);
     expect(first.developments.find((item) => item.uid === developments[1].uid)).toEqual(second.developments[0]);

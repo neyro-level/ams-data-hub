@@ -211,6 +211,38 @@ describe("actual project-authenticated snapshot consumer HTTP and FORCE RLS", ()
       await expect(recovery.reconcileAfterRestore(f.admin, zeroes)).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
       await recovery.freezeMutatingJobs(f.admin, { reason: "Synthetic recovery proof" });
       await expect(recovery.unfreezeMutatingJobs(f.admin, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
+      const sequenceBreakdown = await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.$queryRawUnsafe(`
+        WITH reservations AS (
+          SELECT "organizationId","projectId","publishSequence" FROM "SnapshotBuildInput"
+          UNION ALL SELECT "organizationId","projectId","publishSequence" FROM "SnapshotRollbackReservation"
+        ), sequences AS (
+          SELECT * FROM reservations
+          UNION ALL SELECT "organizationId","projectId","publishSequence" FROM "SnapshotPublicationBinding"
+          UNION ALL SELECT "organizationId","projectId","publishSequence" FROM "SnapshotRollbackBinding"
+          UNION ALL SELECT "organizationId","projectId","publishSequence" FROM "DeliveryRun"
+          UNION ALL SELECT "organizationId","projectId","publishSequence" FROM "ProjectCurrentSnapshotManifest"
+        ) SELECT
+          (SELECT count(*)::int FROM (SELECT "organizationId","projectId","publishSequence" FROM reservations
+            GROUP BY 1,2,3 HAVING count(*)>1) d) AS "duplicateReservations",
+          (SELECT count(*)::int FROM sequences s LEFT JOIN "ProjectSnapshotSequence" c
+            ON (c."organizationId",c."projectId")=(s."organizationId",s."projectId")
+            WHERE s."publishSequence"<1 OR c."projectId" IS NULL OR c."lastReservedSequence"<s."publishSequence") AS "counterConflicts",
+          (SELECT count(*)::int FROM "SnapshotPublicationBinding" b LEFT JOIN "SnapshotBuildInput" i ON i.id=b."buildInputId"
+            WHERE i.id IS NULL OR (b."organizationId",b."projectId",b."publishSequence",b."inputHash")
+              IS DISTINCT FROM (i."organizationId",i."projectId",i."publishSequence",i."inputHash")) AS "publicationConflicts",
+          (SELECT count(*)::int FROM "SnapshotArtifactStageReceipt" s LEFT JOIN "SnapshotPublicationBinding" b
+            ON (b."organizationId",b."projectId",b."buildInputId")=(s."organizationId",s."projectId",s."buildInputId")
+            WHERE b."buildInputId" IS NULL OR (s."publishSequence",s."inputHash",s."manifestSha256")
+              IS DISTINCT FROM (b."publishSequence",b."inputHash",b."manifestSha256")) AS "stageConflicts",
+          (SELECT count(*)::int FROM "ProjectCurrentSnapshotManifest" c LEFT JOIN "DeliveryRun" d
+            ON (d."organizationId",d."projectId",d."publishSequence")=(c."organizationId",c."projectId",c."publishSequence")
+            WHERE d.id IS NULL OR (c."manifestSha256",c."manifestKey",c."publishedAt")
+              IS DISTINCT FROM (d."manifestSha256",d."manifestKey",d."publishedAt")) AS "currentConflicts"
+      `));
+      expect(sequenceBreakdown).toEqual([{ duplicateReservations: 0, counterConflicts: 0,
+        publicationConflicts: 0, stageConflicts: 0, currentConflicts: 0 }]);
+      await expect(runInPrincipalDatabaseTransaction(f.admin, (tx) =>
+        new PrismaDataSafetyRepository(tx).inspectConsistency())).resolves.toEqual(zeroes);
       await expect(recovery.reconcileAfterRestore(f.admin, zeroes)).resolves.toMatchObject({ jobsFrozen: true });
       const current = await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.projectCurrentSnapshotManifest.findUniqueOrThrow({
         where: { organizationId_projectId: f.scope },

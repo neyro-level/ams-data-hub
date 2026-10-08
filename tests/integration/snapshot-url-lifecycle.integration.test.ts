@@ -97,10 +97,16 @@ describe("persistent Hub URL commands through captured snapshot composition", ()
       cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } } } }));
     expect((await captureSnapshotInput(job, request("after-rollback"))).publishSequence).toBe(5);
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const publishedAt = new Date();
       await tx.projectCurrentSnapshotManifest.create({ data: { ...scope, publishSequence: 7,
-        manifestKey: "synthetic-sequence-floor", manifestSha256: "a".repeat(64), publishedAt: new Date() } });
+        manifestKey: "synthetic-sequence-floor", manifestSha256: "a".repeat(64), publishedAt } });
+      await tx.deliveryRun.create({ data: { ...scope, publishSequence: 7,
+        manifestKey: "synthetic-sequence-floor", manifestSha256: "a".repeat(64), publishedAt } });
       await tx.deliveryRun.create({ data: { ...scope, publishSequence: 11,
         manifestKey: "synthetic-delivery-floor", manifestSha256: "b".repeat(64), publishedAt: new Date() } });
+      await tx.projectSnapshotSequence.update({
+        where: { organizationId_projectId: scope }, data: { lastReservedSequence: 11 },
+      });
     });
     expect((await captureSnapshotInput(job, request("above-delivery-floor"))).publishSequence).toBe(12);
     const databaseContext = { principalKind: "project-job" as const, actorId: "snapshot-input",

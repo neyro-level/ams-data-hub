@@ -1175,10 +1175,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
 
   it("reserves above existing publication, saves immutable complete input, and replays identical receipt", async () => {
     const scope = await setup();
-    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCurrentSnapshotManifest.create({ data: {
-      organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 7,
-      manifestKey: "synthetic-manifest", manifestSha256: "a".repeat(64), publishedAt: new Date(),
-    } }));
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const publishedAt = new Date();
+      const publication = { organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 7,
+        manifestKey: "synthetic-manifest", manifestSha256: "a".repeat(64), publishedAt };
+      await tx.projectCurrentSnapshotManifest.create({ data: publication });
+      await tx.deliveryRun.create({ data: publication });
+    });
     const request = snapshotInputRequestSchema.parse({
       organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-capture" });
     const hashes = snapshotInputRequestHashes(request);
@@ -1421,8 +1424,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
   it("enforces read-only fact purpose independently of scope shape and legacy job representation", async () => {
     const scope = await setup();
     const asset = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
-      await tx.projectCurrentSnapshotManifest.create({ data: { organizationId: scope.organizationId,
-        projectId: scope.projectId, publishSequence: 1, manifestKey: "synthetic-current", manifestSha256: "a".repeat(64), publishedAt: new Date() } });
+      const publishedAt = new Date();
+      const publication = { organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 1,
+        manifestKey: "synthetic-current", manifestSha256: "a".repeat(64), publishedAt };
+      await tx.projectSnapshotSequence.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, lastReservedSequence: 1 } });
+      await tx.projectCurrentSnapshotManifest.create({ data: publication });
+      await tx.deliveryRun.create({ data: publication });
       return tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sha256: "b".repeat(64), storageKey: "synthetic-private-media", contentType: "image/jpeg", byteSize: 100,
         originalFileName: "synthetic.jpg", rightsBasis: "OWNED", source: "synthetic", uploadedBy: "synthetic-admin" } });

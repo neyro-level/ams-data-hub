@@ -24,9 +24,10 @@ vi.mock("../src/platform/database/transaction.ts", async (original) => {
       // actual business operations below use their intended runtime identities.
       if (["project-job", "system-job"].includes(context.principalKind) || context.correlationId === "synthetic-restore-control"
         || context.correlationId === wire.webCorrelation) {
-        await tx.$executeRawUnsafe(["project-job", "system-job"].includes(context.principalKind)
-          ? "SET LOCAL ROLE ams_data_hub_worker" : "SET LOCAL ROLE ams_data_hub_web");
-        expect(await tx.$queryRawUnsafe("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user"))
+        if (["project-job", "system-job"].includes(context.principalKind))
+          await tx.$executeRaw`SET LOCAL ROLE ams_data_hub_worker`;
+        else await tx.$executeRaw`SET LOCAL ROLE ams_data_hub_web`;
+        expect(await tx.$queryRaw`SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`)
           .toEqual([{ rolsuper: false, rolbypassrls: false }]);
       }
       return execute(tx);
@@ -121,7 +122,7 @@ async function recoveredLinks(own: { organizationId: string; projectId: string }
 it(`actual isolated ${phase} cut with nonempty GOOD/UID/URL/signed-publication state`, async () => {
   try {
     await runInPrincipalDatabaseTransaction(fixture, async (tx) => {
-      expect(await tx.$queryRawUnsafe("SELECT current_database() AS database,(current_setting('server_version_num')::int/10000) AS major"))
+      expect(await tx.$queryRaw`SELECT current_database() AS database,(current_setting('server_version_num')::int/10000) AS major`)
         .toEqual([{ database: expected, major: 18 }]);
     });
     if (phase === "prepare") {
