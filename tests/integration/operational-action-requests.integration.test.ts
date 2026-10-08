@@ -24,6 +24,7 @@ import { OPERATIONAL_ACTION_TOPICS, type OperationalAction } from "../../src/mod
 import { lockOperationalOutboxLease, PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
 import { ReliabilityService } from "../../src/modules/platform-operations/index.ts";
 import { createOutboxDrainDependencies, drainOutboxWithDependencies, getPgBoss, publishClaimedEvent, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
+import { OUTBOX_DELIVERY_QUEUE, type OutboxDispatchJob } from "../../src/modules/platform-operations/domain/pg-boss.ts";
 import { runReliabilityRetention } from "../../src/modules/platform-operations/infrastructure/retention-runtime.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -219,7 +220,18 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     if (!lease) throw new Error("SYNTHETIC_LEASE_MISSING");
     try {
       const boss = await getPgBoss();
-      await publishClaimedEvent(boss, lease);
+      // Other suites legitimately leave queued jobs. Prioritize only this owned
+      // real insertion; keep the actual queue fetch, worker and settlement path.
+      const send = boss.send.bind(boss);
+      const prioritized = vi.spyOn(boss, "send").mockImplementationOnce((name, data, options) =>
+        send(name, data, { ...options, priority: 10_000 }));
+      let queuedId: string | null;
+      try { queuedId = await publishClaimedEvent(boss, lease); }
+      finally { prioritized.mockRestore(); }
+      expect(queuedId).not.toBeNull();
+      if (!queuedId) throw new Error("SYNTHETIC_QUEUE_INSERT_MISSING");
+      expect(await boss.getJobById<OutboxDispatchJob>(OUTBOX_DELIVERY_QUEUE, queuedId))
+        .toMatchObject({ priority: 10_000, data: { event: { outboxEventId: eventId } } });
       await expect(drainOutboxWithDependencies({ workerId: `reserved-worker-${suffix}`, maxEvents: 1 }, createOutboxDrainDependencies(boss)))
         .resolves.toEqual({ claimed: 1, completed: 0, failed: 0 });
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -323,6 +335,12 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     const { admin, scope, suffix } = await fixture();
     const stage = await selectedStage(admin, scope);
     const source = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.$queryRawUnsafe(`SELECT r.rolbypassrls,r.rolsuper,p.prosecdef,
+        p.proconfig @> ARRAY['row_security=on'] AS "rowSecurity",
+        has_table_privilege(current_user,'public."RawArtifactPutAttempt"','SELECT') AS "webJournalRead"
+        FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner
+        WHERE p.oid='public.check_raw_artifact_put_receipt()'::regprocedure`))
+        .toEqual([{ rolbypassrls: false, rolsuper: false, prosecdef: true, rowSecurity: true, webJournalRead: false }]);
       const row = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-review", name: "Synthetic review",
         adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0",
         datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });

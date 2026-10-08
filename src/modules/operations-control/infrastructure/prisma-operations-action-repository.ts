@@ -17,6 +17,11 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
   constructor(private readonly transaction: DatabaseTransaction) {}
 
   async recordRequest(input: RecordOperationalActionRequest) {
+    // Pending targets are retention pins from acceptance onward. Fence their
+    // INSERT before idempotency/outbox locks, not only executor UPDATE later.
+    await this.transaction.$queryRaw(Prisma.sql`
+      select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text
+    `);
     const scope = "operations-control.action";
     const lockKey = `${scope}:${input.organizationId}:${input.idempotencyKey}`;
     await this.transaction.$queryRaw(Prisma.sql`

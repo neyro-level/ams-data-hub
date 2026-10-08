@@ -25,6 +25,7 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
 });
 import { createSourceExecutionServer, createRawArtifactRetentionSourceReader, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
 import { planRawArtifactRetention } from "../../src/modules/ingestion-core/domain/raw-artifact-retention.ts";
+import { createRawArtifactRetentionCutReader } from "../../src/infrastructure/raw-artifact-retention-cut.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { createDatabaseAuthorizationContext, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
@@ -171,6 +172,29 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         (tx) => createRawArtifactRetentionSourceReader(tx).read(scope))).rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
       await expect(transactionRuntime.runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(retention), (tx) => createRawArtifactRetentionSourceReader(tx).read(scope),
         { isolationLevel: "RepeatableRead" })).rejects.toThrow("RAW_RETENTION_FRESH_CUT_REQUIRED");
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectCatalogSubscription.create({ data: {
+        ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } },
+      } }));
+      await captureSnapshotInput(createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" }),
+        { ...scope, idempotencyKey: "synthetic-retention-pins", schemaMinor: 0 });
+      const capturedHead = cut.references.find((row) => row.sourceId === context.target.sourceId && row.sequence === 5)!;
+      for (let sequence = 6; sequence <= 9; sequence++) {
+        context.provide(feed(offer("one", sequence * 1000)));
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence });
+      }
+      const sourceOnly = await readCut();
+      const sourcePlan = planRawArtifactRetention({ ...scope, now, references: sourceOnly.references,
+        pinnedRevisionIds: sourceOnly.pinnedRevisionIds, coverage: sourceOnly.sourceCoverage, jobsFrozen: sourceOnly.jobsFrozen });
+      expect(sourcePlan.find((row) => row.rawArtifactHash === capturedHead.rawArtifactHash)).toMatchObject({ eligible: true });
+      const readComposed = () => runInPrincipalDatabaseTransaction(retention, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        return createRawArtifactRetentionCutReader(tx).read(scope);
+      });
+      const composed = await readComposed();
+      expect(composed.coverage).toBe("COMPLETE");
+      expect(composed.pinnedRevisionIds).toContain(capturedHead.revisionId);
+      expect(planRawArtifactRetention({ ...scope, ...composed, now }).find((row) => row.rawArtifactHash === capturedHead.rawArtifactHash))
+        .toMatchObject({ eligible: false, reasons: ["PINNED_REVISION"] });
       // Controlled database-size fixture, not invented successful imports.
       // No raw receipts, GOOD rows or outbox intents are created by this probe.
       await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.$executeRawUnsafe(`
@@ -183,11 +207,12 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
         WHERE s."organizationId"=$1 AND s."projectId"=$2 AND s.id=$3`, scope.organizationId, scope.projectId, context.target.sourceId));
       const overflow = await readCut();
       expect(overflow.sourceCoverage).toBe("INCOMPLETE");
+      expect((await readComposed()).coverage).toBe("INCOMPLETE");
       expect(planRawArtifactRetention({ ...scope, now, references: overflow.references,
         pinnedRevisionIds: overflow.pinnedRevisionIds, coverage: "INCOMPLETE", jobsFrozen: overflow.jobsFrozen })
         .every((row) => !row.eligible && row.reasons.includes("INCOMPLETE_COVERAGE"))).toBe(true);
     } finally { restoreSend?.(); context.cleanup(); }
-    // Seven actual streaming imports plus a bounded 5,001-row overflow probe;
+    // Eleven actual streaming imports, real capture and a 5,001-row overflow probe;
     // this is a lifecycle test, not a single operation's latency budget.
   }, 60_000);
 

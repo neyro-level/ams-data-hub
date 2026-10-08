@@ -311,6 +311,23 @@ allows at most 500 Sources, 5,000 revisions/PUT intents and 50,000 ACTIVE
 identities; overflow or missing/inconsistent provenance marks source coverage
 INCOMPLETE and keeps all candidate objects. Source coverage is not overall
 coverage: snapshot/current/pending/rollback pins must be composed separately.
+The snapshot-owned reader resolves current and unfinished DeliveryRuns, captures
+not yet published, rollback reservations and actual pending Operations targets.
+It verifies immutable input/part digests with the existing input repository,
+then ingestion validates captured GOOD/source/head/sequence and inventory
+UID/external ID/normalized hash/raw SHA provenance. Current mutable Source heads
+are not substituted for captured heads. Work is bounded across the entire cut:
+128 roots, 32 MiB of stored payload, 50,000 records and 2,048 parts; overflow,
+legacy/unreconstructable roots or contradictory provenance fail coverage closed.
+Only identifiers/SHA pins escape, not captured private payloads. This reader
+does not itself compose the final cleanup cut or authorize storage deletion.
+The worker-root cut composes Source, Operations and Snapshot readers in the same
+fresh transaction, verifies every captured revision/SHA pin exists in its bounded
+Source references, and fails overall coverage closed if any owner cut is incomplete.
+Operational request acceptance takes the global safety fence before idempotency
+or outbox locks, so new pending publish/rollback targets cannot commit unnoticed
+during this cut. Complete coverage still requires the deletion executor's own
+exclusive lifetime guardian and durable admission; it is not a storage capability.
 `RawArtifactDeletion` persists immutable project/SHA,
 key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
 deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and

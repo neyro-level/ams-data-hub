@@ -3,11 +3,19 @@ import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from 
 import { canonicalJsonBytes, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 
-const cuts = vi.hoisted(() => ({ active: 0, afterAuth: null as (() => void) | null, beforeAck: null as (() => Promise<void>) | null }));
+const cuts = vi.hoisted(() => ({ active: 0, afterAuth: null as (() => void) | null, beforeAck: null as (() => Promise<void>) | null,
+  acceptanceCorrelation: null as string | null, acceptancePid: null as number | null }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
+      if (context.correlationId === cuts.acceptanceCorrelation) {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+          .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+        const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+        cuts.acceptancePid = backend!.pid;
+      }
       const consumer = context.principalKind === "snapshot-consumer";
       if (consumer || ["snapshot-input", "snapshot-publication", "snapshot-notifier"].includes(context.actorId)) {
         await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
@@ -27,7 +35,9 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
     }
     return result;
   };
-  return { ...actual, runInAuthorizedDatabaseTransaction: authorized };
+  const principal: typeof actual.runInPrincipalDatabaseTransaction = (context, execute) =>
+    authorized(actual.createDatabaseAuthorizationContext(context), execute);
+  return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInPrincipalDatabaseTransaction: principal };
 });
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -48,6 +58,9 @@ import { executeSafeOutboundWebhook } from "../../src/platform/http/safe-outboun
 import type { SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
 import { createDataSafetyService } from "../../src/modules/platform-operations/application/data-safety-service.ts";
 import { PrismaDataSafetyRepository } from "../../src/modules/platform-operations/infrastructure/prisma-data-safety-repository.ts";
+import { createRawArtifactRetentionCutReader } from "../../src/infrastructure/raw-artifact-retention-cut.ts";
+import { requestOperationalAction, createRawRetentionOperationReader } from "../../src/modules/operations-control/server.ts";
+import { PrismaSnapshotInputRepository } from "../../src/modules/snapshot-delivery/server.ts";
 
 async function fixture(publish = true) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-consumer-admin", correlationId: randomUUID() };
@@ -108,6 +121,62 @@ async function fixture(publish = true) {
 }
 
 describe("actual project-authenticated snapshot consumer HTTP and FORCE RLS", () => {
+  it("serializes actual rollback acceptance behind retention and reads the old acknowledged non-current root on the next cut", async () => {
+    const f = await fixture();
+    const trace = vi.spyOn(PrismaSnapshotInputRepository.prototype, "find");
+    let releaseFence: (() => void) | undefined;
+    let holding: Promise<void> | undefined;
+    let accepting: ReturnType<typeof requestOperationalAction> | undefined;
+    try {
+      expect((await handleSnapshotConsumerAck(ackRequest(f, await ackInput(f)), f.params)).status).toBe(200);
+      expect((await readRun(f))?.status).toBe("ACKNOWLEDGED");
+      const second = await captureSnapshotInput(f.principal, { ...f.scope, idempotencyKey: randomUUID(), schemaMinor: 0 });
+      await createSnapshotPublicationServer(f.bound)(f.principal,
+        { idempotencyKeyHash: second.idempotencyKeyHash, requestHash: second.requestHash });
+      const context = { principalKind: "project-job" as const, actorId: "raw-artifact-retention",
+        organizationId: f.scope.organizationId, projectIds: [f.scope.projectId], correlationId: randomUUID() };
+      trace.mockClear();
+      let markHeld!: (pid: number) => void;
+      const held = new Promise<number>((resolve) => { markHeld = resolve; });
+      const release = new Promise<void>((resolve) => { releaseFence = resolve; });
+      holding = runInAuthorizedDatabaseTransaction(context, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect((await createRawArtifactRetentionCutReader(tx).read(f.scope)).coverage).toBe("COMPLETE");
+        const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+        markHeld(backend!.pid); await release;
+      });
+      const blockerPid = await Promise.race([held, holding.then(() => { throw new Error("SYNTHETIC_RETENTION_FENCE_NOT_HELD"); })]);
+      expect(trace.mock.calls.some((call) => call[2] === f.lookup.idempotencyKeyHash)).toBe(false);
+      let settled = false;
+      cuts.acceptanceCorrelation = randomUUID(); cuts.acceptancePid = null;
+      accepting = requestOperationalAction({ ...f.admin, correlationId: cuts.acceptanceCorrelation }, { ...f.scope, action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: f.sequence,
+        sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() }).finally(() => { settled = true; });
+      let blocked = false; const deadline = Date.now() + 1500;
+      while (!blocked && Date.now() < deadline) {
+        blocked = await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+          const [row] = await tx.$queryRawUnsafe<{ blocked: boolean }[]>(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND pid=$2::integer AND $1::integer=ANY(pg_blocking_pids(pid))) AS blocked",
+            blockerPid, cuts.acceptancePid);
+          return row!.blocked;
+        });
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(true); expect(settled).toBe(false);
+      releaseFence?.(); await holding; await accepting;
+      trace.mockClear();
+      await runInAuthorizedDatabaseTransaction(context, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect((await createRawArtifactRetentionCutReader(tx).read(f.scope)).coverage).toBe("COMPLETE");
+        expect((await createRawRetentionOperationReader(tx).read(f.scope)).sourcePublishSequences).toContain(f.sequence);
+      });
+      expect(trace.mock.calls.some((call) => call[2] === f.lookup.idempotencyKeyHash)).toBe(true);
+    } finally {
+      releaseFence?.(); const owned = await Promise.allSettled([holding, accepting]);
+      trace.mockRestore(); cuts.acceptanceCorrelation = null; cuts.acceptancePid = null; f.cleanup();
+      const failed = owned.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+    }
+  }, 30_000);
   it("reconciles populated private receipts through counts-only NOBYPASS web recovery and rejects stale clean markers", async () => {
     const f = await fixture();
     const recovery = createDataSafetyService({
@@ -512,6 +581,26 @@ describe("actual bounded HTTP ACK through createSnapshotAckService", () => {
       expect(await readRun(f)).toEqual(run);
       expect((await handleSnapshotConsumerAck(ackRequest(f, { ...input, idempotencyKey: randomUUID() }), f.params)).status).toBe(409);
       expect(await readRun(f)).toEqual(run);
+      const readRetention = () => runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "raw-artifact-retention",
+        organizationId: f.scope.organizationId, projectIds: [f.scope.projectId], correlationId: randomUUID() }, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+          .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+        return createRawArtifactRetentionCutReader(tx).read(f.scope);
+      });
+      expect((await readRetention()).coverage).toBe("COMPLETE");
+      // ACKNOWLEDGED is no longer a pending-delivery pin. The current-root
+      // branch must still reject contradictory immutable run/current identity.
+      const originalPublishedAt = run!.publishedAt;
+      try {
+        await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.deliveryRun.update({ where: { id: run!.deliveryRunId },
+          data: { publishedAt: new Date(originalPublishedAt.getTime() + 1) } }));
+        expect((await readRetention()).coverage).toBe("INCOMPLETE");
+      } finally {
+        await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.deliveryRun.update({ where: { id: run!.deliveryRunId },
+          data: { publishedAt: originalPublishedAt } }));
+      }
+      expect((await readRetention()).coverage).toBe("COMPLETE");
     } finally { f.cleanup(); }
   });
   it("rejects malformed/foreign/token-in-body/oversized requests before artifact IO or mutation", async () => {

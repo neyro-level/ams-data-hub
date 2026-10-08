@@ -181,6 +181,13 @@ at commit through deferred consistency guards. Settled intent identity is
 immutable. Failed/unknown IO retains its pending record; historical revisions
 are not backfilled with invented operations.
 
+Forward migration `20261008210000_raw_receipt_guard_nobypass` runs the existing
+non-returning deferred receipt guard as the NOBYPASS, non-superuser worker,
+with `row_security=on` and a fixed schema-qualified search path. Legitimate
+web mutations of legacy revisions can therefore be checked without granting
+web SELECT on private PUT journals. Exact-context FORCE RLS and receipt
+consistency remain enforced; no historical operations are invented.
+
 The deletion journal pins project/hash/key/policy independently of Source,
 with one unsettled operation per project/SHA and strictly ordered
 PENDING → ACKNOWLEDGED → DELETED phases. Identity and policy cannot be retargeted;
@@ -198,6 +205,15 @@ The ingestion-owned reader includes Last GOOD, ACTIVE historical fact/provenance
 pins and unresolved PUT intents. Bounded overflow fails coverage closed; its
 COMPLETE result covers only Source metadata, never snapshot/rollback coverage
 or object deletion admission.
+
+Forward migration `20261008200000_raw_retention_snapshot_reads` extends the same
+SELECT-only worker purpose to immutable snapshot inputs/parts, normal and
+rollback bindings/reservations, staged receipts, current manifests, DeliveryRuns
+and pending OperationalActionRequest targets. Module-owned readers return only
+pins and coverage; captured payloads remain internal. Input digests alone are
+not provenance proof: ingestion additionally checks exact scoped GOOD references
+and captured inventory/raw SHA relationships. No deletion writes or public/web
+capability are added by these read policies.
 
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and

@@ -35,10 +35,10 @@ import { getPgBoss, stopPgBoss, recordSourceWorkerHeartbeat } from "../../src/mo
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
-import { requestOperationalAction } from "../../src/modules/operations-control/server.ts";
+import { requestOperationalAction, createRawRetentionOperationReader } from "../../src/modules/operations-control/server.ts";
 import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
 import { createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "../../src/infrastructure/snapshot-build-capability.ts";
-import { captureSnapshotInput, createSnapshotStagedBuildServer, createProjectSnapshotSigningResolver, createSelectedSnapshotPublicationServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotStagedBuildServer, createProjectSnapshotSigningResolver, createSelectedSnapshotPublicationServer, createRawRetentionSnapshotReader } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectObjectStorageResolver } from "../../src/platform/storage/project-object-storage.ts";
 import { ReliabilityService } from "../../src/modules/platform-operations/application/reliability-service.ts";
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
@@ -75,7 +75,7 @@ async function fixture() {
     // Prior suites may retain their own valid pending intents. Prioritize only
     // this fixture's event so the enabled runtime stops after its own success.
     await tx.outboxEvent.update({ where: { id: intent.outboxEventId }, data: { availableAt: new Date("2000-01-01T00:00:00.000Z") } });
-    return { admin, scope, intent, suffix, requestId: null as string | null };
+    return { admin, scope, intent, suffix, revisionId: revision.id, requestId: null as string | null };
   });
 }
 
@@ -145,6 +145,16 @@ describe("actual combined source-worker snapshot capability", () => {
       }
       const accepted = await requestOperationalAction(setup.admin, { ...scope, action, ...(rollback ? { sourcePublishSequence: stage.publishSequence } : { buildInputId: stage.buildInputId }),
         sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
+      const readRetention = () => runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "raw-artifact-retention" }), async (tx) => {
+        const operations = await createRawRetentionOperationReader(tx).read(scope);
+        const snapshot = await createRawRetentionSnapshotReader(tx).read(scope, operations);
+        expect(snapshot.snapshotCoverage).toBe("COMPLETE");
+        expect(snapshot.pinnedRevisionIds).toContain(setup.revisionId);
+        return operations;
+      });
+      const pendingTargets = await readRetention();
+      if (rollback) expect(pendingTargets.sourcePublishSequences).toContain(stage.publishSequence);
+      else expect(pendingTargets.buildInputIds).toContain(stage.buildInputId);
       const eventId = await runInPrincipalDatabaseTransaction(setup.admin, async (tx) => {
         await tx.outboxEvent.update({ where: { id: setup.intent.outboxEventId }, data: { availableAt: new Date("2050-01-01T00:00:00Z") } });
         const request = await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: accepted.requestId } });
@@ -241,6 +251,13 @@ describe("actual combined source-worker snapshot capability", () => {
         if (executed) expect(jobs.find((job) => job.status === "SUCCESS")).toMatchObject({ workerId });
         if (!executed) await tx.outboxEvent.update({ where: { id: eventId }, data: { availableAt: new Date("2050-01-01T00:00:00Z") } });
       });
+      const finalTargets = await readRetention();
+      if (executed) {
+        expect(finalTargets.buildInputIds).toHaveLength(0);
+        expect(finalTargets.sourcePublishSequences).toHaveLength(0);
+        if (rollback) expect(await runInPrincipalDatabaseTransaction(setup.admin,
+          (tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(1);
+      }
     } finally { controller.abort(); clearTimeout(timer); completeSpy?.mockRestore(); fetchSpy?.mockRestore(); await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs(); }
   }, 90_000);
   it.each([

@@ -37,6 +37,21 @@ import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
 import * as projectStateFacade from "../../src/modules/project-state/server.ts";
 import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY, prepareSnapshotPublicationSourceAnchors } from "../../src/modules/ingestion-core/index.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
+import { createRawRetentionSnapshotReader } from "../../src/modules/snapshot-delivery/server.ts";
+import { createRawRetentionOperationReader } from "../../src/modules/operations-control/server.ts";
+
+async function readRetentionPins(scope: { organizationId: string; projectId: string }) {
+  return runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "raw-artifact-retention",
+    organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() }, async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+    expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+      .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+    const operations = await createRawRetentionOperationReader(tx).read(scope);
+    const reader = createRawRetentionSnapshotReader(tx);
+    await expect(reader.read({ ...scope, projectId: "foreign-project" }, operations)).rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+    return reader.read(scope, operations);
+  }, { isolationLevel: "ReadCommitted", timeout: 30_000 });
+}
 
 // Explicit fixture policy permits the deliberate large historical/head count
 // changes used below; production policy/approval predicates are unchanged.
@@ -127,6 +142,51 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it.each(["foreign-source", "wrong-good-sequence", "missing-raw-provenance", "valid-240-char-id"] as const)(
+    "checks retention provenance for a digest-valid capture with %s", async (mode) => {
+      const scope = await setup(); const uid = createUlid();
+      const externalOfferId = mode === "valid-240-char-id" ? "x".repeat(240) : "synthetic-retention";
+      const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          sourceKey: "synthetic-retention-corrupt", name: "Synthetic provenance", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+          profileKey: "vladis-vt24-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+        const target = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+        const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+          adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+          profileVersion: source.profileVersion, ...syntheticSafety(1), recordCount: 1 } });
+        await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, externalId: externalOfferId, inventoryUid: uid,
+          recordHash: "b".repeat(64), orderKey: "73796e746865746963", payload: { schemaVersion: 1, draft: {}, fields: {} } } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+          rawStorageKey: `source-artifacts/${"c".repeat(64)}`, rawArtifactHash: "c".repeat(64), rawByteCount: 1,
+          normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        return { sourceId: source.id, revisionId: revision.id };
+      });
+      const sequence = mode === "wrong-good-sequence" ? 2 : 1;
+      const builder = new SnapshotInputPartsBuilder();
+      for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind,
+        kind === "sources" ? [{ entityType: "source", sourceId: fixture.sourceId,
+          approvedHead: { id: fixture.revisionId, status: "GOOD", sequence } }] :
+        kind === "inventory" ? [{ uid, sourceId: mode === "foreign-source" ? "foreign-source" : fixture.sourceId,
+          externalOfferId, status: "ACTIVE", normalizedHash: "b".repeat(64),
+          sourceHash: (mode === "missing-raw-provenance" ? "d" : "c").repeat(64),
+          factRevisionId: fixture.revisionId, factRevisionSequence: 1, approvedHeadId: fixture.revisionId, approvedHeadSequence: sequence }] : []);
+      const request = snapshotInputRequestSchema.parse({ organizationId: scope.organizationId, projectId: scope.projectId,
+        idempotencyKey: "synthetic-retention-corrupt" }); const hashes = snapshotInputRequestHashes(request);
+      const receipt = await worker(scope, async (tx) => {
+        const repository = new PrismaSnapshotInputRepository(tx);
+        await repository.lockProject(scope.organizationId, scope.projectId);
+        const publishSequence = await repository.reserveSequence(scope.organizationId, scope.projectId);
+        return repository.save({ organizationId: scope.organizationId, projectId: scope.projectId, ...hashes,
+          inputSchemaVersion: 1, projectorVersion: "db-v1", schemaMinor: 0, publishSequence,
+          projectStateRevision: 1, catalogRevision: "a".repeat(64), capturedAt: new Date(), parts: builder.finish() });
+      });
+      // Immutable bytes/digest are legal; only the boundary case has valid provenance.
+      expect(await worker(scope, (tx) => new PrismaSnapshotInputRepository(tx).find(scope.organizationId, scope.projectId,
+        hashes.idempotencyKeyHash, hashes.requestHash))).toEqual(receipt);
+      expect((await readRetentionPins({ organizationId: scope.organizationId, projectId: scope.projectId })).snapshotCoverage)
+        .toBe(mode === "valid-240-char-id" ? "COMPLETE" : "INCOMPLETE");
+    }, 30_000);
   it.each(["forged", "oversized"])("rejects a GOOD label with %s immutable safety analysis before saving a receipt", async (mode) => {
     const scope = await setup();
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -252,6 +312,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const request = { organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-complete", schemaMinor: 0 };
     try {
       const first = await captureSnapshotInput(principal, request);
+      const retention = await readRetentionPins({ organizationId: scope.organizationId, projectId: scope.projectId });
+      expect(retention.snapshotCoverage).toBe("COMPLETE");
+      expect(retention.pinnedRevisionIds).toContain(fixture.revisionId);
+      expect(retention.rawArtifactPins).toContainEqual({ sourceId: fixture.sourceId, rawArtifactHash: "c".repeat(64) });
       const pinned = structuredClone(first);
       const publicCatalog = projectSnapshotCatalog(first);
       const publicProjectState = projectSnapshotProjectState(first);
