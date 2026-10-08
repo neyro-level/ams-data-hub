@@ -12,6 +12,16 @@ import {
 } from "../scripts/postgresql-evidence.mjs";
 
 describe("PostgreSQL cross-contract evidence", () => {
+  it("includes every native integration suite in the explicit final-candidate matrix", async () => {
+    const diskSuites = (await readdir(path.resolve("tests/integration")))
+      .filter((file) => file.endsWith(".integration.test.ts"))
+      .map((file) => `tests/integration/${file}`).sort();
+    expect(requiredPostgresqlEvidenceSuites().filter((file) => file.endsWith(".integration.test.ts")).sort())
+      .toEqual(diskSuites);
+    expect(() => validatePostgresqlEvidenceManifest({ ...postgresqlEvidenceManifest,
+      contracts: { ...postgresqlEvidenceManifest.contracts, MP10: undefined } } as never))
+      .toThrow("POSTGRESQL_EVIDENCE_COVERAGE_MISSING:MP10");
+  });
   it("fails closed when an E02-E05 matrix row or suite is absent", () => {
     const missingContract = {
       ...postgresqlEvidenceManifest,
@@ -43,7 +53,7 @@ describe("PostgreSQL cross-contract evidence", () => {
     expect(summary).toMatchObject({
       schemaVersion: 1,
       postgresMajor: 18,
-      contracts: { E02: "PASS", E03: "PASS", E04: "PASS", E05: "PASS" },
+      contracts: { E02: "PASS", E03: "PASS", E04: "PASS", E05: "PASS", MP10: "PASS" },
       status: "PASS",
     });
     expect(JSON.stringify(summary)).not.toMatch(/password|databaseUrl|token|payload/i);

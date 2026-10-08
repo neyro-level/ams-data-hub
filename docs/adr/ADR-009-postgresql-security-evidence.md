@@ -15,6 +15,7 @@
 | E03 isolation | missing DB context, cross-tenant read/write and cross-tenant relation are denied; `web`/`worker` cannot bypass RLS; every inventory table is covered |
 | E04 command | authorization/context precede persistence; a failed business, audit or outbox operation rolls back the complete transaction; stale result leaves no partial data |
 | E05 reliability | competing workers cannot complete one lease; same idempotency key with changed payload conflicts; retry exhaustion creates one safe dead-letter notification; shutdown leaves an explicit recoverable lease state |
+| MP10 remediation | persistent identity/catalog/media projections; Source worker/manual execution; immutable snapshot capture/staging/publication/rollback and HTTP ACK; raw lifetime/retention journals and operator request/alert regressions |
 
 Each test names its contract, uses isolated fixture organizations/identities and performs no direct cleanup outside the E00A guarded lifecycle. Tests must not depend on lexical execution order, process-global state or another suite's fixtures.
 
@@ -45,6 +46,15 @@ The guarded PostgreSQL 18 runner starts twice from an empty schema. The first
 pass executes the current suite manifest in `scripts/postgresql-evidence.mjs`;
 the second executes the same suites in reverse order. Both passes cover
 E02–E05, the current executable RLS inventory and worker lifecycle behavior.
+The explicit manifest includes every current `tests/integration/*.integration.test.ts`
+suite, including the MP10 remediation row. A unit guard compares this manifest
+against the on-disk native suite inventory and rejects omissions; a missing MP10
+contract also fails closed. The lifecycle unit suite remains included separately.
+Adding the row is not evidence that its full repeated run passed: use the actual
+current summary and task ledger for that claim.
+Run `pnpm build` for the current candidate before the full matrix: the consumer
+HTTP suite starts the actual standalone server, while this evidence runner does
+not rebuild it. Both clean and reverse passes must use that current build.
 The manifest includes project/domain suites and new-building import evidence;
 a targeted run never attests the full matrix. A failed child command throws through
 the lifecycle boundary so the guarded final database reset still runs.

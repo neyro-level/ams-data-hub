@@ -22,7 +22,7 @@ const referenceSchema = z.object({
   rawArtifactHash: sha256, storageKey: z.string(),
   status: z.enum(["PENDING", "STAGED", "SUSPICIOUS", "REJECTED", "FAILED", "GOOD"]),
   sequence: z.number().int().positive().nullable(),
-  // Server-derived times, not caller policy hints. A late completion extends
+  // Server-recorded times, not caller policy hints. A late completion extends
   // the recent-reference window; future clocks fail closed by retaining.
   startedAt: z.date(), completedAt: z.date().nullable(),
 }).strict().superRefine((reference, context) => {
@@ -52,7 +52,7 @@ export function planRawArtifactRetention(input: {
   organizationId: string; projectId: string; now: Date;
   policy?: RawArtifactRetentionPolicy;
   references: readonly RawArtifactRetentionReference[];
-  /** LastGood, active facts and current/pending/rollback capture pins, derived
+  /** LastGood, active facts and current/pending/rollback capture pins, resolved
    * by the repository across ALL Sources sharing the project storage scope. */
   pinnedRevisionIds: readonly string[];
   coverage: "COMPLETE" | "INCOMPLETE";

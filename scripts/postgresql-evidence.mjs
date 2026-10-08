@@ -12,7 +12,7 @@ export const postgresqlEvidenceManifest = Object.freeze({
       suites: ["tests/integration/account-setup.integration.test.ts"],
       scenarios: [
         "setup and recovery tokens are single-use and revoke stale sessions",
-        "active setup, disabled-user and platform-admin MFA gates deny a fresh principal",
+        "active setup and disabled-user gates deny access; approved password-only Admin retains session and permission checks",
         "multi-membership requires an explicit organization",
       ],
     },
@@ -85,6 +85,53 @@ export const postgresqlEvidenceManifest = Object.freeze({
         "agent merge, relink and split operations are explicit, versioned and event-backed",
       ],
     },
+    MP10: {
+      suites: [
+        "tests/integration/agent-matching.integration.test.ts",
+        "tests/integration/fleet-dashboard.integration.test.ts",
+        "tests/integration/identity-contracts.integration.test.ts",
+        "tests/integration/inventory-lifecycle.integration.test.ts",
+        "tests/integration/listing-development-link.integration.test.ts",
+        "tests/integration/media-mirror.integration.test.ts",
+        "tests/integration/media-projection.integration.test.ts",
+        "tests/integration/operational-ack-rotation.integration.test.ts",
+        "tests/integration/operational-action-requests.integration.test.ts",
+        "tests/integration/operational-alerts.integration.test.ts",
+        "tests/integration/operational-approval-executor.integration.test.ts",
+        "tests/integration/operational-rejection-executor.integration.test.ts",
+        "tests/integration/raw-artifact-lifetime.integration.test.ts",
+        "tests/integration/raw-artifact-retention-runtime.integration.test.ts",
+        "tests/integration/remediation-marketplace-pipeline.integration.test.ts",
+        "tests/integration/remediation-newbuilding-pipeline.integration.test.ts",
+        "tests/integration/remediation-vladis-pipeline.integration.test.ts",
+        "tests/integration/shared-catalog-acceptance.integration.test.ts",
+        "tests/integration/snapshot-artifact-staging.integration.test.ts",
+        "tests/integration/snapshot-build-input.integration.test.ts",
+        "tests/integration/snapshot-consumer-http.integration.test.ts",
+        "tests/integration/snapshot-delivery.integration.test.ts",
+        "tests/integration/snapshot-publication-catalog-reader.integration.test.ts",
+        "tests/integration/snapshot-publication-media-reader.integration.test.ts",
+        "tests/integration/snapshot-publication-project-reader.integration.test.ts",
+        "tests/integration/snapshot-publication-source-reader.integration.test.ts",
+        "tests/integration/snapshot-publication-writer-lock.integration.test.ts",
+        "tests/integration/snapshot-source-worker.integration.test.ts",
+        "tests/integration/snapshot-url-lifecycle.integration.test.ts",
+        "tests/integration/source-execution-guard.integration.test.ts",
+        "tests/integration/source-jobs.integration.test.ts",
+        "tests/integration/source-manual-worker.integration.test.ts",
+        "tests/integration/source-readiness.integration.test.ts",
+        "tests/integration/source-runtime.integration.test.ts",
+        "tests/integration/source-worker-shutdown.integration.test.ts",
+        "tests/integration/source-worker.integration.test.ts",
+      ],
+      scenarios: [
+        "persistent UID, relink, catalog, media and public projections retain privacy and scope",
+        "real Source pipelines, manual approval, worker scheduling and shutdown preserve GOOD and Last Good",
+        "durable selected snapshot staging, publication, rollback, consumer HTTP and ACK preserve exact identities",
+        "raw lifetime exclusion, journals, retention and recovery execute through NOBYPASS runtime roles",
+        "operator requests, alerts and fleet reads remain scoped, atomic and audited",
+      ],
+    },
     DH06: {
       suites: ["tests/integration/source-registry.integration.test.ts"],
       scenarios: [
@@ -96,7 +143,7 @@ export const postgresqlEvidenceManifest = Object.freeze({
   },
 });
 
-const requiredContracts = ["E02", "E03", "E04", "E05", "DH03", "DH04", "DH06"];
+const requiredContracts = ["E02", "E03", "E04", "E05", "DH03", "DH04", "DH06", "MP10"];
 const forbiddenEvidenceKeys = /(database|dsn|host|password|payload|token|url|user(name)?)/i;
 
 export function requiredPostgresqlEvidenceSuites(manifest = postgresqlEvidenceManifest) {
