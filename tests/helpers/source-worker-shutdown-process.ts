@@ -9,7 +9,9 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 // Child-only transport fixture. Application, queue, guard, Prisma and lifecycle
 // are the real implementations; no provider/network request can escape.
 const mode = process.env.SYNTHETIC_SHUTDOWN_MODE;
-const bytes = Buffer.from('<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>2000</value></price></offer></realty-feed>');
+const bytes = Buffer.from(process.env.SYNTHETIC_SHUTDOWN_PUBLIC_FEED === "true"
+  ? '<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>2000</value><currency>RUB</currency></price><location><address>ул. Макетная</address></location></offer></realty-feed>'
+  : '<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>2000</value></price></offer></realty-feed>');
 const notify = (event: string) => { if (process.connected) process.send?.({ event }); };
 let releaseUpload: (() => void) | undefined;
 process.on("message", (message) => {

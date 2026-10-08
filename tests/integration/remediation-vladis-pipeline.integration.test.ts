@@ -169,6 +169,7 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
       outboundCalls: wire.https.mock.calls.length, rawObjects: objects.size,
     })).toBe(expected);
     await stopPgBoss(); // Real runtime is restarted between imports.
+    return jobId!;
   };
   try {
     await execute(xml(), "completed");
@@ -187,7 +188,7 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     expect(missing).toMatchObject({ status: "ACTIVE", missingGoodRuns: 1 });
     expect(missing.missingSince).toBeInstanceOf(Date);
     expect(second.intents).toHaveLength(2);
-    await execute("<broken>", "retry");
+    const brokenJobId = await execute("<broken>", "retry");
     const broken = await read();
     expect(broken.source.lastGoodRevisionId).toBe(second.source.lastGoodRevisionId);
     expect(broken.identities).toEqual(second.identities);
@@ -195,6 +196,11 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     expect(broken.revisions.filter((revision) => revision.status === "FAILED")).toHaveLength(1);
     expect(wire.workerCuts).toBeGreaterThan(5);
     expect(wire.dns).toHaveBeenCalledTimes(6); expect(wire.http).not.toHaveBeenCalled();
+    // Retry/preservation evidence is already asserted. Cancel only this owned
+    // fixture job before the worker later receives the image transport.
+    const brokenQueue = await getPgBoss(); await brokenQueue.cancel(SOURCE_IMPORT_QUEUE, brokenJobId);
+    expect((await brokenQueue.getJobById(SOURCE_IMPORT_QUEUE, brokenJobId))?.state).toBe("cancelled");
+    await stopPgBoss();
 
     // Prepare through public commands, not fabricated URL/contact/subscription rows.
     // This explicit preparation is not claimed to be automatic orchestration.
@@ -380,7 +386,7 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
       schedulePolicy: { mode: "MANUAL_ONLY" }, safetyPolicyId: policy.id, expectedNamespace: "", expectedProducer: "" });
     const unsupportedTarget = { ...scope, sourceId: unsupportedSource.sourceId };
     await sourceRegistryCommands.setSourceEnabled(admin, { ...unsupportedTarget, version: unsupportedSource.version, enabled: true });
-    await execute(xml().replace("<category>квартира</category>", "<category>synthetic-unsupported</category>"), "retry", unsupportedTarget);
+    const unsupportedJobId = await execute(xml().replace("<category>квартира</category>", "<category>synthetic-unsupported</category>"), "retry", unsupportedTarget);
     const rejected = await runInPrincipalDatabaseTransaction(admin, async (tx) => ({
       source: await tx.source.findUniqueOrThrow({ where: { id: unsupportedTarget.sourceId } }),
       revisions: await tx.sourceRevision.findMany({ where: unsupportedTarget }),
@@ -395,6 +401,9 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     const unchangedCurrent = await handleSnapshotConsumerGet(request(), scope);
     expect(unchangedCurrent.status).toBe(200);
     expect((await unchangedCurrent.json()).manifest).toEqual(rawManifest);
+    const unsupportedQueue = await getPgBoss(); await unsupportedQueue.cancel(SOURCE_IMPORT_QUEUE, unsupportedJobId);
+    expect((await unsupportedQueue.getJobById(SOURCE_IMPORT_QUEUE, unsupportedJobId))?.state).toBe("cancelled");
+    await stopPgBoss();
   } finally {
     await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs();
     wire.dns.mockReset(); wire.https.mockReset(); wire.http.mockReset();

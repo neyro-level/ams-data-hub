@@ -104,24 +104,35 @@ source/fact/approved head pins 2/2/1; candidate snapshot содержит три
 63 migrations и final DB reset; independent architect review без findings.
 Подменены только нижние DNS/HTTPS/S3 transports. Signed publication и HTTP
 этим scoped proof не заявлены.
-Scenario G partial native proof — PASS: actual worker process импортирует GOOD и
+Scenario G full scoped native proof — PASS: actual worker process импортирует GOOD и
 завершается; fresh pg-boss client читает тот же completed job. Actual Next
 standalone проходит login/session/private Fleet HTTP, затем новый Next process
 принимает прежний cookie с тем же session ID и показывает тот же project slug.
 Source, identities, revisions и build intents сохраняются. Отложенный manual
 request переживает web restart и завершается новым actual worker со стабильным
-inventory UID и вторым GOOD. Native `35502/54d160` — 7/7 PASS, включая шесть
+inventory UID и вторым GOOD. Actual publication сохраняет signed current и все
+13 artifacts. Каждый fresh Next process читает current/files через actual HTTP,
+проходит signature/schema/hash/privacy/integrity verification и повторяет ACK
+идемпотентно. Delivery/current/credential version и timestamps остаются теми же,
+в том числе после второго Source GOOD; child PID-scoped SDK evidence подтверждает
+реальные чтения из synthetic lower transport. Native `90281/8a83a5` — 7/7 PASS,
+включая шесть
 shutdown/recovery regressions, 63 migrations и final DB reset. Current standalone
 build `83913/74d61c` — PASS; CI policy regressions — 8/8 PASS. RISKY gate теперь
 собирает standalone перед integration в том же exact-head cube, один раз.
 Windows worker SIGTERM здесь вызывается registered handler через IPC; pg-boss
 client/runtime restart не означает PostgreSQL server restart. HTTP-auth/Fleet
 не выдаётся за browser E2E; child DB owner-login не выдаётся за queue ACL proof.
-Completion audit выявил, что acceptance задачи G дополнительно требует сохранения
-publication/ACK state после restart. Это ещё не доказано; преждевременный `done`
-исправлен обратно на RUNNING с сохранением всех partial results, delivery task
-возвращён в PENDING. A–F закрыты; G, delivery gate/merge и MP-10 остаются открыты
-до полного фактического evidence, без сужения исходного acceptance.
+Completion audit выявил недостающее publication/ACK restart evidence и вернул
+преждевременный `done` в RUNNING, сохранив partial results. Расширенный actual
+proof теперь покрывает исходное acceptance; independent architect review без
+открытых замечаний по G. `verify:quick` — PASS (`43380/0c7094`). Scoped completion
+не заменяет MP-09 delivery gate/merge или оставшийся MP-10; production не разрешён.
+Whole-MP09 review также исправил Scenario A fixture isolation: actual broken и
+unsupported RETRY jobs отменяются только по собственным exact IDs после всех
+retry/rejection/preservation assertions, до чужого transport/suite. Foreign jobs
+не очищаются. Native `81765/4dfcc4` — 1/1 PASS, 63 migrations и final DB reset;
+independent correction review без открытых замечаний.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
