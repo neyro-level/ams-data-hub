@@ -370,11 +370,15 @@ remediation program preserves these boundaries while connecting them:
   Snapshot capture accepts recomputed SAFE or durable, recomputed manual approval;
   private review never enters public datasets. Fleet's admin-only projection
   additionally selects at most 25 recent requests per project: IDs, action,
-  persisted lifecycle, timestamps and safe error code only. Private request
-  reason, actor, lease, hashes and raw result are not selected. Acceptance
+  persisted lifecycle, timestamps and safe error code. Completed results are
+  loaded server-side only when SQL bounds the JSON to 4096 bytes, then parsed
+  with the same strict executor result schemas. The UI receives only matching
+  action-specific Build ID, sequence, source revision or ACK phase/version.
+  Private request reason, actor, lease, hashes and raw result are not emitted. Acceptance
   feedback carries request ID and is never reported as publication success.
-  HTTP discovery/delivery/ACK and
-  lifecycle UI remain unfinished.
+  The lifecycle UI presents persisted REQUESTED/RUNNING/SUCCEEDED/FAILED;
+  BUILD success is not presented as publication. HTTP discovery/delivery/ACK
+  remains unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

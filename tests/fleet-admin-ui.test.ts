@@ -15,6 +15,7 @@ describe("fleet admin resource", () => {
     }
     expect(forms).toContain("Принятие запроса не означает завершения");
     expect(forms).toContain("result.data.requestId");
+    expect(forms).toContain("disabled={!ready || form.formState.isSubmitting}");
     expect(dashboard).toContain("История операций");
     expect(dashboard).toContain("operationalRequestStateLabel(request)");
     expect(forms).toContain("reconcile");

@@ -127,7 +127,13 @@ export interface FleetOperationalRequestRecord {
   startedAt: Date | null;
   finishedAt: Date | null;
   safeErrorCode: string | null;
+  resultSummary?: FleetOperationalResultView | null;
 }
+export type FleetOperationalResultView =
+  | { action: "SNAPSHOT_BUILD" | "SNAPSHOT_PUBLISH"; buildInputId: string; publishSequence: number }
+  | { action: "SNAPSHOT_ROLLBACK"; sourcePublishSequence: number; publishSequence: number }
+  | { action: "ACK_ROTATE"; phase: "STAGE" | "PROMOTE"; credentialVersion: number }
+  | { action: "SUSPICIOUS_APPROVE" | "SUSPICIOUS_REJECT"; sourceRevisionId: string };
 export interface FleetOperationalRequestView extends Omit<FleetOperationalRequestRecord, "requestedAt" | "startedAt" | "finishedAt"> {
   requestedAt: string;
   startedAt: string | null;

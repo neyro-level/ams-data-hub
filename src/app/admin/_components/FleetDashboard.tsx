@@ -105,6 +105,9 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
                           <p className="font-semibold text-app-foreground">{request.action} · {request.status}</p>
                           <p className={request.status === "FAILED" ? "text-app-destructive" : "text-app-secondary"}>{operationalRequestStateLabel(request)}</p>
                           <p className="break-all text-xs text-app-secondary">ID: {request.requestId}</p>
+                          {request.resultSummary && "buildInputId" in request.resultSummary ? <p className="break-all text-xs text-app-secondary">Build ID: {request.resultSummary.buildInputId}</p> : null}
+                          {request.resultSummary && "publishSequence" in request.resultSummary ? <p className="text-xs text-app-secondary">Sequence: {request.resultSummary.publishSequence}</p> : null}
+                          {request.resultSummary?.action === "ACK_ROTATE" ? <p className="text-xs text-app-secondary">ACK {request.resultSummary.phase} · версия {request.resultSummary.credentialVersion}</p> : null}
                           <p className="text-xs text-app-secondary">Принят: {formatDate(request.requestedAt)} · Начат: {formatDate(request.startedAt)} · Завершён: {formatDate(request.finishedAt)}</p>
                           {request.safeErrorCode ? <p className="break-all text-xs text-app-destructive">Код: {request.safeErrorCode}</p> : null}
                         </li>

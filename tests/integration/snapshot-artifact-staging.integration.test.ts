@@ -58,7 +58,7 @@ import { ReliabilityService } from "../../src/modules/platform-operations/applic
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts";
 import { Prisma } from "../../src/generated/prisma/client.ts";
 import { drainOutboxWithDependencies } from "../../src/modules/platform-operations/worker.ts";
-import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor, createOperationalSnapshotRollbackExecutor, requestOperationalAction } from "../../src/modules/operations-control/server.ts";
+import { createOperationalSnapshotBuildExecutor, createOperationalSnapshotPublishExecutor, createOperationalSnapshotRollbackExecutor, requestOperationalAction, getFleetDashboard } from "../../src/modules/operations-control/server.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../../src/modules/operations-control/index.ts";
 import { OperationalActionLifecycleRepository } from "../../src/modules/operations-control/infrastructure/operational-action-lifecycle.ts";
 import { operationalSnapshotBuildRequest } from "../../src/modules/operations-control/application/operational-snapshot-build.ts";
@@ -1090,6 +1090,14 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       if (!replacement) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
       const replay = await execute(replacement);
       expect(replay).toMatchObject({ action: "SNAPSHOT_BUILD", publishSequence: 2 });
+      if (mode === "success") {
+        if (replay.action !== "SNAPSHOT_BUILD") throw new Error("SYNTHETIC_BUILD_RESULT_MISSING");
+        const dashboard = await getFleetDashboard(admin);
+        const request = dashboard.projects.find((project) => project.projectId === setup.scope.projectId)?.operationalRequests.find((request) => request.requestId === accepted.requestId);
+        expect(request).toMatchObject({ status: "SUCCEEDED", resultSummary: { action: "SNAPSHOT_BUILD", buildInputId: replay.buildInputId, publishSequence: 2 } });
+        const serialized = JSON.stringify(request);
+        for (const field of ["inputHash", "manifestSha256", "requestedBy", "reason", "result", "requestHash"]) expect(serialized).not.toContain(`"${field}"`);
+      }
       expect(send).toHaveBeenCalledTimes(14); expect(resolveStage).toHaveBeenCalledTimes(1);
       await reliability.complete(replacement);
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {

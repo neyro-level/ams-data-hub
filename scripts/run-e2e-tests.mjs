@@ -44,7 +44,7 @@ try {
   run("scripts/pgboss-migrate.mjs");
   run("node_modules/tsx/dist/cli.mjs", ["scripts/seed-bootstrap.ts"]);
   run("node_modules/tsx/dist/cli.mjs", ["scripts/seed-test-database.ts"]);
-  run("node_modules/@playwright/test/cli.js", ["test"]);
+  run("node_modules/@playwright/test/cli.js", ["test", ...process.argv.slice(2)]);
 } finally {
   if (cleanupStarted) run("scripts/reset-test-database.mjs");
 }

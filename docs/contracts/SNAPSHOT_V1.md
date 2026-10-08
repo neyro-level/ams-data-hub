@@ -31,8 +31,8 @@ and requires pins from authenticated artifacts attributed to a persisted approve
 source capture. It does not itself authenticate approval, reserve a new sequence,
 sign/stage a rollback, publish current/run, settle an operational lease, or register
 an executor. The separate durable metadata prerequisite is described below;
-three of six operational executors remain registered. No production capability
-is enabled.
+all six operational executors are now registered with request-owned lease
+fencing. Registration is not production capability activation.
 
 Rollback's snapshot-private repository now persists a request-owned immutable
 `SnapshotRollbackReservation`: exact scoped committed source DeliveryRun,
@@ -107,11 +107,12 @@ lost lease cannot use this fallback. Otherwise the original failure is retained.
 This closure does not itself settle the operational request; operational SUCCESS
 must join the same transaction through a separate validated adapter/result guard.
 
-These seams are internal, not a registered executable rollback. Full-lease atomic
-current/run/request success, combined-worker capability and runtime registration
-remain required. Synthetic tests compose the actual signer and
-storage/domain repositories to prove the metadata boundary, not a completed
-operational executor or provider/production activation.
+These seams remain internal. The registered operational rollback adapter now
+joins full-lease current/run/request success atomically and is composed into the
+combined worker behind its server capability. Synthetic tests compose the actual
+signer, storage/domain repositories and operational executor; they do not prove
+live provider or production activation. Task Manager owns exact checkpoint and
+delivery evidence.
 
 URL/lifecycle datasets transfer persistent Hub state, not consumer SEO policy.
 They preserve independent publicUrlId reservations, entries after legitimate

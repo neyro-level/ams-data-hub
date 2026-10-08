@@ -57,6 +57,7 @@ function toProject(project: FleetProjectRecord, now: Date): FleetProjectView {
       requestId: request.requestId, action: request.action, status: request.status,
       requestedAt: request.requestedAt.toISOString(), startedAt: request.startedAt?.toISOString() ?? null,
       finishedAt: request.finishedAt?.toISOString() ?? null, safeErrorCode: request.safeErrorCode,
+      resultSummary: request.resultSummary ?? null,
     })),
     sources,
     currentSnapshot: project.currentSnapshot

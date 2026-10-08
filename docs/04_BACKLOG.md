@@ -32,9 +32,17 @@
 MP-00–MP-07 доставлены. MP-08.1–MP-08.5 закрыты implementation ledger:
 все шесть concrete executors реализованы, зарегистрированы и проверены.
 SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
-в рабочую ветку; epic merge/gate ещё не выполнены. MP-08.6 IN_PROGRESS:
+в рабочую ветку; epic merge/gate ещё не выполнены. MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
-а принятие запроса не выдаётся за завершение. HTTP delivery/ACK, notifier,
+а принятие запроса не выдаётся за завершение. Completed metadata проходит
+общую strict result schema и scalar allowlist; raw result, hashes и private proof
+в browser DTO не попадают. Реальный browser submit/reload — PASS;
+responsive 375/768/1024/1440 px без horizontal overflow, screenshots проверены.
+Production build и 20 scoped unit tests — PASS. Native staging suite — 92/92,
+включая настоящий BUILD → Fleet result projection и privacy assertions.
+Browser proof подтверждает REQUESTED, а не исполнение worker или публикацию.
+Implementation closure и exact commit evidence принадлежат Task Manager.
+HTTP delivery/ACK, notifier,
 SUSPENDED pull и итоговое end-to-end proof ещё требуют работы.
 Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
@@ -47,7 +55,8 @@ actual combined worker/replay, late rollback/cancel, takeover, concurrent replay
 scope/forgery denial, stale baseline/source/policy, REJECTED, новая identity и
 missing GRACE. PostgreSQL worker NOBYPASSRLS; fixture/SDK synthetic.
 Повторное scoped architect review — без actionable findings.
-Production, live provider и browser proof этим не заявлены.
+Production и live provider этим не заявлены; browser proof выше относится
+только к action state и форме Fleet.
 
 ## История проверенных этапов
 
@@ -79,9 +88,9 @@ atomic current/DeliveryRun и optional executor существующего Sourc
 Targeted proof: 78 unit tests, 22 native publication/delivery cases, 3 full
 runtime-function cases с настоящим local pg-boss, enabled/disabled/config rejection
 и observed/cleared own-owner heartbeat. Closure и delivery ledger принадлежат
-Task Manager; production не обновлялся. Текущий участок — MP-08.1:
-durable operational requests/outbox и шесть реальных исполнителей.
-Foundation checkpoint не закрывает этот task и не означает исполнение запросов.
+Task Manager; production не обновлялся. История раннего MP-08.1 checkpoint:
+durable operational requests/outbox ещё не доказывали всех шесть исполнителей.
+Foundation checkpoint на тот момент не закрывал task и не означал исполнение запросов.
 Предыдущий verified checkpoint — fenced lifecycle и concrete SUSPICIOUS_REJECT:
 review/audit/request success в одной транзакции, immutable replay и Last GOOD
 unchanged. На том checkpoint rejection adapter подключён к общей очереди;
@@ -91,7 +100,8 @@ JobRun на старте и каждые 60 секунд; unresolved requests з
 создают фиктивный FAILED. Native PostgreSQL/pg-boss — 48/48 PASS в пяти suites,
 включая actual combined-worker startup/restart и qualified/cleared heartbeat;
 28 scoped unit tests PASS. Этот checkpoint не закрывал полный MP-08.1 DoD;
-task остаётся открытым.
+task тогда оставался открытым. Текущий MP-08.1–MP-08.5 closure указан выше;
+исторический checkpoint не заменяет его evidence.
 
 Текущий delta BUILD отделяет completed staging от publication:
 immutable scoped stage receipt появляется только после settled artifact/manifest

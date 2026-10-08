@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { Button } from "../../../components/ui/button.tsx";
 import {
@@ -44,9 +44,14 @@ function newIdempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+const subscribeReadiness = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
+
 function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects: FleetProjectView[]; initialIdempotencyKey: string }) {
   const router = useRouter();
   const [feedback, setFeedback] = useState<Feedback>(null);
+  const ready = useSyncExternalStore(subscribeReadiness, clientReady, serverReady);
   const firstProject = projects[0];
   const form = useForm<RequestOperationalActionInput>({
     resolver: zodResolver(requestOperationalActionInputSchema) as Resolver<RequestOperationalActionInput>,
@@ -98,6 +103,8 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
     <SectionCard title="Операционное действие" description="Запрос передаётся исполнителю общей очереди. Принятие запроса не означает завершения: результат показывается в истории операций. Выключенные server capabilities ждут включения; этот экран не выполняет production rollout.">
       {projects.length === 0 ? <p className="text-sm text-app-secondary">Сначала создайте проект.</p> : (
         <form className="grid gap-4" onSubmit={submit}>
+          <fieldset className="grid gap-4" disabled={!ready || form.formState.isSubmitting}>
+          <legend className="sr-only">Операционный запрос</legend>
           <input type="hidden" {...form.register("organizationId")} />
           <div className="grid gap-4 lg:grid-cols-2">
             <FormField error={form.formState.errors.action?.message} label="Действие" required>
@@ -154,6 +161,7 @@ function OperationalRequestForm({ projects, initialIdempotencyKey }: { projects:
             </FormField>
           ) : null}
           <SubmitRow busy={form.formState.isSubmitting} feedback={feedback} label="Записать запрос" onRefresh={() => router.refresh()} pendingLabel="Записываем..." />
+          </fieldset>
         </form>
       )}
     </SectionCard>
