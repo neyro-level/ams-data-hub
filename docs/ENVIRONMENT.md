@@ -29,7 +29,7 @@ Use `.env.example` as the value-free project template.
 | `SNAPSHOT_BUILD_ENABLED` | existing combined source-worker | explicit `true`/`false`, absent means disabled; disabled leaves snapshot intents reserved and keeps existing intake/maintenance behavior |
 | `SNAPSHOT_PUBLISH_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; selected PUBLISH needs public trust only, not BUILD/signing enablement |
 | `SNAPSHOT_ROLLBACK_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; approved-source rollback requires retained archive public key plus current signing/public trust from the existing registry; no additional process or secret scope |
-| `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; BUILD additionally requires keyId/privateKeyRef, PUBLISH accepts those optional fields but never resolves private refs; no global/cross-project fallback |
+| `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; BUILD/ROLLBACK additionally require keyId/privateKeyRef, PUBLISH accepts those optional fields but never resolves private refs; no global/cross-project fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
 
 The generated release environment additionally binds `AMS_DATA_HUB_WEB_IMAGE`,
