@@ -35,7 +35,8 @@ SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставл
 в рабочую ветку; весь MP-08 впоследствии доставлен PR #26 после Gate #325.
 MP-09 Scenario A взят в работу: configured Vladis pipeline через реальный worker,
 затем публичные commands подготовки agents/media/URL, durable build intent,
-publication и consumer ACK. Это ещё не PASS и не production readiness;
+publication и consumer ACK. Implementation closure принадлежит Task Manager,
+а этот результат не является production readiness;
 явная подготовка публичными commands не выдаётся за автоматическую orchestration.
 Первый native участок Scenario A — PASS: configured Source/SecretRef, real worker
 и pg-boss, реальный Safe Intake с нижним synthetic DNS/HTTPS transport, raw bytes
@@ -55,8 +56,20 @@ command contract, без прямой вставки подписки. Architect
 Decoded inventory exact UID cohort, десять property types, SALE/RENT и текущая
 цена 1100 против historical grace price 1000 подтверждены повторным native PASS;
 private apartment, script, source-code и query-token sentinels отсутствуют.
-Agent/media/consent/collision и полный
-Next/browser runtime proof остаются открытыми; Scenario A не закрыт.
+Расширенный native Scenario A — PASS: извлечение agent evidence из actual GOOD
+raw records, matching/replay со стабильными UID, две office-phone collision
+bindings и consent gate через действующие команды. Только подтверждённый агент
+попадает в публичный dataset; неподтверждённый и office phone исключены.
+Реальный media mirror через Safe Outbound сохраняет повторяющиеся изображения
+на позициях 0/2 и producer order flag; broken image исключён с WARNING.
+Приватный номер квартиры в combined address отсутствует, STREET geo отличается
+от точных координат и воспроизводится повторной сборкой неизменённых фактов.
+Отдельный configured source с unknown category получает REJECTED/invalidRecordCount=1,
+без identities/Last Good/build intent и без изменения текущего manifest.
+Native прогон — 1/1 PASS, 63 migrations и final test DB reset; full Next/browser
+runtime и process restart не заявлены (restart proof принадлежит Scenario G).
+Exact checkpoint, проверки и implementation ledger принадлежат Task Manager;
+они не заменяют оставшиеся Scenario B–G и MP-09 delivery gate.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит

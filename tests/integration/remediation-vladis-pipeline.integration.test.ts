@@ -46,12 +46,16 @@ import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/t
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runSourceWorker } from "../../src/infrastructure/source-worker-runtime.ts";
 import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
-import { BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
+import { BOOTSTRAP_SOURCE_SAFETY_POLICY, extractVladisAgentEvidence, type YrlRawOffer } from "../../src/modules/ingestion-core/index.ts";
 import { SOURCE_IMPORT_QUEUE } from "../../src/modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
 import { catalogSubscriptionCommands } from "../../src/modules/shared-catalog/server.ts";
-import { projectPublicContactCommands, projectUrlRegistryCommands } from "../../src/modules/project-state/server.ts";
-import { handleSnapshotConsumerGet, handleSnapshotConsumerAck, PrismaSnapshotDeliveryRepository } from "../../src/modules/snapshot-delivery/server.ts";
+import { agentCommands, feedAgentMatchingCommands, projectPublicContactCommands, projectUrlRegistryCommands } from "../../src/modules/project-state/server.ts";
+import { handleSnapshotConsumerGet, handleSnapshotConsumerAck, PrismaSnapshotDeliveryRepository,
+  captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
+import { createProjectObjectStorageResolver } from "../../src/platform/storage/project-object-storage.ts";
+import { createMediaAssetsServer } from "../../src/modules/media-assets/server.ts";
 import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/application/snapshot-ack.ts";
 import { verifySnapshotPublicArtifacts } from "../../src/modules/snapshot-delivery/application/snapshot-public-verification.ts";
 
@@ -60,9 +64,14 @@ const xml = (omitLast = false, price = 1000) => `<realty-feed xmlns="http://webm
   variants.slice(0, omitLast ? -1 : undefined).map((category, index) => `<offer internal-id="synthetic-${index}">
   <category>${category}</category><type>${index % 2 ? "аренда" : "продажа"}</type>
   <price${index % 2 ? ' period="месяц"' : ""}><value>${price}</value><currency>RUB</currency></price>
-  <location><locality-name>Тестоград</locality-name><address>ул. Макетная</address><apartment>PRIVATE-APARTMENT</apartment><latitude>47.0001</latitude><longitude>39.0001</longitude></location>
+  <location><locality-name>Тестоград</locality-name><address>ул. Макетная, кв. PRIVATE-APARTMENT</address><apartment>PRIVATE-APARTMENT</apartment><latitude>47.0001</latitude><longitude>39.0001</longitude></location>
   <description><![CDATA[Код объекта: SYN-${index}. <p>Синтетический дом</p><script>alert(1)</script>]]></description>
   <picture>https://media.example.test/synthetic-${index}.jpg?token=synthetic</picture>
+  <picture>https://media.example.test/broken-${index}.jpg</picture>
+  <picture>https://media.example.test/synthetic-${index}.jpg?token=synthetic-repeat</picture>
+  <is-image-order-change-allowed>false</is-image-order-change-allowed>
+  <sales-agent><name>${index === 1 ? "Синтетический Офис Один" : index === 2 ? "Синтетический Офис Два" : index === 3 ? "Синтетический Без Согласия" : "Синтетический Подтверждённый"}</name>
+  <phone>${index === 1 || index === 2 ? "+79590000077" : index === 3 ? "+79590000002" : "+79590000001"}</phone></sales-agent>
   </offer>`).join("")}</realty-feed>`;
 
 it("executes configured Vladis intake on the real worker and preserves GOOD identity/grace across restart and broken input", async () => {
@@ -126,7 +135,7 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
       payload: { path: ["projectId"], equals: scope.projectId } } }),
   }));
-  const execute = async (body: string, expected: "completed" | "retry") => {
+  const execute = async (body: string, expected: "completed" | "retry", executionTarget = target) => {
     const bytes = new TextEncoder().encode(body);
     wire.https.mockImplementation((options, receive) => {
       expect(options).toMatchObject({ hostname: "93.184.216.34", servername: "feed.example.test", method: "GET" });
@@ -138,7 +147,7 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     });
     const boss = await getPgBoss();
     await boss.createQueue(SOURCE_IMPORT_QUEUE, { policy: "exclusive", retryLimit: 3, retryDelay: 30 });
-    const jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...target, trigger: "MANUAL" }, { singletonKey: target.sourceId });
+    const jobId = await boss.send(SOURCE_IMPORT_QUEUE, { schemaVersion: 1, ...executionTarget, trigger: "MANUAL" }, { singletonKey: executionTarget.sourceId });
     expect(jobId).toEqual(expect.any(String));
     const controller = new AbortController();
     const complete = boss.complete.bind(boss); const fail = boss.fail.bind(boss);
@@ -200,6 +209,63 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
         entityUid: identity.uid, slug: identity.externalOfferId, canonicalPath: `/inventory/${identity.externalOfferId}` });
       await projectUrlRegistryCommands.publishProjectUrlEntry(admin, { ...scope, urlEntryId: entry.urlEntryId, version: entry.version });
     }
+    const records = await runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceRevisionRecord.findMany({
+      where: { ...target, revisionId: second.source.lastGoodRevisionId! }, orderBy: { externalId: "asc" },
+    }));
+    const matching = createProjectJobPrincipal({ ...scope, jobName: "agent-matching" });
+    const evidence = records.map((record) => {
+      const rawRecord = (record.payload as unknown as { rawRecord: YrlRawOffer["element"] }).rawRecord;
+      const extracted = extractVladisAgentEvidence({ line: 0, column: 0, element: rawRecord });
+      if (!extracted) throw new Error("SYNTHETIC_AGENT_EVIDENCE_MISSING");
+      const { offerExternalId, ...fields } = extracted;
+      return { ...fields, offerExternalIds: [offerExternalId] };
+    });
+    const matchRequest = { ...target, sourceRevisionId: second.source.lastGoodRevisionId!, observedAt: new Date().toISOString(),
+      sharedOfficePhones: ["+79590000077"], evidence };
+    const matched = await feedAgentMatchingCommands.reconcileFeedAgents(matching, matchRequest);
+    expect(matched.bindings.filter((binding) => binding.outcome === "SHARED_OFFICE")).toHaveLength(2);
+    const agentUid = matched.bindings.find((binding) => binding.offerExternalIds.includes("synthetic-0"))!.agentUid!;
+    const privateAgentUid = matched.bindings.find((binding) => binding.offerExternalIds.includes("synthetic-3"))!.agentUid!;
+    expect(agentUid).toBeTruthy(); expect(privateAgentUid).toBeTruthy(); expect(privateAgentUid).not.toBe(agentUid);
+    const repeated = await feedAgentMatchingCommands.reconcileFeedAgents(matching, matchRequest);
+    expect(repeated.bindings.map((binding) => binding.agentUid)).toEqual(matched.bindings.map((binding) => binding.agentUid));
+    for (const uid of [agentUid, privateAgentUid]) {
+      const row = await runInPrincipalDatabaseTransaction(admin, (tx) => tx.agent.findUniqueOrThrow({ where: { uid } }));
+      await agentCommands.saveManualAgent(admin, { ...scope, agentUid: uid, version: row.version, origin: row.origin,
+        slug: row.slug, role: row.role, fullName: row.fullName, position: row.position ?? "", bio: row.bio ?? "",
+        specializations: row.specializations, photoMediaId: row.photoMediaId, workPhone: row.workPhone ?? "",
+        workEmail: row.workEmail ?? "", messengers: [], showOnSite: true, sortOrder: row.sortOrder,
+        status: row.status, listingPresenceStatus: row.listingPresenceStatus });
+    }
+    const consent = { ...scope, agentUids: [agentUid], confirmedBy: "synthetic-owner", confirmedAt: new Date().toISOString(),
+      basis: "synthetic-test-consent", referenceUrl: "" as const, note: "", confirmSuspicious: false };
+    expect(await agentCommands.confirmAgentConsentBatch(admin, consent)).toMatchObject({ state: "SUSPICIOUS" });
+    expect(await agentCommands.confirmAgentConsentBatch(admin, { ...consent, confirmSuspicious: true })).toMatchObject({ state: "APPLIED" });
+    const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+    wire.https.mockImplementation((options, receive) => {
+      expect(options).toMatchObject({ hostname: "93.184.216.34", servername: "media.example.test", method: "GET" });
+      const brokenImage = String(options.path).startsWith("/broken-");
+      const message = Object.assign(Readable.from([png]), { statusCode: brokenImage ? 403 : 200,
+        headers: { "content-type": "image/png", "content-length": String(png.length) } });
+      const request = Object.assign(new EventEmitter(), { end: vi.fn(), destroy: vi.fn() });
+      request.end.mockImplementation(() => receive(message)); return request;
+    });
+    const storage = createProjectObjectStorageResolver()(scope);
+    const media = createMediaAssetsServer(storage);
+    const mediaJob = createProjectJobPrincipal({ ...scope, jobName: "media-mirror" });
+    // Use current GOOD records plus the retained historical GOOD fact of grace.
+    const retained = await runInPrincipalDatabaseTransaction(admin, (tx) => tx.sourceRevisionRecord.findFirstOrThrow({
+      where: { ...target, revisionId: good.id, inventoryUid: missing.uid },
+    }));
+    for (const record of [...records, retained]) {
+      const draft = (record.payload as unknown as { draft: { imageUrls: string[] } }).draft;
+      const mirror = await media.mirrorMediaBatch(mediaJob, { ...target, sourceRevisionId: record.revisionId,
+        observedAt: new Date().toISOString(), items: draft.imageUrls.map((sourceUrl, position) => ({ sourceUrl, position,
+          entityType: "INVENTORY", entityUid: record.inventoryUid, kind: "LISTING_IMAGE", rightsBasis: "LICENSED", license: "synthetic-license" })) });
+      expect(mirror.mediaStatus).toBe("WARNING");
+      expect(mirror.items.map((item) => item.status)).toEqual(["MIRRORED", "WARNING", "MIRRORED"]);
+      expect(mirror.items[1]).toMatchObject({ assetId: null, publiclyPublishable: false });
+    }
     const token = `synthetic-remediation-${randomUUID()}`;
     await runInPrincipalDatabaseTransaction(admin, (tx) => createSnapshotAckService({ repository: new PrismaSnapshotDeliveryRepository(tx), now: () => new Date() })
       .initializeCredential({ ...scope, token }));
@@ -257,9 +323,42 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     ]));
     expect(new Set(inventory.map((row) => row.transactionType))).toEqual(new Set(["SALE", "RENT"]));
     for (const row of inventory) expect(row.price).toBe(row.uid === missing.uid ? 1000 : 1100);
+    for (const row of inventory) {
+      expect(row.media.map((image) => image.position)).toEqual([0, 2]);
+      expect(new Set(row.media.map((image) => image.ref)).size).toBe(1);
+      expect(row.isImageOrderChangeAllowed).toBe(false);
+      expect(row.locationPrecision).toBe("STREET");
+      expect(row.geo.latitude.state).toBe("VALUE");
+      expect(row.geo.longitude.state).toBe("VALUE");
+      if (row.geo.latitude.state !== "VALUE" || row.geo.longitude.state !== "VALUE")
+        throw new Error("SYNTHETIC_PUBLIC_GEO_MISSING");
+      expect(Number.isFinite(row.geo.latitude.value)).toBe(true);
+      expect(Number.isFinite(row.geo.longitude.value)).toBe(true);
+      expect(row.geo.latitude.value).toBeGreaterThanOrEqual(-90);
+      expect(row.geo.latitude.value).toBeLessThanOrEqual(90);
+      expect(row.geo.longitude.value).toBeGreaterThanOrEqual(-180);
+      expect(row.geo.longitude.value).toBeLessThanOrEqual(180);
+      expect(row.geo).not.toEqual({ latitude: { state: "VALUE", value: 47.0001 }, longitude: { state: "VALUE", value: 39.0001 } });
+    }
+    const publishedAgents = verified.datasets.agents as { uid: string }[];
+    expect(publishedAgents.map((agent) => agent.uid)).toEqual([agentUid]);
+    for (const externalId of ["synthetic-1", "synthetic-2", "synthetic-3"]) {
+      const uid = broken.identities.find((identity) => identity.externalOfferId === externalId)!.uid;
+      expect(inventory.find((row) => row.uid === uid)).not.toHaveProperty("agentUid");
+    }
+    expect(inventory.find((row) => row.uid === broken.identities.find((identity) => identity.externalOfferId === "synthetic-0")!.uid)?.agentUid).toBe(agentUid);
+    expect(verified.datasets["project/contacts"]).toContainEqual(expect.objectContaining({ phone: "+70000000077" }));
+    // Independently capture/assemble unchanged real facts; compare deterministic geo.
+    const snapshotJob = createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" });
+    const captured = await captureSnapshotInput(snapshotJob, { ...scope, schemaMinor: 0, idempotencyKey: randomUUID() });
+    const assembled = await createSnapshotCandidateAssemblyServer({ ...scope, storage })(snapshotJob,
+      { idempotencyKeyHash: captured.idempotencyKeyHash, requestHash: captured.requestHash });
+    const comparison = assembled.datasets.find((dataset) => dataset.kind === "inventory")!.records;
+    for (const row of inventory) expect(comparison.find((record) => record.key === row.uid)?.value).toMatchObject({ geo: row.geo });
     const publicJson = JSON.stringify(verified.datasets);
     expect(publicJson).not.toContain("PRIVATE-APARTMENT"); expect(publicJson).not.toContain("<script>");
     expect(publicJson).not.toContain("SYN-0");
+    expect(publicJson).not.toContain("+79590000002"); expect(publicJson).not.toContain("+79590000077");
     expect(publicJson).not.toContain("?token="); expect(manifest.sourceRevisions).toContain(second.source.lastGoodRevisionId);
     const ack = { projectId: scope.projectId, publishSequence: manifest.publishSequence, applied: true,
       manifestSha256: createHash("sha256").update(canonicalJsonBytes(manifest as CanonicalJsonValue)).digest("hex"), idempotencyKey: randomUUID() };
@@ -271,6 +370,31 @@ it("executes configured Vladis intake on the real worker and preserves GOOD iden
     expect(replay.status).toBe(200); expect((await replay.json()).idempotent).toBe(true);
     expect(await runInPrincipalDatabaseTransaction(admin, (tx) => tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: manifest.publishSequence } })))
       .toMatchObject({ status: "ACKNOWLEDGED" });
+    // Unsupported categories must not silently become publishable OTHER facts.
+    // Use a separately configured source so its retry cannot replace the GOOD source.
+    vi.stubEnv("SNAPSHOT_BUILD_ENABLED", "false");
+    const unsupportedSource = await sourceRegistryCommands.createSource(admin, { ...scope,
+      sourceKey: "synthetic-vladis-unsupported", name: "Synthetic unsupported category", endpointCredentialRef: feedRef,
+      adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+      datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY",
+      schedulePolicy: { mode: "MANUAL_ONLY" }, safetyPolicyId: policy.id, expectedNamespace: "", expectedProducer: "" });
+    const unsupportedTarget = { ...scope, sourceId: unsupportedSource.sourceId };
+    await sourceRegistryCommands.setSourceEnabled(admin, { ...unsupportedTarget, version: unsupportedSource.version, enabled: true });
+    await execute(xml().replace("<category>квартира</category>", "<category>synthetic-unsupported</category>"), "retry", unsupportedTarget);
+    const rejected = await runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+      source: await tx.source.findUniqueOrThrow({ where: { id: unsupportedTarget.sourceId } }),
+      revisions: await tx.sourceRevision.findMany({ where: unsupportedTarget }),
+      identities: await tx.inventoryIdentity.findMany({ where: unsupportedTarget }),
+    }));
+    expect(rejected.source.lastGoodRevisionId).toBeNull();
+    expect(rejected.revisions).toContainEqual(expect.objectContaining({ status: "REJECTED", invalidRecordCount: 1 }));
+    expect(rejected.identities).toHaveLength(0);
+    const preserved = await read();
+    expect(preserved.source.lastGoodRevisionId).toBe(second.source.lastGoodRevisionId);
+    expect(preserved.intents.map((intent) => intent.id).sort()).toEqual(broken.intents.map((intent) => intent.id).sort());
+    const unchangedCurrent = await handleSnapshotConsumerGet(request(), scope);
+    expect(unchangedCurrent.status).toBe(200);
+    expect((await unchangedCurrent.json()).manifest).toEqual(rawManifest);
   } finally {
     await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs();
     wire.dns.mockReset(); wire.https.mockReset(); wire.http.mockReset();
