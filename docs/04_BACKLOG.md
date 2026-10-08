@@ -46,6 +46,14 @@ fields, media provenance, references, signature/revocation/replay, bytes/hash/co
 и fixed gzip limit. Targeted 143/143 unit, architecture/lint/docs/secrets — PASS;
 independent review без findings. Real entrypoint native matrix ещё требуется до
 closure MP-10.7; structural/unit checks не заменяют runtime proof.
+Первый full native matrix на `181f902` — FAIL: 112/115 в 10 suites, final
+test DB reset выполнен. Исправлены два подтверждённых fixture defects: own
+retry job очищается только после LastGood/FAILED assertions, а multi-table
+shutdown observation использует authorized RepeatableRead вместо torn RC cut.
+Целевой прогон cron/source-worker → ACK rotation → shutdown/restart — 28/28
+PASS (`29705`, 63 migrations, final reset); lint/types — PASS. Первый restart
+timeout отдельно не доказан и не повторился; added own-scope status diagnostics
+не меняют timeout или assertions. Повторный full matrix остаётся обязательным.
 Production по-прежнему не разрешён.
 
 ### История scoped checkpoints MP-08/MP-09

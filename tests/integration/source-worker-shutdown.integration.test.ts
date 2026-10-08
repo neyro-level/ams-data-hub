@@ -15,7 +15,7 @@ import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.
 import { getSourceWorkerReadiness } from "../../src/modules/platform-operations/server.ts";
 import { SOURCE_IMPORT_QUEUE, sourceManualJobId } from "../../src/modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
-import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { acquireSourceExecutionGuard, sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 import { acquirePermanentOutboxWorkerGuard } from "../../src/modules/platform-operations/infrastructure/permanent-worker-guard.ts";
@@ -100,7 +100,9 @@ async function setup(publicSnapshot = false) {
   };
   const readiness = () => getSourceWorkerReadiness(env.OUTBOX_WORKER_ID);
   const request = (key: string) => sourceRegistryCommands.requestManualSourceRun(admin, { ...target, idempotencyKey: `${key}-${suffix}` });
-  const read = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+  // One observation cut: ReadCommitted can see a request completed after earlier
+  // identity/revision reads, producing a torn fixture baseline across the commit.
+  const read = () => runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(admin), async (tx) => ({
     source: await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }),
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
@@ -108,7 +110,7 @@ async function setup(publicSnapshot = false) {
       payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
     requests: await tx.sourceManualRunRequest.findMany({ where: target }),
     revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { startedAt: "asc" } }),
-  }));
+  }), { isolationLevel: "RepeatableRead" });
   const nativeJob = async (id: string) => {
     const boss = await getPgBoss();
     // Actual child reconciliation creates the queue; do not precreate it in the fixture.
@@ -171,7 +173,22 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
     let sdk: ReturnType<typeof vi.spyOn> | undefined;
     try {
       const requested = await context.request("restart-baseline"); const worker = context.launch("good");
-      await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      try {
+        await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      } catch (error) {
+        // Value-free, own-scope diagnostics; never forward child stderr/env/PII.
+        const facts = await context.read(); const job = await context.nativeJob(requested.requestId);
+        const request = facts.requests.find((row) => row.id === requested.requestId);
+        const outbox = await runInPrincipalDatabaseTransaction(context.admin,
+          (tx) => tx.outboxEvent.findFirst({ where: { organizationId: context.target.organizationId,
+            topic: "ingestion.source.manual.request", payload: { path: ["manualRequestId"], equals: requested.requestId } },
+          select: { status: true, attempts: true } }));
+        throw new Error(`SYNTHETIC_RESTART_BASELINE_FAILED ${JSON.stringify({
+          childExitCode: worker.child.exitCode, childSignal: worker.child.signalCode,
+          jobState: job?.state ?? null, retryCount: job?.retryCount ?? null,
+          requestStatus: request?.status ?? null, outbox, revisions: facts.revisions.length, identities: facts.identities.length,
+        })}`, { cause: error });
+      }
       stop(worker.child); expect(await waitExit(worker)).toEqual({ code: 0, signal: null });
       const baseline = await context.read(); expect(baseline.identities).toHaveLength(1);
       expect(baseline.revisions).toHaveLength(1); expect(baseline.revisions[0]).toMatchObject({ status: "GOOD", sequence: 1 });

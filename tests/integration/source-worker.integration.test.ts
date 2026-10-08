@@ -105,11 +105,12 @@ describe("native source-worker queue to persisted import", () => {
         expect(schedules.map((schedule) => schedule.key)).not.toContain("deleted-synthetic");
         expect(schedules.some((schedule) => schedule.key === target.sourceId)).toBe(expected === "completed");
         await stopPgBoss();
+        return jobId!;
       };
       await execute('<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="one"><category>квартира</category><type>продажа</type><price><value>1000</value></price></offer></realty-feed>', "completed");
       const good = await database.runInPrincipalDatabaseTransaction(admin, (tx) => tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }));
       expect(good.lastGoodRevisionId).toEqual(expect.any(String));
-      await execute("<broken>", "retry");
+      const failedJobId = await execute("<broken>", "retry");
       await database.runInPrincipalDatabaseTransaction(admin, async (tx) => {
         expect((await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } })).lastGoodRevisionId).toBe(good.lastGoodRevisionId);
         expect(await tx.sourceRevision.count({ where: { ...target, status: "GOOD" } })).toBe(1);
@@ -118,6 +119,11 @@ describe("native source-worker queue to persisted import", () => {
         expect(await tx.outboxEvent.count({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request", status: "PENDING" } })).toBe(1);
       });
       expect(scopedReads).toBeGreaterThan(4); expect(uploads).toBeGreaterThan(0); expect(gateway).toHaveBeenCalledTimes(2);
+      // Prove retry and LastGood preservation first, then retire only this fixture's job.
+      // A later combined-worker suite must not intake it with another synthetic transport.
+      const cleanupQueue = await getPgBoss();
+      await cleanupQueue.cancel(SOURCE_IMPORT_QUEUE, failedJobId);
+      expect((await cleanupQueue.getJobById(SOURCE_IMPORT_QUEUE, failedJobId))?.state).toBe("cancelled");
     } finally { await stopPgBoss(); schedulerRole.mockRestore(); role.mockRestore(); sdk.mockRestore(); vi.unstubAllEnvs(); gateway.mockReset(); }
   }, 420_000);
 });
