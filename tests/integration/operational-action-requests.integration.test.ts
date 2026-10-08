@@ -79,6 +79,46 @@ async function selectedStage(admin: PlatformAdminPrincipal, scope: { organizatio
 }
 
 describe("actual admin durable operational requests under NOBYPASS", () => {
+  it("denies direct raw-pin capability use outside its exact admin ReadCommitted target", async () => {
+    const { admin, scope } = await fixture();
+    const stage = await selectedStage(admin, scope, true);
+    const context = { principalKind: "platform-admin" as const, actorId: admin.userId,
+      organizationId: null, projectIds: "*" as const, correlationId: randomUUID() };
+    const query = (tx: Parameters<Parameters<typeof runInAuthorizedDatabaseTransaction>[1]>[0],
+      organizationId: string, projectId: string, buildInputId: string | null, sequence: number | null) =>
+      tx.$queryRawUnsafe<{ allowed: boolean }[]>(
+        "SELECT public.snapshot_operational_raw_pin_admission($1::text,$2::text,$3::text,$4::integer) AS allowed",
+        organizationId, projectId, buildInputId, sequence);
+    const counts = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+      requests: await tx.operationalActionRequest.count({ where: scope }),
+      outbox: await tx.outboxEvent.count({ where: { organizationId: scope.organizationId } }),
+      audits: await tx.auditEvent.count({ where: { organizationId: scope.organizationId } }),
+      keys: await tx.idempotencyKey.count({ where: { organizationId: scope.organizationId } }),
+    }));
+    const baseline = await counts();
+    for (const target of [[stage.buildInputId, null], [null, stage.publishSequence]] as const)
+      expect(await runInAuthorizedDatabaseTransaction(context,
+        (tx) => query(tx, scope.organizationId, scope.projectId, target[0], target[1]))).toEqual([{ allowed: true }]);
+    await expect(runInAuthorizedDatabaseTransaction({ ...context, principalKind: "project-job",
+      actorId: "snapshot-input", organizationId: scope.organizationId, projectIds: [scope.projectId] },
+    (tx) => query(tx, scope.organizationId, scope.projectId, stage.buildInputId, null)))
+      .rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, scope.organizationId, scope.projectId, stage.buildInputId, null),
+      { isolationLevel: "RepeatableRead" })).rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, scope.organizationId, "invalid scope", stage.buildInputId, null)))
+      .rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    for (const target of [[null, null], [stage.buildInputId, stage.publishSequence], ["missing-input", null], [null, 999999]] as const)
+      await expect(runInAuthorizedDatabaseTransaction(context,
+        (tx) => query(tx, scope.organizationId, scope.projectId, target[0], target[1])))
+        .rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    const foreign = await fixture();
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, foreign.scope.organizationId, foreign.scope.projectId, stage.buildInputId, null)))
+      .rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    expect(await counts()).toEqual(baseline);
+  }, 60_000);
   it.each(["SNAPSHOT_PUBLISH", "SNAPSHOT_ROLLBACK"] as const)("fences actual web %s pins without exposing private journals", async (action) => {
     const { admin, scope, suffix } = await fixture();
     const rawArtifactHash = "e".repeat(64);
