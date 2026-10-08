@@ -49,3 +49,4 @@ export {
   type StagingReceipt,
 } from "./application/import-pipeline.ts";
 export { createRawArtifactRetentionSourceReader, type RawArtifactRetentionSourceCut } from "./infrastructure/raw-artifact-retention-source-reader.ts";
+export { createRawPinAdmissionReader } from "./infrastructure/raw-pin-admission-reader.ts";

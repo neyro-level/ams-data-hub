@@ -297,6 +297,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     let workerTransactions = 0;
     let transactionOpen = false;
+    let markCapturePid: ((pid: number) => void) | undefined;
     const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
       async (context, execute, options) => original(context, async (tx) => {
         if (context.actorId === "snapshot-input") {
@@ -304,6 +305,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
             .toEqual([{ rolbypassrls: false, rolsuper: false }]);
           workerTransactions++;
+          if (markCapturePid && options?.isolationLevel === "RepeatableRead") {
+            const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+            markCapturePid(backend!.pid); markCapturePid = undefined;
+          }
         }
         transactionOpen = true;
         try { return await execute(tx); } finally { transactionOpen = false; }
@@ -316,6 +321,67 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
       expect(retention.snapshotCoverage).toBe("COMPLETE");
       expect(retention.pinnedRevisionIds).toContain(fixture.revisionId);
       expect(retention.rawArtifactPins).toContainEqual({ sourceId: fixture.sourceId, rawArtifactHash: "c".repeat(64) });
+      // Deliberately establish capture's RR snapshot while a different backend
+      // holds global and commits a new PENDING deletion. The new admission must
+      // see that commit through fresh RC, not the outer stale RR view.
+      let releaseDeletion!: () => void; let markDeletionHeld!: (pid: number) => void;
+      const release = new Promise<void>((resolve) => { releaseDeletion = resolve; });
+      const held = new Promise<number>((resolve) => { markDeletionHeld = resolve; });
+      const retentionContext = { principalKind: "project-job" as const, actorId: "raw-artifact-retention",
+        organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() };
+      const deletionTransaction = (execute: (tx: DatabaseTransaction) => Promise<void>) =>
+        runInAuthorizedDatabaseTransaction(retentionContext, async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          return execute(tx);
+        }, { isolationLevel: "ReadCommitted", timeout: 30_000 });
+      let deletionId = "";
+      const holding = deletionTransaction(async (tx) => {
+        const deletion = await tx.rawArtifactDeletion.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          rawArtifactHash: "c".repeat(64), storageKey: `source-artifacts/${"c".repeat(64)}`,
+          policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null } } });
+        deletionId = deletion.id;
+        const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+        markDeletionHeld(backend!.pid); await release;
+      });
+      let capturing: Promise<{ error?: unknown }> | undefined;
+      try {
+        const blocker = await Promise.race([held, holding.then(() => { throw new Error("SYNTHETIC_DELETION_NOT_HELD"); })]);
+        const started = new Promise<number>((resolve) => { markCapturePid = resolve; });
+        capturing = captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-delete-race" })
+          .then(() => ({}), (error: unknown) => ({ error }));
+        const waiting = await Promise.race([started, capturing.then(() => { throw new Error("SYNTHETIC_CAPTURE_NOT_WAITING"); })]);
+        let blocked = false;
+        const deadline = Date.now() + 1500;
+        while (!blocked && Date.now() < deadline) {
+          blocked = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+            const [row] = await tx.$queryRawUnsafe<{ blocked: boolean }[]>(
+              "SELECT $1::integer=ANY(pg_blocking_pids($2::integer)) AS blocked", blocker, waiting);
+            return row!.blocked;
+          });
+          if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(blocked).toBe(true);
+      } finally {
+        releaseDeletion(); markCapturePid = undefined;
+        const [writer] = await Promise.allSettled([holding, capturing]);
+        if (writer!.status === "rejected") throw writer!.reason;
+      }
+      expect((await capturing!)!.error).toMatchObject({ message: "RAW_RETENTION_IN_PROGRESS", retryable: true });
+      await expect(captureSnapshotInput(principal, request)).resolves.toEqual(first);
+      await deletionTransaction(async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletionId);
+      });
+      await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-delete-acknowledged" }))
+        .rejects.toThrow("RAW_RETENTION_IN_PROGRESS");
+      await worker(scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count()).toBe(1);
+        expect((await tx.projectSnapshotSequence.findFirstOrThrow()).lastReservedSequence).toBe(1);
+      });
+      await deletionTransaction(async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\',"completedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletionId);
+      });
+      // Subsequent actual captures below still rebuild normalized facts after
+      // DELETED; this synthetic journal does not claim provider IO occurred.
       const pinned = structuredClone(first);
       const publicCatalog = projectSnapshotCatalog(first);
       const publicProjectState = projectSnapshotProjectState(first);

@@ -215,6 +215,14 @@ not provenance proof: ingestion additionally checks exact scoped GOOD references
 and captured inventory/raw SHA relationships. No deletion writes or public/web
 capability are added by these read policies.
 
+Forward migration `20261008220000_raw_capture_admission` adds worker-only,
+snapshot-input scoped SELECT on deletion metadata and a global-first statement
+fence on deletion journal writes. It adds no web access, journal mutations or
+storage capability. New captures check exact captured GOOD revision/raw SHA
+pins against PENDING/ACKNOWLEDGED operations using a separate fresh RC read
+while their outer RR transaction holds global. DELETED is not a prohibition
+on normalized-fact rebuild; existing immutable receipt replay creates no pin.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record

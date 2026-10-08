@@ -328,6 +328,17 @@ Operational request acceptance takes the global safety fence before idempotency
 or outbox locks, so new pending publish/rollback targets cannot commit unnoticed
 during this cut. Complete coverage still requires the deletion executor's own
 exclusive lifetime guardian and durable admission; it is not a storage capability.
+New capture admission additionally resolves the server-built revision/SHA pins
+on a bounded second authorized ReadCommitted connection while the outer
+RepeatableRead capture holds global. That second connection does not reacquire
+global (which would self-deadlock); it observes journal commits predating the
+lock acquisition even when the outer RR snapshot does not. Intersecting
+PENDING/ACKNOWLEDGED deletion returns retryable `RAW_RETENTION_IN_PROGRESS`
+and rolls back sequence/input writes. Existing receipt replay creates no new
+root; DELETED does not forbid rebuilding from persisted normalized facts.
+All deletion journal writers now take global before rows. Selected publish and
+rollback request admission still needs its own narrow pending-deletion check;
+the capture seam alone does not enable DELETE.
 `RawArtifactDeletion` persists immutable project/SHA,
 key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
 deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and
