@@ -379,13 +379,24 @@ production release.
 
 ### Isolated restore drill
 
-`pnpm test:data-safety-drill` is the only local restore command. It accepts
-only the guarded loopback `*_test` target, freezes mutating jobs before the
-logical dump, restores into a distinct `*_restore_test` database, verifies
-PostgreSQL 18 and identity invariants, keeps jobs frozen through reconcile and
-unfreezes only after a zero-conflict report. The command deletes the temporary
-dump and restore database in `finally`; its secret-free evidence remains in
-`.local/evidence/data-safety-drill.json`.
+`pnpm test:data-safety-drill`, with `APP_ENV=test`, is the local restore command.
+It accepts only literal loopback port 5435 and the dedicated `ams_data_hub_test`
+source, restoring into the distinct `ams_data_hub_restore_test` database.
+The prepare process creates an actual synthetic GOOD import, UID, published URL,
+signed snapshot and stage receipt, then freezes through the actual web command.
+Logical dump/restore preserves runtime function ownership and grants; stripping
+these would invalidate NOBYPASS recovery proof. The restore process verifies
+PostgreSQL 18 and exact SHA-256 fingerprints of fifteen nonempty persisted
+tables before any transitions. Actual reconcile/unfreeze execute as NOBYPASS
+web, reading persisted counts through the worker-owned counts-only capability;
+caller zeroes alone cannot authorize recovery. Jobs remain frozen through
+reconcile, stale publication-time disagreement blocks unfreeze without success
+audit, and only a fresh zero-conflict report permits unfreeze.
+The command deletes the temporary dump and restore database in `finally` and
+resets the source test database. Prior PASS evidence is cleared at startup;
+`DATA_SAFETY_DRILL_V2` PASS is written only after successful cleanup to
+`.local/evidence/data-safety-drill.json`. Source intake/storage transports are
+synthetic; this proves PostgreSQL restoration, not S3 object/provider restoration.
 
 Production and managed-provider restore are never inferred from this command.
 They require the release procedure, provider backup/retention evidence, an

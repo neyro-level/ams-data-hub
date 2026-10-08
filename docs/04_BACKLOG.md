@@ -78,6 +78,17 @@ diff — PASS; focused independent review без findings. Populated rollback,
 с literal UID/sequence zeroes не принимается как текущий Data Safety Gate.
 MP-10.3 остаётся RUNNING, без общего readiness или delivery PASS.
 
+Следующий scoped restore checkpoint: старый drill с literal zeroes заменён
+двухпроцессной проверкой с actual synthetic GOOD import/UID/published URL/
+capture/sign/stage/publication и NOBYPASS web freeze. Реальный PG18 dump/restore
+сохраняет ownership/grants; SHA-256 fingerprints 15 непустых таблиц совпадают.
+Actual восстановленные reconcile/unfreeze и stale-marker denial без ложного
+audit — PASS. `19161`: prepare 1/1, restore 1/1, все 64 migrations, удаление
+dump/restore DB и final source reset — PASS; evidence `DATA_SAFETY_DRILL_V2`.
+Это PostgreSQL-only proof с synthetic intake/S3 transports, не provider backup
+configuration, S3 object restoration или raw-retention runtime. Raw retention
+и остальные acceptance gates остаются в работе; production не затронут.
+
 ### История scoped checkpoints MP-08/MP-09
 
 Ограничения и pending ниже относятся к моменту каждого checkpoint. Текущий
