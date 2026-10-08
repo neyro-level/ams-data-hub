@@ -115,7 +115,7 @@ inventory UID и вторым GOOD. Actual publication сохраняет signed
 проходит signature/schema/hash/privacy/integrity verification и повторяет ACK
 идемпотентно. Delivery/current/credential version и timestamps остаются теми же,
 в том числе после второго Source GOOD; child PID-scoped SDK evidence подтверждает
-реальные чтения из synthetic lower transport. Native `90281/8a83a5` — 7/7 PASS,
+реальные чтения из synthetic lower transport. Native `6277/91ebbe` — 7/7 PASS,
 включая шесть
 shutdown/recovery regressions, 63 migrations и final DB reset. Current standalone
 build `83913/74d61c` — PASS; CI policy regressions — 8/8 PASS. RISKY gate теперь
@@ -133,6 +133,15 @@ unsupported RETRY jobs отменяются только по собственн
 retry/rejection/preservation assertions, до чужого transport/suite. Foreign jobs
 не очищаются. Native `81765/4dfcc4` — 1/1 PASS, 63 migrations и final DB reset;
 independent correction review без открытых замечаний.
+MP-09 gate `337` на `9b0ddaa...` — FAIL: 91 unit PASS, build PASS,
+38/39 native PASS, final DB reset; Linux fatal guardian-loss проверка получила
+`SOURCE_EXECUTION_BUSY` при немедленной reacquisition после Node exit.
+Test-only correction фиксирует original source-lock PID/database/scope до fatal
+exit и ограниченно (5 s) наблюдает исчезновение именно этого lock; затем прежняя
+реальная reacquisition обоих guards обязательна. Graceful checks не изменены,
+дополнительных terminate/reset/BUSY retries нет. Native `6277/91ebbe`, test types
+`93184/8451dd`, scoped lint `98743/de02d6` — PASS; independent review без findings.
+Failed run сохранён; новый reviewed exact-head gate требуется до merge.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит

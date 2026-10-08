@@ -17,7 +17,7 @@ import { SOURCE_IMPORT_QUEUE, sourceManualJobId } from "../../src/modules/ingest
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
-import { acquireSourceExecutionGuard } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { acquireSourceExecutionGuard, sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 import { acquirePermanentOutboxWorkerGuard } from "../../src/modules/platform-operations/infrastructure/permanent-worker-guard.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
@@ -353,10 +353,23 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
     const context = await setup();
     try {
       await context.request("guardian-loss"); const worker = context.launch("upload"); await worker.event("upload-consumed");
+      const key = sourceExecutionGuardKey(context.target);
+      const sourceLock = await getPrismaPool().query<{ pid: number; database: number }>(
+        "SELECT pid, database FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ShareLock' AND objsubid = 2 AND granted "
+        + "AND classid::bigint = $1::bigint AND objid::bigint = $2::bigint "
+        + "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())", [key[0] >>> 0, key[1] >>> 0]);
+      expect(sourceLock.rows).toHaveLength(1);
+      const owner = sourceLock.rows[0]!;
       const lock = await getPrismaPool().query<{ pid: number }>("SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 4278803 AND objid = 17311 AND objsubid = 2 AND granted");
       expect(lock.rows).toHaveLength(1);
       await getPrismaPool().query("SELECT pg_terminate_backend($1)", [lock.rows[0]!.pid]);
       expect(await waitExit(worker)).toEqual({ code: 1, signal: null }); expect(worker.guardLost()).toBe(true); expect(worker.stopped()).toBe(false);
+      // Fatal Node exit does not await PostgreSQL's socket/backend cleanup.
+      // Observe only the pinned own source lock, bounded; a leak still fails.
+      await eventually(async () => (await getPrismaPool().query<{ held: boolean }>(
+        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ShareLock' AND objsubid = 2 AND granted "
+        + "AND pid = $1 AND database = $2::oid AND classid::bigint = $3::bigint AND objid::bigint = $4::bigint) AS held",
+        [owner.pid, owner.database, key[0] >>> 0, key[1] >>> 0])).rows[0]?.held === false, Boolean, 5_000);
       await context.assertLocksFree(); const facts = await context.read();
       expect(facts.source.lastGoodRevisionId).toBeNull(); expect(facts.identities).toEqual([]);
       // Fatal loss can leave a TTL-qualified row and a crash orphan in this exact test-owned directory.
