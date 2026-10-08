@@ -37,8 +37,16 @@ DB reset — PASS. Дерево merge идентично gated candidate; canoni
 публичное GitHub main-зеркало синхронизированы после merge.
 Активен MP-10; MP-10.7 RUNNING в PlanDB. Частичный checkpoint `e7c6ea9` добавляет
 AST source guards и обязательные self-tests; это не closure или readiness PASS.
-Full actual-diff runtime selection и structural composition removal guards
-дорабатываются в этой ветке. Production по-прежнему не разрешён.
+Actual-diff runtime selection и structural composition removal guards
+реализованы в checkpoint c91cfac: обязательные native suites вычисляются из Git,
+не из caller hint; отсутствие bindings и попытка пропустить proof отклоняются.
+Strict public-policy unit guards используют непустые 13 datasets, действительный
+project-owned verifier и подписанные adversarial mutations: private/raw-Prisma
+fields, media provenance, references, signature/revocation/replay, bytes/hash/count
+и fixed gzip limit. Targeted 143/143 unit, architecture/lint/docs/secrets — PASS;
+independent review без findings. Real entrypoint native matrix ещё требуется до
+closure MP-10.7; structural/unit checks не заменяют runtime proof.
+Production по-прежнему не разрешён.
 
 ### История scoped checkpoints MP-08/MP-09
 

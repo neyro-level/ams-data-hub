@@ -16,6 +16,7 @@ export function requiredRegressionProofs(changedPaths) {
     const file = supplied.replaceAll("\\", "/");
     if (/^(?:\.sourcecraft\/|prisma\/|src\/worker\/|scripts\/ci\/|scripts\/(?:verify-architecture|architecture-(?:source|runtime)-guards)|tests\/(?:architecture-(?:source|runtime)-guards|required-regression-proofs|sourcecraft-policy)\.test\.ts$)/u.test(file)
       || file === "src/infrastructure/source-worker-runtime.ts"
+      || file === "tests/snapshot-public-policy.test.ts"
       || /^src\/modules\/platform-operations\//u.test(file)
       || /^src\/infrastructure\/worker-/u.test(file)
       || /^(?:package\.json|pnpm-lock\.yaml|vitest\.integration\.config\.mts|scripts\/run-integration-tests\.mjs)$/u.test(file)) {

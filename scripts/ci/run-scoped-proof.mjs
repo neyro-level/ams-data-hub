@@ -72,6 +72,7 @@ export function mandatoryUnitProofFiles(selectedFiles) {
     "tests/architecture-runtime-guards.test.ts",
     "tests/sourcecraft-policy.test.ts",
     "tests/required-regression-proofs.test.ts",
+    "tests/snapshot-public-policy.test.ts",
   ])];
 }
 

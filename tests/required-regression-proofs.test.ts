@@ -14,6 +14,7 @@ describe("actual-diff mandatory runtime proof selection", () => {
     "src/modules/platform-operations/infrastructure/prisma-reliability-repository.ts",
     "src/modules/platform-operations/infrastructure/permanent-worker-guard.ts",
     "src/infrastructure/worker-process-lifecycle.ts", "src/infrastructure/worker-service-container.ts",
+    "tests/snapshot-public-policy.test.ts",
   ])("requires the full concrete runtime matrix for wiring/policy changes: %s", (file) => {
     expect(requiredRegressionProofs([file])).toEqual([...REQUIRED_RUNTIME_MATRIX].sort());
     expect(() => assertRequiredRegressionProofs([file], [])).toThrow(/MANDATORY_RUNTIME_PROOF_MISSING/u);
