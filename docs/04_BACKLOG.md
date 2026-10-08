@@ -29,10 +29,35 @@
 
 ## Текущая граница
 
-MP-00–MP-07 доставлены. MP-08.1–MP-08.5 закрыты implementation ledger:
+MP-00–MP-08 доставлены. MP-08.1–MP-08.10 закрыты implementation ledger:
 все шесть concrete executors реализованы, зарегистрированы и проверены.
 SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
-в рабочую ветку; epic merge/gate ещё не выполнены. MP-08.6: action state
+в рабочую ветку; весь MP-08 впоследствии доставлен PR #26 после Gate #325.
+MP-09 Scenario A взят в работу: configured Vladis pipeline через реальный worker,
+затем публичные commands подготовки agents/media/URL, durable build intent,
+publication и consumer ACK. Это ещё не PASS и не production readiness;
+явная подготовка публичными commands не выдаётся за автоматическую orchestration.
+Первый native участок Scenario A — PASS: configured Source/SecretRef, real worker
+и pg-boss, реальный Safe Intake с нижним synthetic DNS/HTTPS transport, raw bytes
+и SHA-256, десять известных property variants, повторный GOOD и стабильные UID,
+missing-grace с ACTIVE/counter, broken XML без изменения Last Good/identities.
+63 migrations и final test DB reset — PASS. Маленькая fixture использует явную
+project-owned policy, не изменение live Vladis calibration. Unknown category
+в диагностическом прогоне корректно дал REJECTED из-за invalid record;
+positive OTHER feed proof не заявлен. Extended native publication/portable files/ACK
+прогон — PASS: публичные subscription/contact/URL commands, exact second GOOD
+intent PROCESSED + JobRun SUCCESS + native queue completed, actual default worker,
+подписанная publication, actual current и 13 artifact HTTP responses, portable
+verification и authenticated ACK/replay с durable ACKNOWLEDGED. Первый extended
+прогон выявил неверный CURATED input fixture; исправлен на реальный ALL_SHARED
+command contract, без прямой вставки подписки. Architect completion-oracle finding
+исправлен explicit own completion и persisted exact-intent assertions.
+Decoded inventory exact UID cohort, десять property types, SALE/RENT и текущая
+цена 1100 против historical grace price 1000 подтверждены повторным native PASS;
+private apartment, script, source-code и query-token sentinels отсутствуют.
+Agent/media/consent/collision и полный
+Next/browser runtime proof остаются открытыми; Scenario A не закрыт.
+MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
 общую strict result schema и scalar allowlist; raw result, hashes и private proof
@@ -82,7 +107,14 @@ suite вызваны unfiltered fixture claims, захватывавшими ret
 suites. Test-only fix использует стабильный unique per-key topic и own event ID;
 реальные concurrency/stale lease/retry/dead-letter assertions сохранены, foreign
 events не удаляются и не переносятся. Production claim implementation неизменна.
-Merge не выполнен; новое exact-head provider evidence требуется после checkpoint.
+На новом exact-head `ad09ecab9ade1e4b0d1abcfb494a82fb92c9c27a` Gate #325
+завершился SUCCESS: 233/233 units, 349/349 native, 63 migrations, final reset
+и production build PASS. Independent full-range architect review — PASS.
+PR #26 MERGED без force/rebase/squash; canonical main
+`a71c3a01b062b314df392c2e305ddd7c9ec07a1e`, tree равен gated candidate.
+Публичное GitHub main зеркало и локальный main приведены к тому же SHA;
+старый локальный MP-08 branch удалён после проверки merge. Delivery ledger закрыт,
+graph reconciliation CLEAN; production не затронут. Gate #322 сохранён как FAIL.
 Исправление подтверждено локально: consumer/notifier + outbox-reliability на
 одной native PostgreSQL базе — 31/31, 63 migrations и final reset PASS;
 test types, scoped lint, docs/secrets/diff — PASS. Независимый review patch
