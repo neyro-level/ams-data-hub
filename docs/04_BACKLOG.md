@@ -83,7 +83,18 @@ Implementation closure B–D записано native PlanDB `done` после ch
 `C:/Users/User/Desktop/Data-skill/beads-uninstall-backup-20261008/payload/store-7`;
 PlanDB `.plandb.db` теперь содержит весь исходный graph с notes/evidence/statuses
 и зависимостями; migration verification — PASS. Mapping и границы находятся в
-`PLANDB_MIGRATION_2026-10-08.md`. Старый v4 не переоткрывается; следующие задачи E–G.
+`PLANDB_MIGRATION_2026-10-08.md`. Старый v4 не переоткрывается.
+Scenario E native proof — PASS (1/1): реальный registered disabled Source,
+dry-run без записи, diff/review hash и explicit confirmation, отказ stale review,
+transactional import с identity/price/audit/catalog revision, затем публичные
+subscription/URL commands → capture → actual snapshot candidate assembly.
+Development и price DTO получены из сохранённых фактов; приватная provenance
+отсутствует. Native run `56361/f7b73c`, 63 migrations и final test DB reset — PASS;
+test types `73222/1bd046` — PASS. Первый прогон выявил несовместимый fixture profile;
+выбран действующий `default-v1`, registry и защитные правила не изменены.
+Проверка ограничена candidate assembly без media: signed publication, web-role
+NOBYPASS и process restart этим сценарием не заявлены. Следующие сценарии F–G;
+общий MP-09 delivery gate и MP-10 ещё не завершены.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
