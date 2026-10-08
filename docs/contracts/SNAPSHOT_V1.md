@@ -536,8 +536,14 @@ Capture reuses ingestion's actual SAFE policy/count/analysis predicate for both
 the head and each selected historical fact. The baseline is the exact scoped GOOD
 `baseLastGoodRevisionId`, from the same source and preceding GOOD sequence; its
 record count is read from the immutable row, not trusted from analysis metrics.
-Each private proof contains version, SAFE disposition, source/revision/sequence,
-policy/analysis hashes, baseline ID and previous GOOD count. Preflight correlates
+Automatic private proof contains version, SAFE disposition, source/revision/sequence,
+policy/analysis hashes, baseline ID and previous GOOD count. A manually approved
+GOOD instead requires the immutable scoped `SourceManualApprovalReceipt` created
+by actual request-owned apply. Ingestion recomputes its original SUSPICIOUS analysis,
+policy, private review and request pins; an APPROVED label alone is not authority.
+The strict APPROVED proof additionally pins request ID/hash and does not carry
+reviewer/reason or raw policy/analysis. SAFE admission remains unchanged.
+Preflight correlates
 these pins and equal-head proofs before object IO; none enters public DTOs.
 The per-cut cache bounds each lookup to 200 pins. SQL rejects policy or analysis
 JSON over 4096 bytes each before transfer; no raw policy/analysis is captured.
