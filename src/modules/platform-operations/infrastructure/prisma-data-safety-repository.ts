@@ -1,14 +1,28 @@
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { Prisma } from "../../../generated/prisma/client.ts";
-import type { DataSafetyRepository, DataSafetySnapshot } from "../application/data-safety-service.ts";
+import type { DataSafetyConsistencyReport, DataSafetyRepository, DataSafetySnapshot } from "../application/data-safety-service.ts";
 
 const selectState = { jobsFrozen: true, frozenAt: true, reconciledAt: true } as const;
 
 export class PrismaDataSafetyRepository implements DataSafetyRepository {
   public constructor(private readonly transaction: DatabaseTransaction) {}
 
-  public async freeze(reason: string, now: Date): Promise<DataSafetySnapshot> {
+  public async lockControl(): Promise<void> {
     await this.transaction.$queryRaw(Prisma.sql`select pg_advisory_xact_lock(hashtextextended('ams-data-safety-mutations', 0))::text`);
+  }
+
+  /** One database observation cut, after lockControl, never caller-supplied zeroes.
+   * Repeated sequence references are legitimate; only reservation ownership,
+   * counters and linked receipts must agree. URL relinks retain their original
+   * reservation subject, so current entityUid is deliberately not compared to it. */
+  public async inspectConsistency(): Promise<DataSafetyConsistencyReport> {
+    const [report] = await this.transaction.$queryRaw<DataSafetyConsistencyReport[]>(Prisma.sql`
+      select * from public.data_safety_consistency_report()`);
+    if (!report) throw new Error("DATA_SAFETY_CONSISTENCY_REPORT_MISSING");
+    return report;
+  }
+  public async freeze(reason: string, now: Date): Promise<DataSafetySnapshot> {
+    await this.lockControl();
     return this.transaction.dataSafetyState.upsert({
       where: { id: "global" },
       create: { id: "global", jobsFrozen: true, freezeReason: reason, frozenAt: now, reconciledAt: null, unfrozenAt: null },

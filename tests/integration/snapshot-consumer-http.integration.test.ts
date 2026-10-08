@@ -46,6 +46,8 @@ import { ReliabilityService, type ClaimedReliabilityEvent } from "../../src/modu
 import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
 import { executeSafeOutboundWebhook } from "../../src/platform/http/safe-outbound-core.ts";
 import type { SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
+import { createDataSafetyService } from "../../src/modules/platform-operations/application/data-safety-service.ts";
+import { PrismaDataSafetyRepository } from "../../src/modules/platform-operations/infrastructure/prisma-data-safety-repository.ts";
 
 async function fixture(publish = true) {
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-consumer-admin", correlationId: randomUUID() };
@@ -106,6 +108,76 @@ async function fixture(publish = true) {
 }
 
 describe("actual project-authenticated snapshot consumer HTTP and FORCE RLS", () => {
+  it("reconciles populated private receipts through counts-only NOBYPASS web recovery and rejects stale clean markers", async () => {
+    const f = await fixture();
+    const recovery = createDataSafetyService({
+      createRepository: (tx) => new PrismaDataSafetyRepository(tx),
+      runInTransaction: (principal, execute) => runInAuthorizedDatabaseTransaction({
+        principalKind: principal.kind, actorId: f.admin.userId, organizationId: null,
+        projectIds: "*", correlationId: f.admin.correlationId,
+      }, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+          .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+        return execute(tx);
+      }),
+    });
+    const zeroes = { publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 };
+    const ownAudits = () => runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.auditEvent.findMany({
+      where: { correlationId: f.admin.correlationId, action: { startsWith: "data-safety." } }, orderBy: { createdAt: "asc" },
+    }));
+    try {
+      const stage = await createSnapshotStagedBuildServer(f.bound)(f.principal, f.lookup);
+      expect(stage.publishSequence).toBe(f.sequence);
+      await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        expect(await tx.$queryRawUnsafe(`SELECT owner.rolname, owner.rolsuper, owner.rolbypassrls,
+          p.prosecdef, p.proconfig, has_function_privilege('ams_data_hub_web',p.oid,'EXECUTE') AS "webExecute",
+          has_table_privilege('ams_data_hub_web','public."SnapshotBuildInput"','SELECT') AS "privateRead"
+          FROM pg_proc p JOIN pg_roles owner ON owner.oid=p.proowner
+          WHERE p.oid='public.data_safety_consistency_report()'::regprocedure`)).toEqual([{
+          rolname: "ams_data_hub_worker", rolsuper: false, rolbypassrls: false, prosecdef: true,
+          proconfig: ["search_path=pg_catalog, public, pg_temp", "row_security=on"], webExecute: true, privateRead: false,
+        }]);
+      });
+      await expect(recovery.reconcileAfterRestore(f.admin, zeroes)).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
+      await recovery.freezeMutatingJobs(f.admin, { reason: "Synthetic recovery proof" });
+      await expect(recovery.unfreezeMutatingJobs(f.admin, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
+      await expect(recovery.reconcileAfterRestore(f.admin, zeroes)).resolves.toMatchObject({ jobsFrozen: true });
+      const current = await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.projectCurrentSnapshotManifest.findUniqueOrThrow({
+        where: { organizationId_projectId: f.scope },
+      }));
+      expect(current.publishSequence).toBe(f.sequence);
+      // The current monotonic guard must reject same-sequence changes; do not
+      // disable it to manufacture corruption. Delivery metadata permits this
+      // mismatch, which the counts-only recovery cut must actually detect.
+      await expect(runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.projectCurrentSnapshotManifest.update({
+        where: { organizationId_projectId: f.scope }, data: { publishedAt: new Date(current.publishedAt.getTime() + 1) },
+      }))).rejects.toThrow("Current snapshot sequence must increase");
+      await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.deliveryRun.update({
+        where: { organizationId_projectId_publishSequence: { ...f.scope, publishSequence: f.sequence } },
+        data: { publishedAt: new Date(current.publishedAt.getTime() + 1) },
+      }));
+      const before = await ownAudits();
+      await expect(recovery.unfreezeMutatingJobs(f.admin, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_FAILED");
+      await expect(recovery.reconcileAfterRestore(f.admin, zeroes)).rejects.toThrow("DATA_SAFETY_RECONCILE_FAILED");
+      expect(await ownAudits()).toEqual(before);
+      await runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.deliveryRun.update({
+        where: { organizationId_projectId_publishSequence: { ...f.scope, publishSequence: f.sequence } }, data: { publishedAt: current.publishedAt },
+      }));
+      await expect(recovery.unfreezeMutatingJobs(f.admin, {})).resolves.toMatchObject({ jobsFrozen: false });
+      expect((await ownAudits()).map((row) => row.action)).toEqual(["data-safety.freeze", "data-safety.reconcile", "data-safety.unfreeze"]);
+      await expect(runInAuthorizedDatabaseTransaction({ principalKind: "snapshot-consumer", actorId: "snapshot-consumer-read",
+        organizationId: f.scope.organizationId, projectIds: [f.scope.projectId], correlationId: randomUUID() },
+      (tx) => tx.$queryRawUnsafe("SELECT * FROM public.data_safety_consistency_report()")))
+        .rejects.toThrow("DATA_SAFETY_RECONCILIATION_SCOPE_DENIED");
+      // A web admin still has no raw SELECT privilege on the private capture.
+      await expect(runInAuthorizedDatabaseTransaction({ principalKind: "platform-admin", actorId: f.admin.userId,
+        organizationId: null, projectIds: "*", correlationId: randomUUID() }, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+        return tx.$queryRawUnsafe('SELECT * FROM public."SnapshotBuildInput"');
+      })).rejects.toThrow();
+    } finally { f.cleanup(); }
+  });
   it("blocks new ingestion and publication for SUSPENDED alone while preserving readable current artifacts", async () => {
     const f = await fixture();
     try {

@@ -61,6 +61,23 @@ fresh standalone build, 115/115 native в 10 suites, 63 migrations и final rese
 Runtime/Portability/Operations gates, общий readiness verdict или provider gate.
 Production по-прежнему не разрешён.
 
+MP-10.3 scoped recovery checkpoint: reconcile и unfreeze используют общий
+control lock и actual persisted UID/URL/sequence report, а не caller zeroes.
+Узкая counts-only SQL capability принадлежит existing NOBYPASS worker с
+FORCE RLS/row_security; web не получает SELECT на private capture/parts.
+Current/run publishedAt и normal/rollback binding identity входят в проверки.
+Units — 7/7; native consumer/recovery suite (`3901`) — 23/23, все 64 migrations
+и final reset — PASS. Actual published snapshot + stage receipt проверены через
+реальные recovery commands под NOBYPASS web; stale clean marker с допустимым
+DeliveryRun timestamp mismatch запрещает reconcile/unfreeze без success audit.
+Owner/grants/security-definer readback — PASS. Первый scoped run (`24219`) —
+22/23 FAIL из-за запрещённой same-sequence current mutation в новой фикстуре;
+guard сохранён и теперь явно проверяется. Types/scoped lint/RLS coverage/secrets/
+diff — PASS; focused independent review без findings. Populated rollback,
+непустой restore drill и raw-retention runtime ещё не доказаны; старый drill
+с literal UID/sequence zeroes не принимается как текущий Data Safety Gate.
+MP-10.3 остаётся RUNNING, без общего readiness или delivery PASS.
+
 ### История scoped checkpoints MP-08/MP-09
 
 Ограничения и pending ниже относятся к моменту каждого checkpoint. Текущий

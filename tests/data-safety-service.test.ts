@@ -9,6 +9,8 @@ const member: PrincipalContext = { kind: "tenant-user", userId: "user-1", organi
 function harness() {
   let state: DataSafetySnapshot = { jobsFrozen: false, frozenAt: null, reconciledAt: null };
   const repository: DataSafetyRepository = {
+    lockControl: vi.fn(async () => undefined),
+    inspectConsistency: vi.fn(async () => ({ publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 })),
     freeze: vi.fn(async (_reason, now) => (state = { jobsFrozen: true, frozenAt: now, reconciledAt: null })),
     markReconciled: vi.fn(async (now) => (state = { ...state, reconciledAt: now })),
     unfreeze: vi.fn(async () => (state = { ...state, jobsFrozen: false })),
@@ -39,5 +41,37 @@ describe("data safety state", () => {
     const { service } = harness();
     await expect(service.freezeMutatingJobs(member, { reason: "restore" })).rejects.toThrow("DATA_SAFETY_ADMIN_REQUIRED");
     await expect(service.reconcileAfterRestore(admin, { publicUrlIdConflicts: 1, uidConflicts: 0, publishSequenceConflicts: 0 })).rejects.toEqual(expect.objectContaining({ code: "DATA_SAFETY_RECONCILE_FAILED" }));
+  });
+
+  it.each(["publicUrlIdConflicts", "uidConflicts", "publishSequenceConflicts"] as const)("does not trust caller zeroes for %s", async (field) => {
+    const { repository, service } = harness();
+    await service.freezeMutatingJobs(admin, { reason: "restore" });
+    vi.mocked(repository.inspectConsistency).mockResolvedValue({ publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0, [field]: 1 });
+    await expect(service.reconcileAfterRestore(admin, { publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 }))
+      .rejects.toThrow("DATA_SAFETY_RECONCILE_FAILED");
+    expect(repository.markReconciled).not.toHaveBeenCalled();
+    expect(repository.appendAudit).toHaveBeenCalledTimes(1);
+    await expect(service.unfreezeMutatingJobs(admin, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
+    expect(await repository.read()).toMatchObject({ jobsFrozen: true, reconciledAt: null });
+  });
+
+  it("cannot reconcile an unfrozen state", async () => {
+    const { repository, service } = harness();
+    await expect(service.reconcileAfterRestore(admin, { publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 }))
+      .rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
+    expect(repository.inspectConsistency).not.toHaveBeenCalled();
+    expect(repository.markReconciled).not.toHaveBeenCalled();
+    expect(repository.appendAudit).not.toHaveBeenCalled();
+  });
+
+  it("rechecks persisted consistency before unfreeze rather than trusting a stale clean marker", async () => {
+    const { repository, service } = harness();
+    await service.freezeMutatingJobs(admin, { reason: "restore" });
+    await service.reconcileAfterRestore(admin, { publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 0 });
+    vi.mocked(repository.inspectConsistency).mockResolvedValue({ publicUrlIdConflicts: 0, uidConflicts: 0, publishSequenceConflicts: 1 });
+    await expect(service.unfreezeMutatingJobs(admin, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_FAILED");
+    expect(repository.unfreeze).not.toHaveBeenCalled();
+    expect(repository.appendAudit).toHaveBeenCalledTimes(2);
+    expect(await repository.read()).toMatchObject({ jobsFrozen: true });
   });
 });
