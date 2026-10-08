@@ -1,10 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { stopOwnedTestChild } from "../helpers/owned-test-child.ts";
-import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 const evidence = vi.hoisted(() => ({ cuts: 0, failAudit: false, workerCuts: 0 }));
+const gateway = vi.hoisted(() => vi.fn());
+vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
+  const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
+  return { ...actual, safeOutboundStream: gateway };
+});
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = (context, execute, options) =>
@@ -28,7 +33,8 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
 import { runRawArtifactRetentionCommand } from "../../src/infrastructure/raw-artifact-retention-runtime.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
-import { acquireRawArtifactLifetimeGuard } from "../../src/modules/ingestion-core/server.ts";
+import { acquireRawArtifactLifetimeGuard, createSourceExecutionServer, sourceRegistryCommands, createRawArtifactDeletionRepository } from "../../src/modules/ingestion-core/server.ts";
+import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { rawArtifactLifetimeGuardKey } from "../../src/modules/ingestion-core/infrastructure/raw-artifact-lifetime-guard.ts";
 import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server.ts";
@@ -95,7 +101,8 @@ async function fixture() {
     audits: await tx.auditEvent.findMany({ where: { organizationId: setup.scope.organizationId, action: "source.raw-artifact.deleted" } }),
   }));
   // Legacy metadata is synthetic setup, not invented producer STORED evidence.
-  const revision = (index: number, status: "FAILED" | "GOOD" = "FAILED", recent = false, sourceId = setup.source.id) =>
+  const revision = (index: number, status: "FAILED" | "GOOD" = "FAILED", recent = false, sourceId = setup.source.id,
+    metadata: { rawArtifactHash?: string; byteCount?: number } = {}) =>
     runInPrincipalDatabaseTransaction(admin, async (tx) => {
       const time = recent ? new Date() : new Date("2001-01-01T00:00:00Z"); const target = { ...setup.scope, sourceId };
       const policy = { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, allowEmpty: true };
@@ -103,7 +110,8 @@ async function fixture() {
         adapterKey: setup.source.adapterKey, adapterVersion: setup.source.adapterVersion, profileKey: setup.source.profileKey, profileVersion: setup.source.profileVersion,
         safetyPolicy: policy, safetyAnalysis: JSON.parse(JSON.stringify(analyzeImportSafety({ recordCount: 0, previousGoodRecordCount: null, invalidRecordCount: 0, issues: [] }, policy))), recordCount: 0 } });
       await tx.sourceRevision.update({ where: { id: created.id }, data: { status: status === "GOOD" ? "STAGED" : "FAILED",
-        sequence: status === "GOOD" ? index : null, rawArtifactHash: hash(index), rawStorageKey: `source-artifacts/${hash(index)}`, rawByteCount: 1,
+        sequence: status === "GOOD" ? index : null, rawArtifactHash: metadata.rawArtifactHash ?? hash(index),
+        rawStorageKey: `source-artifacts/${metadata.rawArtifactHash ?? hash(index)}`, rawByteCount: metadata.byteCount ?? 1,
         normalizedContentHash: "b".repeat(64), completedAt: time } });
       if (status === "GOOD") await tx.sourceRevision.update({ where: { id: created.id }, data: { status: "GOOD" } });
       return created.id;
@@ -120,6 +128,70 @@ async function fixture() {
 }
 
 describe("actual bounded raw retention one-shot command under native worker NOBYPASS", () => {
+  it("records a genuine post-DELETED streaming PUT and retains its fresh GOOD reference without altering prior provenance", async () => {
+    const f = await fixture();
+    const bytes = Buffer.from('<realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06"><offer internal-id="resurrected"><category>квартира</category><type>продажа</type><price><value>1000</value></price><location><address>Синтетический город</address></location></offer></realty-feed>');
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    // Old legacy metadata/provider bytes are setup, not fabricated STORED proof.
+    const legacy = await f.revision(1, "FAILED", false, f.source.id, { rawArtifactHash: sha, byteCount: bytes.byteLength });
+    const readLegacy = () => runInPrincipalDatabaseTransaction(f.admin, (tx) => tx.sourceRevision.findUniqueOrThrow({ where: { id: legacy } }));
+    const originalLegacy = await readLegacy();
+    const objects = new Map([[`source-artifacts/${sha}`, bytes]]); let deletes = 0; let puts = 0;
+    const bucket = process.env.SYNTHETIC_DELETE_BUCKET!;
+    const client = new S3Client({ endpoint: "https://synthetic.invalid", region: "ru-1", forcePathStyle: true,
+      credentials: { accessKeyId: "synthetic-delete", secretAccessKey: "synthetic-delete" }, maxAttempts: 1 });
+    const sdk = vi.spyOn(S3Client.prototype, "send").mockImplementation(async (command: unknown) => {
+      expect(evidence.cuts).toBe(0);
+      if (!(command instanceof DeleteObjectCommand) && !(command instanceof PutObjectCommand)) throw new Error("SYNTHETIC_UNEXPECTED_IO");
+      expect(command.input.Bucket).toBe(bucket); expect(command.input.Key).toBe(`source-artifacts/${sha}`);
+      if (command instanceof DeleteObjectCommand) { deletes++; objects.delete(command.input.Key!); }
+      else {
+        const chunks: Buffer[] = [];
+        for await (const chunk of command.input.Body as AsyncIterable<Uint8Array>) chunks.push(Buffer.from(chunk));
+        const consumed = Buffer.concat(chunks); expect(consumed).toEqual(bytes); puts++; objects.set(command.input.Key!, consumed);
+      }
+      return { ETag: "synthetic-resurrection", $metadata: { httpStatusCode: 204, attempts: 1 } } as never;
+    });
+    try {
+      expect(await f.run()).toMatchObject({ deleted: 1, unknown: 0 }); expect(objects.size).toBe(0);
+      const deleted = await f.read(); expect(deleted.journals[0]).toMatchObject({ status: "DELETED", rawArtifactHash: sha });
+      const completedAt = deleted.journals[0]!.completedAt!;
+      const deadline = Date.now() + 2_000;
+      while (!(await getPrismaPool().query<{ later: boolean }>("SELECT clock_timestamp()::timestamptz(3)>$1::timestamptz AS later", [completedAt])).rows[0]!.later) {
+        if (Date.now() >= deadline) throw new Error("SYNTHETIC_DB_CLOCK_NOT_ADVANCED");
+        await new Promise<void>((done) => setTimeout(done, 5));
+      }
+      vi.stubEnv("SYNTHETIC_RESURRECTION_FEED", "https://synthetic-resurrection.invalid/feed.xml");
+      const source = await sourceRegistryCommands.createSource(f.admin, { ...f.scope, sourceKey: "resurrection", name: "Synthetic resurrection",
+        endpointCredentialRef: "SYNTHETIC_RESURRECTION_FEED", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+        profileKey: "default-v1", profileVersion: "1.0.0", datasetType: "MIXED_REALTY", transportType: "HTTPS_XML",
+        sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" }, safetyPolicyId: "", expectedNamespace: "", expectedProducer: "" });
+      await sourceRegistryCommands.setSourceEnabled(f.admin, { ...f.scope, sourceId: source.sourceId, version: source.version, enabled: true });
+      gateway.mockResolvedValue({ status: 200, contentType: "application/xml", contentLength: bytes.byteLength,
+        finalUrl: new URL(process.env.SYNTHETIC_RESURRECTION_FEED!), body: (async function* () { yield bytes; })(), close: vi.fn() });
+      const target = { ...f.scope, sourceId: source.sourceId };
+      const result = await createSourceExecutionServer(new S3ObjectStorage({ bucket, client })).run(target);
+      expect(result).toMatchObject({ state: "GOOD", rawArtifactHash: sha, sequence: 1 });
+      const produced = await runInPrincipalDatabaseTransaction(f.admin, async (tx) => ({
+        puts: await tx.rawArtifactPutAttempt.findMany({ where: target }),
+        identities: await tx.inventoryIdentity.findMany({ where: target }),
+        source: await tx.source.findUniqueOrThrow({ where: { id: source.sourceId } }),
+      }));
+      expect(produced.puts).toHaveLength(1); expect(produced.puts[0]).toMatchObject({ status: "STORED", rawArtifactHash: sha,
+        storageKey: `source-artifacts/${sha}`, byteCount: bytes.byteLength });
+      expect(produced.puts[0]!.createdAt.getTime()).toBeGreaterThan(completedAt.getTime());
+      expect(produced.puts[0]!.storedAt!.getTime()).toBeGreaterThanOrEqual(produced.puts[0]!.createdAt.getTime());
+      expect(produced.identities).toHaveLength(1); expect(produced.identities[0]).toMatchObject({ status: "ACTIVE", sourceHash: sha });
+      if (result.state === "GOOD") expect(produced.source.lastGoodRevisionId).toBe(result.revisionId);
+      const state = await runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "raw-artifact-retention",
+        ...f.scope, projectIds: [f.scope.projectId], correlationId: randomUUID() },
+      (tx) => createRawArtifactDeletionRepository(tx).readTarget(f.scope, sha), { isolationLevel: "ReadCommitted" });
+      expect(state).toMatchObject({ unsettled: null, availability: "PRESENT" });
+      expect(await f.run()).toMatchObject({ deleted: 0, retained: 1, unknown: 0 });
+      expect(deletes).toBe(1); expect(puts).toBe(1); expect(objects.get(`source-artifacts/${sha}`)).toEqual(bytes);
+      expect(await readLegacy()).toEqual(originalLegacy); expect(await f.read()).toEqual(deleted);
+    } finally { sdk.mockRestore(); client.destroy(); gateway.mockReset(); vi.unstubAllEnvs(); }
+  }, 30_000);
   it("runs the actual worker main to natural exit and skips an already deleted key on process restart", async () => {
     const f = await fixture(); await f.revision(1);
     try {

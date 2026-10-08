@@ -3,17 +3,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { rawArtifactRetentionPolicySchema, type RawArtifactRetentionPolicy } from "../domain/raw-artifact-retention.ts";
+import { rawArtifactRemovalAvailability as availability, type RawArtifactRemovalAvailability } from "../domain/raw-artifact-removal-availability.ts";
 
 type Scope = { organizationId: string; projectId: string };
 const auditId = (id: string) => `raw-delete:${id}`;
-type RemovalAvailability = "PRESENT" | "REMOVED" | "UNKNOWN" | null;
-function availability(deleted: { requestedAt: Date; completedAt: Date | null } | null,
-  put: { createdAt: Date; storedAt: Date | null } | null): RemovalAvailability {
-  if (!deleted) return null;
-  if (!deleted.completedAt) throw new Error("RAW_RETENTION_JOURNAL_INVALID");
-  return !put ? "REMOVED" : put.storedAt && put.createdAt > deleted.completedAt && put.storedAt >= put.createdAt
-    ? "PRESENT" : put.storedAt && put.storedAt < deleted.requestedAt ? "REMOVED" : "UNKNOWN";
-}
 function assertAudit(scope: Scope, deletionId: string, audit: { organizationId: string | null; action: string;
   entityType: string; entityId: string | null; afterMarker: Prisma.JsonValue | null } | null) {
   const marker = audit?.afterMarker as Record<string, unknown> | null;
@@ -72,7 +65,7 @@ export function createRawArtifactDeletionRepository(tx: DatabaseTransaction) {
       if (unsettled.length > 1) throw new Error("RAW_RETENTION_JOURNAL_INVALID");
       const deleted = await tx.rawArtifactDeletion.findFirst({ where: { ...where, status: "DELETED" },
         orderBy: [{ completedAt: "desc" }, { id: "desc" }], select: { id: true, requestedAt: true, completedAt: true } });
-      let state: RemovalAvailability = null;
+      let state: RawArtifactRemovalAvailability = null;
       if (deleted) {
         const audit = await tx.auditEvent.findUnique({ where: { id: auditId(deleted.id) },
           select: { organizationId: true, action: true, entityType: true, entityId: true, afterMarker: true } });
