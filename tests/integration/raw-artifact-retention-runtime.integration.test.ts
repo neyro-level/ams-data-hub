@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { resolve } from "node:path";
+import { stopOwnedTestChild } from "../helpers/owned-test-child.ts";
 import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 const evidence = vi.hoisted(() => ({ cuts: 0, failAudit: false, workerCuts: 0 }));
@@ -32,6 +35,39 @@ import { captureSnapshotInput } from "../../src/modules/snapshot-delivery/server
 import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 
 const hash = (index: number) => index.toString(16).padStart(64, "0");
+async function workerProcess(scope: { organizationId: string; projectId: string }, mode = "success") {
+  const child = spawn(process.execPath, ["--conditions=react-server", "--import", "tsx",
+    "tests/helpers/raw-retention-worker-process.ts", scope.organizationId, scope.projectId], {
+    cwd: resolve(import.meta.dirname, "../.."), env: { ...process.env,
+      SYNTHETIC_RETENTION_HASH: hash(1), SYNTHETIC_RETENTION_MODE: mode }, stdio: ["ignore", "pipe", "pipe"],
+  });
+  const events: Record<string, unknown>[] = []; let buffer = "";
+  child.stdout.on("data", (chunk: Buffer) => {
+    buffer += chunk.toString();
+    let end;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
+      try { const event: unknown = JSON.parse(line); if (event && typeof event === "object" && "event" in event) events.push(event as Record<string, unknown>); }
+      catch { /* Never forward unstructured diagnostics or environment values. */ }
+    }
+    if (buffer.length > 16_384) buffer = "";
+  });
+  child.stderr.on("data", () => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const code = await Promise.race([new Promise<number | null>((done, reject) => {
+      child.once("error", () => reject(new Error("SYNTHETIC_RETENTION_CHILD_START_FAILED")));
+      child.once("close", done);
+    }), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("SYNTHETIC_RETENTION_CHILD_EXIT_TIMEOUT")), 30_000);
+    })]);
+    return { code, deletes: events.filter((event) => event.event === "synthetic_raw_delete").length,
+      result: events.find((event) => event.event === "raw_artifact_retention_finished") };
+  } finally {
+    clearTimeout(timer);
+    await stopOwnedTestChild(child);
+  }
+}
 async function fixture() {
   const suffix = randomUUID().slice(0, 8);
   const admin: PlatformAdminPrincipal = { kind: "platform-admin", userId: "synthetic-retention", correlationId: randomUUID() };
@@ -84,6 +120,32 @@ async function fixture() {
 }
 
 describe("actual bounded raw retention one-shot command under native worker NOBYPASS", () => {
+  it("runs the actual worker main to natural exit and skips an already deleted key on process restart", async () => {
+    const f = await fixture(); await f.revision(1);
+    try {
+      expect(await workerProcess(f.scope)).toMatchObject({ code: 0, deletes: 1, result: { deleted: 1, unknown: 0 } });
+      expect(await workerProcess(f.scope)).toMatchObject({ code: 0, deletes: 0, result: { deleted: 0, alreadyRemoved: 1 } });
+      const state = await f.read(); expect(state.journals[0]).toMatchObject({ status: "DELETED" }); expect(state.audits).toHaveLength(1);
+    } finally { vi.unstubAllEnvs(); }
+  }, 75_000);
+  it("exits actual main nonzero for unknown DELETE and never reissues it after process restart", async () => {
+    const f = await fixture(); await f.revision(1);
+    try {
+      expect(await workerProcess(f.scope, "unknown")).toMatchObject({ code: 1, deletes: 1, result: { deleted: 0, unknown: 1 } });
+      expect(await workerProcess(f.scope)).toMatchObject({ code: 1, deletes: 0, result: { deleted: 0, unknown: 1 } });
+      const state = await f.read(); expect(state.journals[0]).toMatchObject({ status: "PENDING", lastFailureCode: "RAW_DELETE_IO_UNKNOWN" }); expect(state.audits).toHaveLength(0);
+    } finally { vi.unstubAllEnvs(); }
+  }, 75_000);
+  it("recovers committed ACK through actual main with broken storage config and no provider IO", async () => {
+    const f = await fixture(); await f.revision(1); const sdk = f.sdk(); evidence.failAudit = true;
+    try {
+      expect(await f.run()).toMatchObject({ unknown: 1, deleted: 0 });
+      expect((await f.read()).journals[0]).toMatchObject({ status: "ACKNOWLEDGED" });
+      vi.stubEnv("PROJECT_STORAGE_BINDINGS", "invalid");
+      expect(await workerProcess(f.scope)).toMatchObject({ code: 0, deletes: 0, result: { recovered: 1, unknown: 0 } });
+      const state = await f.read(); expect(state.journals[0]).toMatchObject({ status: "DELETED" }); expect(state.audits).toHaveLength(1);
+    } finally { evidence.failAudit = false; sdk.mockRestore(); vi.unstubAllEnvs(); }
+  }, 45_000);
   it("deletes only eligible exact keys, audits once and does not starve later batches behind DELETED", async () => {
     const f = await fixture(); const first = await f.revision(1); await f.revision(2); const sdk = f.sdk();
     try {
