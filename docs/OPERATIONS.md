@@ -186,7 +186,8 @@ the original reserved identity. These metadata APIs are not an executor or proof
 of external IO. Internal bounded artifact reading now retains the authenticated
 compressed bytes for unchanged-file reuse without extra GETs or recompression;
 consumer trust, privacy and limits are unchanged. Approved-source loading validates
-exact committed run/stage/root capture before config/IO and authenticates retained
+exact committed run/binding/root capture, with stage pins when present, before
+config/IO and authenticates retained
 exact-source PUBLIC Ed25519 key in a separate archive-only trust view. This permits
 reading an already-approved revoked/noncurrent source, never accepting a revoked
 new signature or changing ordinary PUBLISH. Root identity adaptation is private
