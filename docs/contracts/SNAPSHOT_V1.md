@@ -29,9 +29,14 @@ Consumer-only SQL guards prevent identity/manifest or unrelated field writes.
 Late cancellation rolls the transaction back. Errors use generic bounded
 400/401/404/409/413/503 responses without private DB/storage diagnostics.
 
+SUSPENDED alone (jobs unfrozen) rejects actual new Source execution, capture and
+pending publication while preserving the committed current/run and immutable
+objects. Authorized current discovery and artifact GET remain available.
+
 Native production-controller and staging regression proof: 106/106 tests with
 62 migrations and final reset; final ACK trust-cut regression run: 15/15,
-including rollback on signing-key revocation after the real ACK write.
+including rollback on signing-key revocation after the real ACK write. The
+additional SUSPENDED-alone regression completes a 16/16 consumer suite.
 The combined run includes all six rollback modes followed by
 actual consumer reads. SDK/credentials are synthetic. This does not claim a
 Next-network/browser end-to-end run, live provider activation or production.

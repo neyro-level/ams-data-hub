@@ -39,6 +39,7 @@ import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/ap
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { PrismaSnapshotRollbackRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
+import { createSourceExecutionServer } from "../../src/modules/ingestion-core/server.ts";
 import type { SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
 
 async function fixture(publish = true) {
@@ -93,13 +94,47 @@ async function fixture(publish = true) {
     const params = { ...scope };
     const request = (credential = token, path = "current", signal?: AbortSignal) => new Request(`http://127.0.0.1/api/snapshots/${scope.organizationId}/${scope.projectId}/${path}`,
       { headers: { authorization: `Bearer ${credential}` }, signal });
-    return { admin, scope, params, request, token, sequence: receipt.publishSequence, objects,
+    return { admin, scope, params, request, token, sequence: receipt.publishSequence, objects, bound, principal, storage,
       gets: () => gets, corrupt: () => { corrupt = true; }, hook: (value: () => Promise<void>) => { hook = value; },
       cleanup: () => { cuts.afterAuth = null; cuts.beforeAck = null; send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); } };
   } catch (error) { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); throw error; }
 }
 
 describe("actual project-authenticated snapshot consumer HTTP and FORCE RLS", () => {
+  it("blocks new ingestion and publication for SUSPENDED alone while preserving readable current artifacts", async () => {
+    const f = await fixture();
+    try {
+      const pending = await captureSnapshotInput(f.principal, { ...f.scope, idempotencyKey: randomUUID(), schemaMinor: 0 });
+      const source = await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        const source = await tx.source.create({ data: { ...f.scope, sourceKey: "synthetic-suspended", name: "Synthetic suspended",
+          enabled: true, adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+          datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" },
+          credentialRef: { create: { endpointCredentialRefName: "SYNTHETIC_UNUSED_ENDPOINT" } } } });
+        await tx.project.update({ where: { id: f.scope.projectId }, data: { serviceState: "SUSPENDED" } });
+        expect((await tx.dataSafetyState.findUniqueOrThrow({ where: { id: "global" } })).jobsFrozen).toBe(false);
+        return source;
+      });
+      const original = await readRun(f); const keys = [...f.objects.keys()];
+      expect(await createSourceExecutionServer(f.storage).run({ ...f.scope, sourceId: source.id }))
+        .toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_PROJECT_BLOCKED" });
+      await expect(captureSnapshotInput(f.principal, { ...f.scope, idempotencyKey: randomUUID(), schemaMinor: 0 }))
+        .rejects.toThrow("SNAPSHOT_INPUT_PROJECT_BLOCKED");
+      await expect(createSnapshotPublicationServer(f.bound)(f.principal,
+        { idempotencyKeyHash: pending.idempotencyKeyHash, requestHash: pending.requestHash }))
+        .rejects.toThrow("SNAPSHOT_PUBLICATION_PROJECT_BLOCKED");
+      expect([...f.objects.keys()]).toEqual(keys);
+      expect(await readRun(f)).toEqual(original);
+      await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        expect(await tx.sourceRevision.count({ where: { sourceId: source.id } })).toBe(0);
+        expect(await tx.deliveryRun.count({ where: f.scope })).toBe(1);
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: f.scope })).publishSequence).toBe(f.sequence);
+      });
+      const current = await handleSnapshotConsumerGet(f.request(), f.params);
+      expect(current.status).toBe(200); expect((await current.json()).manifest.publishSequence).toBe(f.sequence);
+      const artifact = await handleSnapshotConsumerGet(f.request(), { ...f.params, publishSequence: String(f.sequence), kind: "geo" });
+      expect(artifact.status).toBe(200); expect((await artifact.arrayBuffer()).byteLength).toBeGreaterThan(0);
+    } finally { f.cleanup(); }
+  });
   it("serves signed current and immutable bytes, and denies foreign/arbitrary access before IO", async () => {
     const f = await fixture();
     try {

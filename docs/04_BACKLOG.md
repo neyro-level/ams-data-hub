@@ -45,7 +45,7 @@ Implementation closure и exact commit evidence принадлежат Task Mana
 MP-08.7 consumer HTTP delivery и authenticated ACK реализованы в рабочей ветке:
 Bearer-only exact project scope, bounded immutable reads, fresh credential/trust
 cuts, no-store responses и атомарный ACK через существующий service. Native
-HTTP/read/ACK suite — 15/15 после final trust-cut исправления; до него
+HTTP/read/ACK suite — 16/16 после final trust-cut и SUSPENDED regression; до них
 совместно со staging regressions — 106/106,
 62 forward migrations и final reset — PASS. Проверены SUSPENDED/frozen pull/ACK,
 rotation/revocation, replay/conflict, late cancellation и private-write denial.
@@ -53,7 +53,12 @@ rotation/revocation, replay/conflict, late cancellation и private-write denial.
 Все шесть rollback modes проверены настоящим consumer read после исполнения.
 Automatic GOOD publication без standalone BUILD stage receipt остаётся approved
 rollback source по exact root/binding/run pins; stage-only запрещён.
-Task closure/commit — по ledger после оставшихся проверок. Notifier и итоговое
+MP-08.7 закрыт implementation ledger, checkpoint `718d4af` в SourceCraft.
+MP-08.10 дополнительно проверен без глобального freeze: actual Source execution,
+новые capture/publication блокируются, committed current/run/objects неизменны;
+прежний manifest и immutable geo artifact доступны. Это application admission
+proof, не новый отдельный Source RLS audit. Native 16/16 и final reset — PASS.
+Exact closure/commit MP-08.8/MP-08.10 принадлежат Task Manager ledger. Notifier и итоговое
 Next/browser end-to-end proof открыты.
 Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
