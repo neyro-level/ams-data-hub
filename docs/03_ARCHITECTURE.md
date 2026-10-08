@@ -386,7 +386,12 @@ remediation program preserves these boundaries while connecting them:
   input parts and physical storage keys are not response DTOs. Authenticated ACK
   reuses the existing service under publication/input/rotation locks and records
   the consumer's applied attestation atomically, not an apply performed by Hub.
-  SUSPENDED/frozen projects retain pull/ACK; notifier and full runtime proof remain.
+  SUSPENDED/frozen projects retain pull/ACK. Publication atomically enqueues an
+  IDs-only notification intent; the existing combined worker optionally sends
+  a fixed projectId/publishSequence HTTPS POST outside transactions. Fresh full
+  lease fences precede IO and the PENDING → NOTIFIED write; a concurrent ACK
+  is never downgraded. Notification retries/dead-letter cannot undo publication.
+  Delivery is at-least-once, with polling fallback; complete runtime proof remains.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

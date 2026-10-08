@@ -41,6 +41,45 @@ The combined run includes all six rollback modes followed by
 actual consumer reads. SDK/credentials are synthetic. This does not claim a
 Next-network/browser end-to-end run, live provider activation or production.
 
+## Durable notification hint
+
+Automatic GOOD publication and Operations PUBLISH/ROLLBACK enqueue exactly one
+notification intent per scoped publication sequence in the same transaction
+as DeliveryRun creation. BUILD-only staging creates no notification. The
+internal strict payload contains schemaVersion, organizationId, projectId,
+deliveryRunId and publishSequence; no URL, dataset, manifest or credentials.
+Replay reuses the committed publication without a second intent. Historical
+runs are not backfilled; polling remains available.
+
+The existing combined worker opts in with `SNAPSHOT_WEBHOOK_ENABLED=true` and
+an exact-scope value-free `PROJECT_SNAPSHOT_WEBHOOK_BINDINGS` registry. The
+external fixed JSON POST contains only projectId and publishSequence. Missing
+project bindings defer; disabled/unsupported workers reserve this topic.
+Server-owned HTTPS endpoints use double DNS validation and pinned sockets/SNI,
+no redirects, cancellation, a five-second deadline and a 4096-byte opaque reply
+bound. Empty 204 is accepted; URLs and raw transport errors are not emitted.
+
+Global/publication locks and the full durable outbox/job lease tuple fence both
+the pre-send read and final PENDING → NOTIFIED transaction. HTTP occurs between
+these cuts, outside a transaction. An ACK committed during IO is never
+downgraded. A narrow invoker trigger permits the snapshot-notifier actor only
+the scoped PENDING → NOTIFIED status/timestamp write, not private/identity,
+creation/deletion or FAILED writes. Existing outbox retry/dead-letter handles
+notification failure without failing DeliveryRun or moving current backwards.
+
+This is at-least-once notification, not exactly-once HTTP: a crash or takeover
+after POST can resend the same hint. Consumers deduplicate project/sequence and
+pull authenticated current/artifacts; polling is the fallback. Notification
+success does not attest consumer apply or ACK. Native handler/DB proof replaces
+only external HTTP transport; full registered-worker/Next network proof remains
+separate, and no production or real endpoint activation is claimed.
+The final notifier/consumer and staging run passes 114/114 with 63 forward
+migrations and final test-database reset. It includes real notification retry
+exhaustion, takeover fencing, ACK during POST, configuration deferral, notifier
+write denial and actual Ops PUBLISH/ROLLBACK intent creation. The first run
+113/114 had a wrong test status oracle (COMPLETED vs persisted PROCESSED), fixed
+before the final run; fixture clocks isolate claims without moving foreign intents.
+
 ## Historical rollback admission prerequisite
 
 MP-08 rollback means old approved content with a new higher publication sequence,
@@ -540,7 +579,8 @@ the server-owned `media-projection` database purpose; import writes and FORCE
 RLS are unchanged. Historical fact revisions for missing-grace inventory use the
 MP-05 captured path below; full snapshot build/publication composition is
 implemented. All six Operations executors and consumer HTTP delivery/ACK are
-implemented; notifier and complete runtime proof remain MP-08 work.
+implemented; the durable optional notifier is wired in the existing worker.
+Complete runtime proof remains MP-08 work.
 
 `createSnapshotMediaProjectionServer` accepts only a server-loaded immutable
 SnapshotInput receipt and server-selected project-bound storage. It validates

@@ -58,8 +58,24 @@ MP-08.10 дополнительно проверен без глобальног
 новые capture/publication блокируются, committed current/run/objects неизменны;
 прежний manifest и immutable geo artifact доступны. Это application admission
 proof, не новый отдельный Source RLS audit. Native 16/16 и final reset — PASS.
-Exact closure/commit MP-08.8/MP-08.10 принадлежат Task Manager ledger. Notifier и итоговое
-Next/browser end-to-end proof открыты.
+Exact closure/commit MP-08.8/MP-08.10 принадлежат Task Manager ledger.
+MP-08.9: публикация атомарно создаёт durable notification intent; существующий
+combined worker opt-in отправляет только projectId/publishSequence вне TX.
+HTTPS double-DNS/pinning, no redirects, bounded reply/cancellation, exact-scope
+value-free endpoint refs; default disabled, missing config defers. Полный lease
+fence до/после IO и SQL status guard не допускают stale write или downgrade ACK.
+Webhook failure/retry/dead-letter не отменяют публикацию; delivery at-least-once,
+polling fallback сохраняется. Native notifier/consumer + staging — 114/114,
+63 forward migrations и final reset — PASS; PUBLISH/ROLLBACK проверяют intent.
+Первый прогон 113/114 выявил неверное тестовое ожидание COMPLETED вместо
+фактического PROCESSED; исправлено. Architect fixture-isolation замечание
+исправлено own availability/synthetic clock без изменений чужих intents.
+43 scoped unit tests, test types и verify:quick — PASS. Next production build
+и worker build/module smoke — PASS. Финальный полный unit-suite: 986 PASS,
+1 existing skip. До него stale canon guard требовал уже отсутствующий текст
+«missing executors»; заменён актуальными runtime/readiness boundary assertions,
+не weakening security. Внешний HTTP/SDK synthetic;
+итоговое registered-worker/Next/browser end-to-end proof остаётся открытым.
 Новый SUSPICIOUS_APPROVE переиспользует
 реальное ingestion apply, без повторного intake и обхода SAFE predicate.
 Source identity/lifecycle, GOOD/Last GOOD, snapshot intent, immutable manual

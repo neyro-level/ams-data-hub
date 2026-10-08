@@ -32,6 +32,8 @@ export interface SafeOutboundTransportRequest {
   address: SafeOutboundAddress;
   accept: string;
   signal: AbortSignal;
+  /** Only the fixed two-field webhook API supplies a bounded JSON body. */
+  jsonBody?: Uint8Array;
 }
 
 export interface SafeOutboundDependencies {
@@ -231,6 +233,7 @@ async function openSafeOutbound(
   policy: SafeOutboundPolicy,
   dependencies: SafeOutboundDependencies,
   maximumBytes: number,
+  webhookBody?: Uint8Array,
 ): Promise<SafeOutboundStreamResult> {
   if (policy.allowedContentTypes.length === 0) {
     throw new SafeOutboundError("CONTENT_TYPE_DENIED", "At least one outbound content type is required");
@@ -270,6 +273,7 @@ async function openSafeOutbound(
         address: connectionAddresses[0]!,
         accept: policy.allowedContentTypes.join(", "),
         signal: controller.signal,
+        ...(webhookBody ? { jsonBody: webhookBody } : {}),
       }).then((received) => {
         if (controller.signal.aborted) {
           received.abort();
@@ -298,7 +302,7 @@ async function openSafeOutbound(
       }
 
       const contentType = transport.headers["content-type"] ?? "";
-      if (!matchesContentType(contentType, policy.allowedContentTypes)) {
+      if (!webhookBody && !matchesContentType(contentType, policy.allowedContentTypes)) {
         throw new SafeOutboundError("CONTENT_TYPE_DENIED", "Outbound response content type is not allowed");
       }
 
@@ -345,6 +349,27 @@ async function openSafeOutbound(
     controller.signal.removeEventListener("abort", abortResponse);
     throw error;
   }
+}
+
+/** Fixed JSON hint only. No caller method/headers, redirects or response parsing. */
+export async function executeSafeOutboundWebhook(
+  input: string | URL,
+  notification: { projectId: string; publishSequence: number },
+  dependencies: SafeOutboundDependencies,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<void> {
+  if (!notification || Object.keys(notification).sort().join(",") !== "projectId,publishSequence"
+    || typeof notification.projectId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(notification.projectId)
+    || !Number.isSafeInteger(notification.publishSequence) || notification.publishSequence < 1
+    || notification.publishSequence > 2_147_483_647) {
+    throw new SafeOutboundError("INVALID_URL", "Invalid webhook signal");
+  }
+  const body = new TextEncoder().encode(JSON.stringify({ projectId: notification.projectId, publishSequence: notification.publishSequence }));
+  const response = await openSafeOutbound(input, { purpose: "feed", allowedContentTypes: ["application/json"],
+    maxRedirects: 0, maxBytes: 4096, timeoutMs: boundedInteger(options.timeoutMs, 5000, 5000, "timeoutMs"),
+    ...(options.signal ? { signal: options.signal } : {}) }, dependencies, 4096, body);
+  try { for await (const chunk of response.body) { void chunk; } }
+  finally { response.close(); }
 }
 
 export function executeSafeOutboundStream(

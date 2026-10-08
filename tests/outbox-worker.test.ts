@@ -20,7 +20,7 @@ function event(workerId: string): ClaimedReliabilityEvent {
 }
 
 describe("outbox worker lifecycle", () => {
-  it.each(["snapshot.build.request", "operations-control.snapshot.build.request",
+  it.each(["snapshot.build.request", "snapshot.delivery.notification.requested", "operations-control.snapshot.build.request",
     "operations-control.snapshot.publish.request", "operations-control.snapshot.rollback.request",
     "operations-control.ack.rotate.request", "operations-control.suspicious.approve.request",
     "operations-control.suspicious.reject.request"])("defers unsupported persisted %s even when the queued envelope claims maintenance", async (topic) => {

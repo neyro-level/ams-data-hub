@@ -1,4 +1,6 @@
 import "server-only";
+export { createSnapshotNotificationHandler } from "./infrastructure/snapshot-notification-handler.ts";
+export { createProjectSnapshotWebhookResolver } from "./infrastructure/project-snapshot-webhook.ts";
 export { createSnapshotConsumerReadServer } from "./infrastructure/snapshot-consumer-read.ts";
 export { handleSnapshotConsumerGet, handleSnapshotConsumerAck } from "./infrastructure/snapshot-consumer-http.ts";
 export { createSnapshotCandidateAssemblyServer } from "./infrastructure/snapshot-candidate-assembly.ts";

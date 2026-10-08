@@ -9,6 +9,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import {
   executeSafeOutbound,
   executeSafeOutboundStream,
+  executeSafeOutboundWebhook,
   SafeOutboundError,
   type SafeOutboundDependencies,
   type SafeOutboundPolicy,
@@ -59,13 +60,14 @@ const dependencies: SafeOutboundDependencies = {
         family: input.address.family,
         port,
         path: `${input.url.pathname}${input.url.search}`,
-        method: "GET",
+        method: input.jsonBody ? "POST" : "GET",
         servername: isIP(hostname) === 0 ? hostname : undefined,
         headers: {
           host: input.url.host,
           accept: input.accept,
           "user-agent": "AMS-Data-Hub-Safe-Outbound/1.0",
           connection: "close",
+          ...(input.jsonBody ? { "content-type": "application/json", "content-length": String(input.jsonBody.byteLength) } : {}),
         },
       }, (message) => resolve(toTransportResponse(message)));
 
@@ -73,7 +75,7 @@ const dependencies: SafeOutboundDependencies = {
       input.signal.addEventListener("abort", abort, { once: true });
       req.once("error", reject);
       req.once("close", () => input.signal.removeEventListener("abort", abort));
-      req.end();
+      req.end(input.jsonBody);
     });
   },
 };
@@ -99,3 +101,9 @@ export function safeOutboundStream(
 
 /** @deprecated Use explicit buffered or streaming mode. */
 export const safeOutboundRequest = safeOutboundBuffered;
+
+/** Server-owned URL only; sends exactly the public project/sequence hint. */
+export function safeOutboundWebhook(input: string | URL,
+  notification: { projectId: string; publishSequence: number }, options: { signal?: AbortSignal } = {}): Promise<void> {
+  return executeSafeOutboundWebhook(input, notification, dependencies, options);
+}

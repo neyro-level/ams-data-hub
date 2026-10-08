@@ -30,6 +30,8 @@ Use `.env.example` as the value-free project template.
 | `SNAPSHOT_PUBLISH_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; selected PUBLISH needs public trust only, not BUILD/signing enablement |
 | `SNAPSHOT_ROLLBACK_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; approved-source rollback requires retained archive public key plus current signing/public trust from the existing registry; no additional process or secret scope |
 | `ACK_ROTATION_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; enables accepted version-pinned STAGE/PROMOTE only; never initializes missing credentials |
+| `SNAPSHOT_WEBHOOK_ENABLED` | existing combined source-worker | independent explicit `true`/`false`, absent means disabled; notification intents remain reserved when unsupported; no additional process |
+| `PROJECT_SNAPSHOT_WEBHOOK_BINDINGS` | enabled snapshot notifier | strict value-free exact organization/project registry of `endpointRef` environment names; empty array allowed, unconfigured projects defer; lazy HTTPS URL resolution, no query/fragment/userinfo or payload URL override |
 | `PROJECT_ACK_ROTATION_BINDINGS` | enabled ACK rotation | bounded strict value-free exact organization/project registry of `nextTokenRef` environment names; STAGE resolves lazily, PROMOTE and committed replay do not resolve token values; no wildcard/global/cross-project fallback |
 | `PROJECT_SNAPSHOT_SIGNING_BINDINGS` | enabled snapshot capability | strict value-free exact organization/project registry: currentKeyId, nullable nextKeyId, revokedKeyIds, publicKeyRefs mapping key IDs to environment names; BUILD/ROLLBACK additionally require keyId/privateKeyRef, PUBLISH accepts those optional fields but never resolves private refs; no global/cross-project fallback |
 | `TIMEWEB_S3_ISOLATION_TEST`, `S3_TEST_*` | explicit local test only | non-production A-to-B denial runner; never set in runtime/deploy env |
@@ -40,6 +42,13 @@ the corresponding previous-release identities. Operators do not hand-edit
 those values.
 
 Provider credentials are intentionally absent. Add project-specific credentials only through an approved scope.
+
+Snapshot webhook bindings are bounded to 128 KiB/256 rows, reject duplicate
+scope and are re-read before each fresh send. URL values stay server-side and
+never enter outbox payloads, UI or error diagnostics. Disabled startup does not
+resolve them. HTTPS uses the existing safe-outbound double-DNS check, pinned
+socket/SNI, no redirects, a five-second deadline and a 4096-byte opaque response
+bound; empty 204 is accepted. No real endpoint or provider is activated here.
 
 Snapshot capability is repository wiring under verification, not a deployed
 production worker or production readiness claim. Local native proof exercises

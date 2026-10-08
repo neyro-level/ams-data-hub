@@ -77,7 +77,7 @@ import { createSnapshotPublicationProjectReader } from "../../src/modules/projec
 import { PrismaSnapshotRollbackRepository, type SnapshotRollbackLease } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
 import { composeRollbackSnapshot } from "../../src/modules/snapshot-delivery/application/snapshot-rollback.ts";
 import { signSnapshotManifest, verifySnapshotSignatureCandidate } from "../../src/modules/snapshot-delivery/application/snapshot-signing.ts";
-import { snapshotManifestV1Schema, type SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
+import { SNAPSHOT_NOTIFICATION_TOPIC, snapshotManifestV1Schema, type SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
 import { createApprovedSnapshotRollbackSourceReader } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-source.ts";
 import { createSnapshotRollbackStagingServer } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-rollback-staging.ts";
 
@@ -204,6 +204,13 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       const result = await execute(ownedLease);
       expect(result).toMatchObject({ action: "SNAPSHOT_ROLLBACK", sourcePublishSequence: stage.publishSequence,
         sourceDeliveryRunId: sourceRun.deliveryRunId, publishSequence: stage.publishSequence + 1 });
+      await observer(scope, async (tx) => {
+        const run = await tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: stage.publishSequence + 1 } });
+        const intents = await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC,
+          payload: { path: ["projectId"], equals: scope.projectId } } });
+        expect(intents.filter((intent) => (intent.payload as { publishSequence: number }).publishSequence === run.publishSequence)
+          .map((intent) => intent.payload)).toEqual([{ schemaVersion: 1, ...scope, deliveryRunId: run.id, publishSequence: run.publishSequence }]);
+      });
       expect(getSigning).toHaveBeenCalledTimes(1);
       const consumerToken = `synthetic-rollback-consumer-${randomUUID()}`;
       await runInPrincipalDatabaseTransaction(admin, (tx) => createSnapshotAckService({ repository: new PrismaSnapshotDeliveryRepository(tx), now: () => new Date() })
@@ -719,6 +726,13 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
       if (mode === "project") await runInPrincipalDatabaseTransaction(admin, (tx) => tx.project.update({ where: { id: scope.projectId }, data: { serviceState: "ACTIVE" } }));
       const result = mode === "success" ? await execute(lease) : await execute(replacement ?? lease);
       expect(result).toMatchObject({ action: "SNAPSHOT_PUBLISH", buildInputId: stage.buildInputId, publishSequence: stage.publishSequence, manifestSha256: stage.manifestSha256 });
+      await observer(scope, async (tx) => {
+        const run = await tx.deliveryRun.findFirstOrThrow({ where: { ...scope, publishSequence: stage.publishSequence } });
+        const intents = await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC,
+          payload: { path: ["projectId"], equals: scope.projectId } } });
+        expect(intents.filter((intent) => (intent.payload as { publishSequence: number }).publishSequence === run.publishSequence)
+          .map((intent) => intent.payload)).toEqual([{ schemaVersion: 1, ...scope, deliveryRunId: run.id, publishSequence: run.publishSequence }]);
+      });
       let currentSequence = stage.publishSequence;
       if (mode === "success") {
         // Actual newer stage/publication: an older operational replay must not move current backwards.

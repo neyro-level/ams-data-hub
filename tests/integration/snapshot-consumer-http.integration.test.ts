@@ -9,7 +9,7 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
       const consumer = context.principalKind === "snapshot-consumer";
-      if (consumer || ["snapshot-input", "snapshot-publication"].includes(context.actorId)) {
+      if (consumer || ["snapshot-input", "snapshot-publication", "snapshot-notifier"].includes(context.actorId)) {
         await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
           .toEqual([{ rolbypassrls: false, rolsuper: false }]);
@@ -40,6 +40,11 @@ import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { PrismaSnapshotRollbackRepository } from "../../src/modules/snapshot-delivery/infrastructure/prisma-snapshot-rollback-repository.ts";
 import { createSourceExecutionServer } from "../../src/modules/ingestion-core/server.ts";
+import { createSnapshotNotificationHandler, createProjectSnapshotWebhookResolver } from "../../src/modules/snapshot-delivery/server.ts";
+import { SNAPSHOT_NOTIFICATION_TOPIC } from "../../src/modules/snapshot-delivery/contracts.ts";
+import { ReliabilityService, type ClaimedReliabilityEvent } from "../../src/modules/platform-operations/index.ts";
+import { PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
+import { executeSafeOutboundWebhook } from "../../src/platform/http/safe-outbound-core.ts";
 import type { SnapshotTrustSet } from "../../src/modules/snapshot-delivery/contracts.ts";
 
 async function fixture(publish = true) {
@@ -94,7 +99,7 @@ async function fixture(publish = true) {
     const params = { ...scope };
     const request = (credential = token, path = "current", signal?: AbortSignal) => new Request(`http://127.0.0.1/api/snapshots/${scope.organizationId}/${scope.projectId}/${path}`,
       { headers: { authorization: `Bearer ${credential}` }, signal });
-    return { admin, scope, params, request, token, sequence: receipt.publishSequence, objects, bound, principal, storage,
+    return { admin, scope, params, request, token, sequence: receipt.publishSequence, objects, bound, principal, storage, lookup,
       gets: () => gets, corrupt: () => { corrupt = true; }, hook: (value: () => Promise<void>) => { hook = value; },
       cleanup: () => { cuts.afterAuth = null; cuts.beforeAck = null; send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); } };
   } catch (error) { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); throw error; }
@@ -274,6 +279,135 @@ async function readRun(f: Awaited<ReturnType<typeof fixture>>) {
   return runInPrincipalDatabaseTransaction(f.admin, (tx) => new PrismaSnapshotDeliveryRepository(tx)
     .getRun(f.scope.organizationId, f.scope.projectId, f.sequence));
 }
+
+async function notificationFixture() {
+  const f = await fixture();
+  const event = await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+    const own = await tx.outboxEvent.findFirstOrThrow({ where: { organizationId: f.scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC } });
+    // Only this fixture's event is available to the synthetic claim clock.
+    // Independent fixtures and suites keep their queue state unchanged.
+    await tx.outboxEvent.update({ where: { id: own.id }, data: { availableAt: new Date("2000-01-01T00:00:00Z") } });
+    return own;
+  });
+  vi.stubEnv("PROJECT_SNAPSHOT_WEBHOOK_BINDINGS", JSON.stringify([{ ...f.scope, endpointRef: "SYNTHETIC_NOTIFICATION_ENDPOINT" }]));
+  vi.stubEnv("SYNTHETIC_NOTIFICATION_ENDPOINT", "https://consumer.example.test/hint");
+  let now = new Date("2000-01-01T00:00:01Z");
+  const reliability = new ReliabilityService(new PrismaReliabilityRepository(), () => now);
+  const lease = await reliability.claim(`notification-${randomUUID()}`, 300_000, [SNAPSHOT_NOTIFICATION_TOPIC]);
+  expect(lease?.outboxEventId).toBe(event.id);
+  if (!lease) throw new Error("SYNTHETIC_NOTIFICATION_LEASE_MISSING");
+  const bodies: unknown[] = [];
+  let status = 204; let afterSend: (() => Promise<void>) | null = null;
+  const handler = createSnapshotNotificationHandler({ resolveEndpoint: createProjectSnapshotWebhookResolver(),
+    send: (url, notification, options) => executeSafeOutboundWebhook(url, notification, {
+      resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      request: async (input) => {
+        expect(cuts.active).toBe(0);
+        bodies.push(JSON.parse(new TextDecoder().decode(input.jsonBody)));
+        if (afterSend) { const hook = afterSend; afterSend = null; await hook(); }
+        return { status, headers: {}, body: (async function* () {})(), abort() {} };
+      },
+    }, options) });
+  return { f, event, reliability, lease, bodies, handler, setStatus: (value: number) => { status = value; },
+    advance: () => { now = new Date(now.getTime() + 3_600_000); },
+    hook: (value: () => Promise<void>) => { afterSend = value; } };
+}
+
+describe("actual durable snapshot notifier without publication rollback", () => {
+  it("commits one intent, sends only project/sequence outside TX and replays without another intent", async () => {
+    const n = await notificationFixture(); const { f } = n;
+    try {
+      const before = [...f.objects.keys()];
+      await n.handler(n.lease);
+      expect(n.bodies).toEqual([{ projectId: f.scope.projectId, publishSequence: f.sequence }]);
+      expect(await readRun(f)).toMatchObject({ status: "NOTIFIED", notifiedAt: expect.any(Date) });
+      await n.reliability.complete(n.lease);
+      await createSnapshotPublicationServer(f.bound)(f.principal, f.lookup);
+      expect([...f.objects.keys()]).toEqual(before);
+      await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        expect(await tx.outboxEvent.count({ where: { organizationId: f.scope.organizationId, topic: SNAPSHOT_NOTIFICATION_TOPIC } })).toBe(1);
+        expect((await tx.outboxEvent.findUniqueOrThrow({ where: { id: n.event.id } })).status).toBe("PROCESSED");
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: f.scope })).publishSequence).toBe(f.sequence);
+      });
+      expect((await handleSnapshotConsumerGet(f.request(), f.params)).status).toBe(200);
+    } finally { f.cleanup(); }
+  });
+  it("exhausts the real bounded notification retry budget without failing or undoing publication", async () => {
+    const n = await notificationFixture(); const { f } = n;
+    try {
+      const original = await readRun(f); n.setStatus(503); let lease = n.lease;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await expect(n.handler(lease)).rejects.toMatchObject({ code: "SNAPSHOT_NOTIFICATION_UNAVAILABLE", retryable: true });
+        const result = await n.reliability.fail(lease, "SNAPSHOT_NOTIFICATION_UNAVAILABLE", true);
+        expect(result.status).toBe(attempt < 5 ? "pending" : "dead_letter");
+        if (attempt < 5) {
+          n.advance(); // Actual retry backoff, not an availability override.
+          const claimed = await n.reliability.claim(`notification-retry-${attempt}-${randomUUID()}`, 300_000, [SNAPSHOT_NOTIFICATION_TOPIC]);
+          expect(claimed?.outboxEventId).toBe(n.event.id); if (!claimed) throw new Error("SYNTHETIC_RETRY_MISSING"); lease = claimed;
+        }
+      }
+      expect(n.bodies).toHaveLength(5);
+      expect(await readRun(f)).toEqual(original);
+      await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
+        expect(await tx.outboxEvent.findUniqueOrThrow({ where: { id: n.event.id } })).toMatchObject({ status: "DEAD_LETTER", attempts: 5 });
+        expect((await tx.projectCurrentSnapshotManifest.findFirstOrThrow({ where: f.scope })).publishSequence).toBe(f.sequence);
+      });
+      expect((await handleSnapshotConsumerGet(f.request(), f.params)).status).toBe(200);
+    } finally { f.cleanup(); }
+  });
+  it("allows at-least-once POST replay after lease loss but fences the obsolete write and settlement", async () => {
+    const n = await notificationFixture(); const { f } = n; let replacement: ClaimedReliabilityEvent | null = null;
+    try {
+      n.hook(async () => { replacement = await n.reliability.takeOver(n.lease, `notification-replacement-${randomUUID()}`); });
+      await expect(n.handler(n.lease)).rejects.toMatchObject({ code: "SNAPSHOT_NOTIFICATION_UNAVAILABLE" });
+      expect((await readRun(f))?.status).toBe("PENDING");
+      await expect(n.reliability.complete(n.lease)).rejects.toMatchObject({ code: "OUTBOX_LEASE_LOST" });
+      if (!replacement) throw new Error("SYNTHETIC_REPLACEMENT_MISSING");
+      await n.handler(replacement);
+      await n.reliability.complete(replacement);
+      expect(n.bodies).toEqual([{ projectId: f.scope.projectId, publishSequence: f.sequence }, { projectId: f.scope.projectId, publishSequence: f.sequence }]);
+      expect((await readRun(f))?.status).toBe("NOTIFIED");
+    } finally { f.cleanup(); }
+  });
+  it("never downgrades an actual consumer ACK committed while POST is in flight", async () => {
+    const n = await notificationFixture(); const { f } = n;
+    try {
+      const input = await ackInput(f);
+      n.hook(async () => { expect((await handleSnapshotConsumerAck(ackRequest(f, input), f.params)).status).toBe(200); });
+      await n.handler(n.lease); await n.reliability.complete(n.lease);
+      const original = await readRun(f); expect(original?.status).toBe("ACKNOWLEDGED"); expect(original?.notifiedAt).toBeNull();
+      expect(n.bodies).toHaveLength(1);
+      expect((await handleSnapshotConsumerGet(f.request(), f.params)).status).toBe(200);
+    } finally { f.cleanup(); }
+  });
+  it("defers unconfigured projects and rejects forged extra fields before any POST", async () => {
+    const n = await notificationFixture(); const { f } = n;
+    try {
+      await expect(n.handler({ ...n.lease, payload: { ...n.lease.payload, datasets: [] } })).rejects.toMatchObject({ code: "SNAPSHOT_NOTIFICATION_INVALID", retryable: false });
+      vi.stubEnv("PROJECT_SNAPSHOT_WEBHOOK_BINDINGS", "[]");
+      expect(await n.handler(n.lease)).toEqual({ deferred: true, code: "OUTBOX_EXECUTOR_RESERVED" });
+      await n.reliability.defer(n.lease, "OUTBOX_EXECUTOR_RESERVED");
+      expect(n.bodies).toEqual([]); expect((await readRun(f))?.status).toBe("PENDING");
+      expect((await handleSnapshotConsumerGet(f.request(), f.params)).status).toBe(200);
+    } finally { f.cleanup(); }
+  });
+  it("denies notifier identity/private/status writes except scoped PENDING to NOTIFIED", async () => {
+    const n = await notificationFixture(); const { f } = n;
+    try {
+      const original = await readRun(f); if (!original) throw new Error("SYNTHETIC_RUN_MISSING");
+      const context = { principalKind: "project-job" as const, actorId: "snapshot-notifier", organizationId: f.scope.organizationId,
+        projectIds: [f.scope.projectId], correlationId: randomUUID() };
+      for (const data of [{ manifestSha256: "a".repeat(64) }, { status: "FAILED" as const, failedAt: new Date() }]) {
+        await expect(runInAuthorizedDatabaseTransaction(context, async (tx) => {
+          await tx.$executeRawUnsafe("SELECT set_config('app.snapshot_notification_sequence',$1,true)", String(f.sequence));
+          return tx.deliveryRun.update({ where: { id: original.deliveryRunId }, data });
+        })).rejects.toThrow("SNAPSHOT_NOTIFICATION_WRITE_DENIED");
+      }
+      expect(await readRun(f)).toEqual(original); expect(n.bodies).toEqual([]);
+    } finally { f.cleanup(); }
+  });
+});
+
 describe("actual bounded HTTP ACK through createSnapshotAckService", () => {
   it("allows only scoped attestation status columns, never run identity/creation or direct premature ACK", async () => {
     const f = await fixture();

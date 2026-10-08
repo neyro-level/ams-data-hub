@@ -1,11 +1,12 @@
 import "server-only";
 import { setTimeout as delay } from "node:timers/promises";
 import { createOperationalAckRotationCapability } from "./ack-rotation-capability.ts";
+import { createSnapshotWebhookCapability } from "./snapshot-webhook-capability.ts";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
 import { createSnapshotBuildCapability, createOperationalSnapshotBuildCapability, createOperationalSnapshotPublishCapability, createOperationalSnapshotRollbackCapability } from "./snapshot-build-capability.ts";
-import { SNAPSHOT_BUILD_REQUEST_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
+import { SNAPSHOT_BUILD_REQUEST_TOPIC, SNAPSHOT_NOTIFICATION_TOPIC } from "../modules/snapshot-delivery/contracts.ts";
 import { OPERATIONAL_EXECUTOR_TOPICS, handleOperationalOutboxEvent, settleTerminalOperationalRequests } from "../modules/operations-control/worker.ts";
 import { OPERATIONAL_ACTION_TOPICS } from "../modules/operations-control/index.ts";
 import { createProjectObjectStorageResolver, type ProjectObjectStorage, type ProjectStorageScope } from "../platform/storage/project-object-storage.ts";
@@ -82,6 +83,7 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   const operationalPublish = createOperationalSnapshotPublishCapability(resolveStorage);
   const operationalRollback = createOperationalSnapshotRollbackCapability(resolveStorage);
   const operationalAckRotation = createOperationalAckRotationCapability();
+  const snapshotWebhook = createSnapshotWebhookCapability();
   const operationalTopics = [...OPERATIONAL_EXECUTOR_TOPICS, ...(operationalBuild ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD] : []),
     ...(operationalPublish ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH] : []),
     ...(operationalRollback ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK] : []),
@@ -108,8 +110,9 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       }
     },
     outbox: { ...createOutboxDrainDependencies(boss), topics: ["platform.maintenance.requested", SOURCE_MANUAL_REQUEST_TOPIC,
-      ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
-      handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
+      ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : []), ...(snapshotWebhook ? [SNAPSHOT_NOTIFICATION_TOPIC] : [])],
+      handle: (event, signal) => event.topic === SNAPSHOT_NOTIFICATION_TOPIC && snapshotWebhook ? snapshotWebhook(event, signal)
+        : event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
         : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
           : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined, operationalRollback ?? undefined, operationalAckRotation ?? undefined) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }

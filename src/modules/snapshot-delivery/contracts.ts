@@ -2,6 +2,11 @@ import type { CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { z } from "zod";
 
 export const SNAPSHOT_BUILD_REQUEST_TOPIC = "snapshot.build.request";
+export const SNAPSHOT_NOTIFICATION_TOPIC = "snapshot.delivery.notification.requested";
+const notificationId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u);
+/** Internal delivery intent; external webhook contains only projectId/sequence. */
+export const snapshotNotificationIntentSchema = z.object({ schemaVersion: z.literal(1), organizationId: notificationId,
+  projectId: notificationId, deliveryRunId: notificationId, publishSequence: z.number().int().positive().max(2_147_483_647) }).strict();
 const sourceBuildId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);
 /** Private, value-free outbox intent, not a public snapshot or publish receipt. */
 export const sourceGoodSnapshotBuildRequestSchema = z.object({

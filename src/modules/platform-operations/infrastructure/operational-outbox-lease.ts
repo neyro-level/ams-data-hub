@@ -53,6 +53,7 @@ export async function lockOperationalOutboxLease(
   transaction: DatabaseTransaction,
   lease: ClaimedReliabilityEvent,
   scope: OperationalOutboxLeaseScope,
+  actor: "operations-executor" | "snapshot-notifier" = "operations-executor",
 ): Promise<void> {
   const acquiredAt = new Date(lease.leaseAcquiredAt);
   if (!scope.organizationId || !scope.projectId || !scope.topic
@@ -63,9 +64,10 @@ export async function lockOperationalOutboxLease(
     || lease.organizationId !== scope.organizationId || lease.topic !== scope.topic) {
     throw new Error("OUTBOX_OPERATION_LEASE_INVALID");
   }
+  if (!["operations-executor", "snapshot-notifier"].includes(actor)) throw new Error("OUTBOX_OPERATION_SCOPE_DENIED");
   const allowed = await transaction.$queryRaw<{ allowed: boolean }[]>(Prisma.sql`
     SELECT current_setting('app.principal_kind', true) = 'project-job'
-      AND current_setting('app.actor_id', true) = 'operations-executor'
+      AND current_setting('app.actor_id', true) = ${actor}
       AND current_setting('app.organization_id', true) = ${scope.organizationId}
       AND current_setting('app.project_ids', true) = ${scope.projectId} AS allowed`);
   if (allowed[0]?.allowed !== true) throw new Error("OUTBOX_OPERATION_SCOPE_DENIED");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { OPERATIONAL_ACTION_TOPICS } from "../operations-control/index.ts";
+import { SNAPSHOT_NOTIFICATION_TOPIC } from "../snapshot-delivery/contracts.ts";
 import type { JobWithMetadata, PgBoss } from "pg-boss";
 import { getWorkerReliabilityService } from "../../infrastructure/worker-service-container.ts";
 import {
@@ -101,7 +102,7 @@ async function processQueuedJob(
     return { claimed: 0, completed: 0, failed: 0 };
   }
 
-  if (topics && !topics.includes(event.topic) && ["snapshot.build.request", "ingestion.source.manual.request",
+  if (topics && !topics.includes(event.topic) && ["snapshot.build.request", SNAPSHOT_NOTIFICATION_TOPIC, "ingestion.source.manual.request",
     ...Object.values(OPERATIONAL_ACTION_TOPICS)].includes(event.topic)) {
     if (!reliability.defer) throw new Error("OUTBOX_DEFER_UNBOUND");
     await reliability.defer(event, "OUTBOX_EXECUTOR_RESERVED");
