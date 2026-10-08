@@ -250,8 +250,21 @@ startup guard. 29 scoped units PASS; types/lint, architecture432/1485, RLS53 PAS
 Final совместный native прогон всех четырёх suites — 145/145 PASS, 57 migrations,
 110,81s, final reset. Read-only architect review без actionable findings;
 production не активирован.
-MP-08.1 остаётся IN_PROGRESS: зарегистрированы четыре из шести executors;
-ACK_ROTATE и SUSPICIOUS_APPROVE ещё в работе, HTTP/routes/ACK/UI и MP-09/10 открыты.
+ACK_ROTATE добавлен как пятый concrete executor: explicit STAGE/PROMOTE и expected
+credential version, snapshot-owned preparation, atomic credential/proof/SUCCESS,
+full lease fence и config-free historical replay. SQL58 создаёт immutable private
+receipt только из actual credential UPDATE; прямой fabricated SUCCESS/receipt
+отклоняется. Default-false capability использует existing combined worker; реальных
+secrets или production activation нет. Final native six-suite regression — 168/168
+PASS, 58 migrations, 148,09s и final database reset: overlap/promote, stale/concurrent
+CAS, late failure/cancel, takeover, scope, preparation races и actual pg-boss runtime.
+Read-only architect re-review: race recovery закрыт, actionable findings нет.
+Fleet native projection — 1/1 PASS с actual credential version и отсутствием hash
+в DTO; 45 scoped units PASS, prod/test types и scoped lint PASS, architecture435/1502,
+RLS54, docs/config/static UI и secret scan PASS. Fleet fixture обновлена под scrypt
+и обязательные ACK phase/version; database guards не ослаблены.
+MP-08.1 остаётся IN_PROGRESS: пять из шести executors; SUSPICIOUS_APPROVE,
+HTTP/routes/ACK/lifecycle UI и MP-09/10 открыты. Browser/live UI proof не получен.
 
 Ниже — исторические checkpoints MP-05 с ограничениями на момент их получения;
 их прежние pending формулировки не описывают текущий контур выше.

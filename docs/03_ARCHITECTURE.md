@@ -350,8 +350,15 @@ remediation program preserves these boundaries while connecting them:
   root, binding, run and full accepted lease/result. Committed replay reads only
   metadata, needs no config/IO and never regresses newer current. PUBLISH and
   ROLLBACK register independently in the same worker with default-false flags;
-  no new process, credentials or wider grants are introduced. ACK rotation,
-  suspicious approval and HTTP discovery/delivery/ACK remain unfinished.
+  no new process, credentials or wider grants are introduced. ACK_ROTATE is a
+  fifth concrete executor with independent default-false enablement. Accepted
+  STAGE/PROMOTE and expected credential version are immutable; global → publication
+  → input → ACK locks precede full event/job/request lease fencing. Snapshot-owned
+  preparation keeps token resolution and scrypt outside the final transaction;
+  credential CAS, trigger-created immutable private receipt and request SUCCESS
+  commit together. Historical replay uses that receipt, not the latest credential
+  or configuration. Fleet exposes only the credential version, never its hashes.
+  Suspicious approval and HTTP discovery/delivery/ACK remain unfinished.
 - MP-09/MP-10 own complete runtime and readiness proof. Until those gates pass,
   the closed historical v4 is not a PRODUCTION READY claim.
 

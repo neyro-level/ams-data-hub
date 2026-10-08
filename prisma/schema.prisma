@@ -1199,6 +1199,8 @@ model OperationalActionRequest {
   sourceRevisionId      String?
   sourcePublishSequence Int?
   buildInputId          String?
+  ackRotationPhase      String? @db.VarChar(7)
+  ackCredentialVersion  Int?
   reason                String? @db.VarChar(500)
   requestHash           String @db.Char(64)
   requestedBy           String
@@ -1219,9 +1221,28 @@ model OperationalActionRequest {
   outboxEvent           OutboxEvent? @relation(fields: [outboxEventId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "OperationalActionRequest_outbox_fkey")
   selectedStage         SnapshotArtifactStageReceipt? @relation(fields: [organizationId, projectId, buildInputId], references: [organizationId, projectId, buildInputId], onDelete: Restrict, onUpdate: NoAction, map: "OperationalActionRequest_stage_fkey")
   rollbackReservation   SnapshotRollbackReservation?
+  ackRotationReceipt    SnapshotAckRotationReceipt?
 
   @@unique([organizationId, projectId, id], map: "OperationalActionRequest_scope_id_key")
   @@index([projectId, status, createdAt], map: "OperationalActionRequest_project_status_created_idx")
+}
+
+model SnapshotAckRotationReceipt {
+  organizationId String
+  projectId String
+  requestId String
+  phase String @db.VarChar(7)
+  previousVersion Int
+  credentialVersion Int
+  previousCurrentTokenHash String @db.VarChar(255)
+  previousNextTokenHash String? @db.VarChar(255)
+  currentTokenHash String @db.VarChar(255)
+  nextTokenHash String? @db.VarChar(255)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  request OperationalActionRequest @relation(fields: [organizationId, projectId, requestId], references: [organizationId, projectId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([organizationId, projectId, requestId])
+  @@unique([organizationId, projectId, credentialVersion])
 }
 
 model ProjectCatalogSubscription {

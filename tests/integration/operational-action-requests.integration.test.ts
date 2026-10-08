@@ -340,6 +340,7 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
       const result = await requestOperationalAction(admin, { ...input(scope, `synthetic-${suffix}-${action}`), action,
         ...(action === "SNAPSHOT_ROLLBACK" ? { sourcePublishSequence: 1 } : {}),
         ...(action === "SNAPSHOT_PUBLISH" ? { buildInputId: stage.buildInputId } : {}),
+        ...(action === "ACK_ROTATE" ? { ackRotationPhase: "STAGE" as const, ackCredentialVersion: 1 } : {}),
         ...(review ? { ...source, reason: "Synthetic private review evidence" } : {}) });
       requestIds.set(action, result.requestId);
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {

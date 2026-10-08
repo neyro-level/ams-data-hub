@@ -18,3 +18,4 @@ export { captureSnapshotInput } from "./infrastructure/snapshot-input-capture-co
 export { createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer } from "./infrastructure/snapshot-selected-publication.ts";
 export { createProjectSnapshotTrustResolver } from "./infrastructure/project-snapshot-trust.ts";
 export { createSnapshotRollbackServer, inspectSnapshotRollbackRunServer } from "./infrastructure/snapshot-rollback-server.ts";
+export { createSnapshotAckRotationServer } from "./infrastructure/snapshot-ack-rotation-server.ts";

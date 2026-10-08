@@ -1,5 +1,6 @@
 import "server-only";
 import { setTimeout as delay } from "node:timers/promises";
+import { createOperationalAckRotationCapability } from "./ack-rotation-capability.ts";
 import { z } from "zod";
 import type { PgBoss, JobWithMetadata } from "pg-boss";
 import { runSourceConsumerReadiness } from "./source-consumer-readiness.ts";
@@ -80,9 +81,11 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
   const operationalBuild = createOperationalSnapshotBuildCapability(resolveStorage);
   const operationalPublish = createOperationalSnapshotPublishCapability(resolveStorage);
   const operationalRollback = createOperationalSnapshotRollbackCapability(resolveStorage);
+  const operationalAckRotation = createOperationalAckRotationCapability();
   const operationalTopics = [...OPERATIONAL_EXECUTOR_TOPICS, ...(operationalBuild ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD] : []),
     ...(operationalPublish ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH] : []),
-    ...(operationalRollback ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK] : [])];
+    ...(operationalRollback ? [OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK] : []),
+    ...(operationalAckRotation ? [OPERATIONAL_ACTION_TOPICS.ACK_ROTATE] : [])];
   const boss = await getPgBoss();
   let terminalCursor = "";
   const operationalTerminalCursors = new Map<string, string>();
@@ -108,6 +111,6 @@ export async function runSourceWorker(options: SourceWorkerOptions) {
       ...operationalTopics, ...(snapshotBuild ? [SNAPSHOT_BUILD_REQUEST_TOPIC] : [])],
       handle: (event, signal) => event.topic === SNAPSHOT_BUILD_REQUEST_TOPIC && snapshotBuild ? snapshotBuild(event, signal)
         : event.topic === SOURCE_MANUAL_REQUEST_TOPIC ? dispatchSourceManualRequest(boss, event)
-          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined, operationalRollback ?? undefined) : handleDefaultOutboxEvent(event) } }); }
+          : operationalTopics.includes(event.topic) ? handleOperationalOutboxEvent(event, signal, operationalBuild ?? undefined, operationalPublish ?? undefined, operationalRollback ?? undefined, operationalAckRotation ?? undefined) : handleDefaultOutboxEvent(event) } }); }
   finally { await stopPgBoss(); }
 }

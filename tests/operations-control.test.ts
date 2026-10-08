@@ -90,12 +90,13 @@ describe("operations-control action requests", () => {
     for (const buildInputId of ["build-a", "build-b"]) await actions.requestAction(admin, { ...base, action: "SNAPSHOT_PUBLISH", buildInputId });
     expect(writes[0]?.buildInputId).toBe("build-a"); expect(writes[1]?.buildInputId).toBe("build-b");
     expect(writes[0]?.requestHash).not.toBe(writes[1]?.requestHash);
-    for (const buildInputId of [undefined, "build-a"]) await actions.requestAction(admin, { ...base, action: "ACK_ROTATE", buildInputId });
+    for (const buildInputId of [undefined, "build-a"]) await actions.requestAction(admin, { ...base, action: "ACK_ROTATE", buildInputId,
+      ackRotationPhase: "STAGE", ackCredentialVersion: 1 });
     expect(writes[2]?.buildInputId).toBeNull(); expect(writes[3]?.buildInputId).toBeNull();
     expect(writes[2]?.requestHash).toBe(writes[3]?.requestHash);
     expect(writes[2]?.requestHash).toBe(createHash("sha256").update(JSON.stringify({ action: "ACK_ROTATE",
       organizationId: "org", projectId: "project", sourceId: null, sourceRevisionId: null,
-      sourcePublishSequence: null, reason: null })).digest("hex"));
+      sourcePublishSequence: null, reason: null, ackRotationPhase: "STAGE", ackCredentialVersion: 1 })).digest("hex"));
   });
   it("authorizes and records a normalized, idempotent operation request", async () => {
     let recorded: Parameters<OperationsActionRepository["recordRequest"]>[0] | null = null;

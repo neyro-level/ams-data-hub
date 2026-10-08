@@ -15,6 +15,10 @@ describe("fleet admin resource", () => {
     }
     expect(forms).toContain("не запускают production executor");
     expect(forms).toContain("reconcile");
+    expect(forms).toContain('form.register("ackRotationPhase")');
+    expect(forms).toContain('form.register("ackCredentialVersion", { valueAsNumber: true })');
+    expect(forms).toContain("shouldUnregister: true");
+    expect(forms).not.toContain('form.register("nextToken")');
     expect(dashboard).toContain("Последние события аудита");
     expect(dashboard).not.toContain("afterMarker");
     expect(dashboard).not.toContain("actorId");

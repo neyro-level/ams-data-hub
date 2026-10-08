@@ -52,6 +52,7 @@ function toProject(project: FleetProjectRecord, now: Date): FleetProjectView {
     projectSlug: project.projectSlug,
     projectStatus: project.projectStatus,
     serviceState: project.serviceState,
+    ackCredentialVersion: project.ackCredentialVersion ?? null,
     sources,
     currentSnapshot: project.currentSnapshot
       ? { publishSequence: project.currentSnapshot.publishSequence, publishedAt: project.currentSnapshot.publishedAt.toISOString() }

@@ -71,8 +71,9 @@ SUCCEEDED results for the concrete suspicious-rejection adapter. Its domain
 review, audit and request completion share one transaction; rejection never
 changes inventory or Last GOOD. Replay of an already committed result precedes
 mutable freeze/project/revision admission. Policy/analysis JSON is SQL-bounded
-before transfer. Only this adapter is registered in the shared queue; the other
-five remain reserved. Immutable FAILED carries one finite generic safeErrorCode
+before transfer. The shared queue now registers rejection plus capability-gated
+BUILD, PUBLISH, ROLLBACK and ACK_ROTATE; SUSPICIOUS_APPROVE remains reserved.
+Immutable FAILED carries one finite generic safeErrorCode
 and requires actual DEAD_LETTER/latest FAILED JobRun metadata. Retry/defer does
 not fail a request; committed success cannot be overwritten. Startup/60s paged
 reconciliation survives the fail-before-request crash gap. A purpose-restricted
@@ -299,8 +300,24 @@ without backfill; a NULL legacy pin cannot satisfy operational BUILD success.
 Exact operational replay rechecks the scoped immutable result without config,
 capture or PUT. The combined queue registers BUILD only with the existing
 SNAPSHOT_BUILD_ENABLED capability. Selected PUBLISH is independently registered
-under SNAPSHOT_PUBLISH_ENABLED with public trust only; rollback, ACK rotation and
-approval remain reserved until their concrete adapters are implemented.
+under SNAPSHOT_PUBLISH_ENABLED with public trust only; ROLLBACK has its independent
+SNAPSHOT_ROLLBACK_ENABLED adapter and atomic current/run/SUCCESS cut described above.
+Suspicious approval remains reserved pending its concrete adapter.
+
+Forward migration 58 adds immutable nullable ACK phase/version pins to operational
+requests (legacy NULL rows fail closed for ACK execution), and
+`SnapshotAckRotationReceipt`. The receipt stores scoped request identity, phase,
+before/after credential versions and private hash transition metadata. Exact-purpose
+FORCE RLS exposes it only to the same project's snapshot-ack-rotation actor;
+worker has SELECT/INSERT, never UPDATE/DELETE. Only a nested AFTER credential UPDATE
+trigger can insert it; direct receipt insertion is denied. Credential CAS and the
+strict four-field operational SUCCESS result require the complete accepted live
+event/job lease. STAGE preserves current and installs next at version+1; PROMOTE
+requires its exact prior STAGE transition and moves next to current at version+1.
+All credential writers take the global safety lock; the rotation takes publication,
+input and ACK locks before credential/event/job/request row work. Replay proves the
+immutable accepted transition without depending on today's credential or token refs.
+Fleet selects only the safe credential version, not private transition metadata.
 
 The forward publication Source-read migration adds exact-purpose scoped SELECT
 policies to Source/InventoryIdentity and GOOD-only SourceRevision/Records, with

@@ -65,6 +65,7 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
           ...(input.sourceRevisionId ? { sourceRevisionId: input.sourceRevisionId } : {}),
           ...(input.sourcePublishSequence ? { sourcePublishSequence: input.sourcePublishSequence } : {}),
           ...(input.buildInputId ? { buildInputId: input.buildInputId } : {}),
+          ...(input.action === "ACK_ROTATE" ? { ackRotationPhase: input.ackRotationPhase, ackCredentialVersion: input.ackCredentialVersion } : {}),
           ...(input.reason ? { reason: input.reason } : {}),
         },
         source: "operations-control",
@@ -90,6 +91,7 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
       action: input.action, sourceId: input.sourceId, sourceRevisionId: input.sourceRevisionId,
       sourcePublishSequence: input.sourcePublishSequence, reason: input.reason,
       buildInputId: input.buildInputId,
+      ackRotationPhase: input.ackRotationPhase ?? null, ackCredentialVersion: input.ackCredentialVersion ?? null,
       requestHash: input.requestHash, requestedBy: input.actorId, outboxEventId: intent.outboxEventId,
     } }); } catch (error) {
       if (input.action === "SNAPSHOT_PUBLISH" && error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {

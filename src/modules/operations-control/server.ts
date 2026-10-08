@@ -10,6 +10,7 @@ export { executeSuspiciousRejection } from "./infrastructure/suspicious-rejectio
 export { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 export { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
 export { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
+export { createOperationalAckRotationExecutor } from "./infrastructure/ack-rotation-executor.ts";
 
 const operationsActions = createOperationsActions({
   createRepository: (transaction) => new PrismaOperationsActionRepository(transaction),

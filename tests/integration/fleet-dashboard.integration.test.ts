@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { getFleetDashboard, requestOperationalAction } from "../../src/modules/operations-control/server.ts";
 import { freezeMutatingJobs, unfreezeMutatingJobs } from "../../src/modules/platform-operations/server.ts";
+import { hashProjectAckToken } from "../../src/modules/snapshot-delivery/index.ts";
 import type { PlatformAdminPrincipal, TenantUserPrincipal } from "../../src/platform/authorization/principal.ts";
 import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 
@@ -18,11 +19,13 @@ describe("fleet dashboard persistence projection", () => {
     const principal = admin();
     const suffix = randomUUID().slice(0, 8);
     const secretMarker = `SYNTHETIC_SECRET_${suffix.toUpperCase()}`;
+    const syntheticAckHash = hashProjectAckToken(`${secretMarker}_SYNTHETIC_ACK_TOKEN`);
     const manifestKey = `snapshots/private/${suffix}/manifest.json`;
     const recent = new Date();
     const setup = await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
       const organization = await transaction.organization.create({ data: { name: `Fleet Org ${suffix}`, slug: `fleet-org-${suffix}` } });
       const project = await transaction.project.create({ data: { organizationId: organization.id, name: `Fleet Project ${suffix}`, slug: `fleet-project-${suffix}` } });
+      await transaction.projectAckCredential.create({ data: { organizationId: organization.id, projectId: project.id, currentTokenHash: syntheticAckHash } });
       const source = await transaction.source.create({
         data: {
           organizationId: organization.id,
@@ -61,14 +64,14 @@ describe("fleet dashboard persistence projection", () => {
     const build = await requestOperationalAction(principal, buildInput);
     await expect(requestOperationalAction(principal, buildInput)).resolves.toEqual({ ...build, duplicate: true });
     await expect(requestOperationalAction(principal, { ...buildInput, action: "SNAPSHOT_PUBLISH", buildInputId: "selected-stage" })).rejects.toThrow("OPERATIONS_CONTROL_IDEMPOTENCY_CONFLICT");
-    await expect(requestOperationalAction(tenant(setup.organizationId), { ...buildInput, action: "ACK_ROTATE", idempotencyKey: `fleet-tenant-${suffix}` })).rejects.toThrow("OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED");
+    await expect(requestOperationalAction(tenant(setup.organizationId), { ...buildInput, action: "ACK_ROTATE", ackRotationPhase: "STAGE", ackCredentialVersion: 1, idempotencyKey: `fleet-tenant-${suffix}` })).rejects.toThrow("OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED");
     await expect(requestOperationalAction(principal, { ...buildInput, action: "RUN_SOURCE", sourceId: setup.sourceId, idempotencyKey: `fleet-source-${suffix}` })).resolves.toMatchObject({ duplicate: false });
     await freezeMutatingJobs(principal, { reason: "Synthetic integration safety check" });
     await expect(unfreezeMutatingJobs(principal, {})).rejects.toThrow("DATA_SAFETY_RECONCILE_REQUIRED");
 
     const dashboard = await getFleetDashboard(principal);
     const project = dashboard.projects.find((item) => item.projectId === setup.projectId);
-    expect(project).toMatchObject({ organizationId: setup.organizationId, currentSnapshot: { publishSequence: 3 }, latestDelivery: { publishSequence: 3, status: "APPLIED", acknowledgedAt: null } });
+    expect(project).toMatchObject({ organizationId: setup.organizationId, ackCredentialVersion: 1, currentSnapshot: { publishSequence: 3 }, latestDelivery: { publishSequence: 3, status: "APPLIED", acknowledgedAt: null } });
     expect(project?.sources[0]).toMatchObject({ health: "GOOD", hasLastGoodRevision: true });
     expect(dashboard.failedJobs.some((job) => job.safeErrorCode === "SYNTHETIC_TIMEOUT")).toBe(true);
     expect(dashboard.dataSafety.jobsFrozen).toBe(true);
@@ -90,7 +93,10 @@ describe("fleet dashboard persistence projection", () => {
     });
     const serialized = JSON.stringify(dashboard);
     expect(serialized).not.toContain(secretMarker);
+    expect(serialized).not.toContain(syntheticAckHash);
     expect(serialized).not.toContain(manifestKey);
     expect(serialized).not.toContain("manifestSha256");
+    expect(serialized).not.toContain("currentTokenHash");
+    expect(serialized).not.toContain("nextTokenHash");
   });
 });

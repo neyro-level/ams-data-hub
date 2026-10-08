@@ -166,7 +166,8 @@ and queue-ACK-loss replay after freeze/SUSPENDED with unavailable public/storage
 refs. PUBLISH performs bounded GET only, no new capture/sign/PUT/HEAD; exact own
 heartbeat is observed active and cleared after joined stop. Runtime snapshot
 matrix now covers BUILD, PUBLISH and ROLLBACK — 17/17 PASS with synthetic SDK
-transport. ACK rotation and approval executors remain work; no production
+transport. ACK rotation adds its separately verified executor below; suspicious
+approval remains work. No production
 activation is implied.
 Startup revokes the previous exact-owner qualification before validating storage
 or capabilities. An invalid new configuration cannot leave a crashed process's
@@ -209,6 +210,26 @@ replay precedes config/IO, including after freeze/SUSPENDED and unavailable refs
 Native pg-boss proof covers enabled, disabled, invalid, late-SUCCESS crash recovery
 and queue-ACK-loss replay; own readiness is observed and cleared after joined stop.
 This remains local synthetic implementation proof, not live-provider/production proof.
+
+## Operational ACK rotation — local implementation
+
+ACK_ROTATE requires an explicit STAGE/PROMOTE phase and expected credential version
+in the accepted request; IDs-only outbox messages do not carry tokens. Missing
+credentials cannot be initialized by rotation. With ACK_ROTATION_ENABLED=true,
+the existing combined worker validates PROJECT_ACK_ROTATION_BINDINGS before queue
+startup. Keep it absent/false unless enabling this capability is separately approved.
+STAGE lazily resolves the exact project's approved nextTokenRef, checks a bounded
+32–512-byte token and rejects the current token or an already-staged next token.
+During overlap, both current and next authenticate ACK. PROMOTE uses the persisted
+next hash and its exact immutable STAGE proof, without resolving any token value;
+after promotion, the former current token no longer authenticates ACK.
+Every transition increments version once. A stale version or two competing requests
+cannot overwrite a newer credential. Final full-lease/fresh-admission fencing commits
+credential, private receipt and request SUCCESS atomically. A lost lease cannot
+recover SUCCESS; historical committed replay needs neither config nor current rights
+and never changes a newer credential. Fleet displays only version. Secrets stay
+server-side; the form accepts phase/version only. Native tests prove local synthetic
+behavior and real pg-boss execution, not browser/live-provider/production readiness.
 
 ## Streaming raw artifacts — remediation foundation
 

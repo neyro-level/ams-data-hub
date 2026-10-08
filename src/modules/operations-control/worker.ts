@@ -9,6 +9,7 @@ import { OperationalActionLifecycleRepository } from "./infrastructure/operation
 import type { createOperationalSnapshotBuildExecutor } from "./infrastructure/snapshot-build-executor.ts";
 import type { createOperationalSnapshotPublishExecutor } from "./infrastructure/snapshot-publish-executor.ts";
 import type { createOperationalSnapshotRollbackExecutor } from "./infrastructure/snapshot-rollback-executor.ts";
+import type { createOperationalAckRotationExecutor } from "./infrastructure/ack-rotation-executor.ts";
 
 export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
 
@@ -16,10 +17,11 @@ export const OPERATIONAL_EXECUTOR_TOPICS = Object.freeze([OPERATIONAL_ACTION_TOP
  * reaches generic outbox persistence. Retry/defer is not request FAILED. */
 export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEvent, signal?: AbortSignal,
   build?: ReturnType<typeof createOperationalSnapshotBuildExecutor>, publish?: ReturnType<typeof createOperationalSnapshotPublishExecutor>,
-  rollback?: ReturnType<typeof createOperationalSnapshotRollbackExecutor>) {
+  rollback?: ReturnType<typeof createOperationalSnapshotRollbackExecutor>, ackRotation?: ReturnType<typeof createOperationalAckRotationExecutor>) {
   if (event.topic !== OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build)
     && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish)
-    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback)) {
+    && !(event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback)
+    && !(event.topic === OPERATIONAL_ACTION_TOPICS.ACK_ROTATE && ackRotation)) {
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED"), {
       code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED", retryable: false,
     });
@@ -28,6 +30,7 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
     if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_BUILD && build) await build(event, signal);
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_PUBLISH && publish) await publish(event, signal);
     else if (event.topic === OPERATIONAL_ACTION_TOPICS.SNAPSHOT_ROLLBACK && rollback) await rollback(event, signal);
+    else if (event.topic === OPERATIONAL_ACTION_TOPICS.ACK_ROTATE && ackRotation) await ackRotation(event,signal);
     else await executeSuspiciousRejection(event, signal);
   }
   catch (error) {
@@ -40,7 +43,8 @@ export async function handleOperationalOutboxEvent(event: ClaimedReliabilityEven
     // Unexpected infrastructure failures consume the existing bounded retry
     // budget. Deterministic invalid revision/request cases are terminal.
     const retryable = !["SOURCE_REVISION_SAFETY_INVALID", "SOURCE_OPERATION_REVIEW_INVALID",
-      "OPERATIONS_CONTROL_REFERENCE_INVALID", "OPERATIONS_CONTROL_ALREADY_FAILED"].includes(message);
+      "OPERATIONS_CONTROL_REFERENCE_INVALID", "OPERATIONS_CONTROL_ALREADY_FAILED", "ACK_CREDENTIAL_STALE", "ACK_ROTATION_ALREADY_STAGED",
+      "ACK_ROTATION_NOT_STAGED", "ACK_ROTATION_TRANSITION_INVALID", "ACK_CREDENTIAL_NOT_CONFIGURED"].includes(message);
     throw Object.assign(new Error("OPERATIONS_CONTROL_EXECUTION_FAILED"), {
       code: "OPERATIONS_CONTROL_EXECUTION_FAILED", retryable,
     });

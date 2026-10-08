@@ -24,6 +24,7 @@ export interface FleetProjectView {
   projectSlug: string;
   projectStatus: string;
   serviceState: string;
+  ackCredentialVersion?: number | null;
   sources: FleetSourceView[];
   currentSnapshot: {
     publishSequence: number;
@@ -104,6 +105,7 @@ export interface FleetProjectRecord {
   projectSlug: string;
   projectStatus: string;
   serviceState: string;
+  ackCredentialVersion?: number | null;
   sources: FleetSourceRecord[];
   currentSnapshot: { publishSequence: number; publishedAt: Date } | null;
   latestDelivery: {
@@ -159,9 +161,17 @@ export const requestOperationalActionInputSchema = z.object({
   sourceRevisionId: z.string().trim().max(128).default(""),
   buildInputId: z.string().trim().max(128).optional(),
   sourcePublishSequence: z.coerce.number().int().positive().optional(),
+  ackRotationPhase: z.enum(["STAGE", "PROMOTE"]).optional(),
+  ackCredentialVersion: z.number().int().positive().max(2_147_483_646).optional(),
   reason: z.string().trim().max(500).default(""),
   idempotencyKey: identifierSchema,
 }).superRefine((value, context) => {
+  if (value.action === "ACK_ROTATE" && (!value.ackRotationPhase || value.ackCredentialVersion === undefined)) {
+    context.addIssue({ code: "custom", path: ["ackRotationPhase"], message: "Укажите фазу и ожидаемую версию ACK credential" });
+  }
+  if (value.action !== "ACK_ROTATE" && (value.ackRotationPhase !== undefined || value.ackCredentialVersion !== undefined)) {
+    context.addIssue({ code: "custom", path: ["ackRotationPhase"], message: "ACK параметры допустимы только для ACK_ROTATE" });
+  }
   if (value.action === "SNAPSHOT_PUBLISH" && !/^[A-Za-z0-9_-]{1,128}$/u.test(value.buildInputId ?? "")) {
     context.addIssue({ code: "custom", path: ["buildInputId"], message: "Укажите точный ID завершённой сборки" });
   }

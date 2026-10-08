@@ -10,6 +10,18 @@ const event: ClaimedReliabilityEvent = { schemaVersion: 1, outboxEventId: "synth
   attempt: 1, workerId: "synthetic-worker", leaseAcquiredAt: "2026-10-07T00:00:00.000Z", occurredAt: "2026-10-07T00:00:00.000Z" };
 
 describe("finite operational queue adapter", () => {
+  it("keeps ACK reserved without its capability and dispatches the enabled finite adapter",async () => {
+    const ackEvent = { ...event,topic: OPERATIONAL_ACTION_TOPICS.ACK_ROTATE };
+    await expect(handleOperationalOutboxEvent(ackEvent)).rejects.toMatchObject({ code: "OPERATIONS_CONTROL_EXECUTOR_UNSUPPORTED",retryable: false });
+    const ack = vi.fn(async () => ({ action: "ACK_ROTATE" as const,phase: "STAGE" as const,previousCredentialVersion: 1,credentialVersion: 2 }));
+    const signal = new AbortController().signal;
+    await expect(handleOperationalOutboxEvent(ackEvent,signal,undefined,undefined,undefined,ack)).resolves.toBeUndefined();
+    expect(ack).toHaveBeenCalledWith(ackEvent,signal);
+    ack.mockRejectedValueOnce(new Error("ACK_CREDENTIAL_STALE"));
+    await expect(handleOperationalOutboxEvent(ackEvent,signal,undefined,undefined,undefined,ack)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED",retryable: false });
+    ack.mockRejectedValueOnce(new Error("Synthetic private ACK diagnostic"));
+    await expect(handleOperationalOutboxEvent(ackEvent,signal,undefined,undefined,undefined,ack)).rejects.toMatchObject({ message: "OPERATIONS_CONTROL_EXECUTION_FAILED",retryable: true });
+  });
   it("registers only the real rejection adapter and forwards the owned signal", async () => {
     expect(OPERATIONAL_EXECUTOR_TOPICS).toEqual([OPERATIONAL_ACTION_TOPICS.SUSPICIOUS_REJECT]);
     const signal = new AbortController().signal; executor.mockResolvedValueOnce({ action: "SUSPICIOUS_REJECT" });

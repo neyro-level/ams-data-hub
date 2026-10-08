@@ -23,6 +23,7 @@ export class PrismaFleetRepository implements FleetRepository {
         slug: true,
         status: true,
         serviceState: true,
+        ackCredential: { select: { version: true } },
         organization: { select: { name: true } },
         sources: {
           orderBy: { name: "asc" },
@@ -60,6 +61,7 @@ export class PrismaFleetRepository implements FleetRepository {
       projectSlug: row.slug,
       projectStatus: row.status,
       serviceState: row.serviceState,
+      ackCredentialVersion: row.ackCredential?.version ?? null,
       sources: row.sources,
       currentSnapshot: row.currentSnapshotManifest,
       latestDelivery: row.deliveryRuns[0] ?? null,
