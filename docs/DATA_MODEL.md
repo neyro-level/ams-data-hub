@@ -223,6 +223,16 @@ pins against PENDING/ACKNOWLEDGED operations using a separate fresh RC read
 while their outer RR transaction holds global. DELETED is not a prohibition
 on normalized-fact rebuild; existing immutable receipt replay creates no pin.
 
+Forward migration `20261008230000_operational_raw_pin_admission` adds a
+boolean-only worker NOBYPASS definer for new admin-selected publish/rollback
+admission. Worker-only read policies allow immutable target resolution without
+web SELECT on private parts or journals. Exact completed stage or approved
+committed normal/rollback root is required; automatic normal publication does
+not require a separate stage. Whole-root budgets apply before payload traversal;
+duplicate revision/SHA pins are collapsed before metadata/journal joins. New
+requests deny PENDING/ACKNOWLEDGED intersections before audit/outbox writes.
+Existing durable replay and DELETED-backed normalized/artifact use remain valid.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record

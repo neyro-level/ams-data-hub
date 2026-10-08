@@ -336,9 +336,15 @@ lock acquisition even when the outer RR snapshot does not. Intersecting
 PENDING/ACKNOWLEDGED deletion returns retryable `RAW_RETENTION_IN_PROGRESS`
 and rolls back sequence/input writes. Existing receipt replay creates no new
 root; DELETED does not forbid rebuilding from persisted normalized facts.
-All deletion journal writers now take global before rows. Selected publish and
-rollback request admission still needs its own narrow pending-deletion check;
-the capture seam alone does not enable DELETE.
+All deletion journal writers now take global before rows. New selected publish
+and rollback requests use a Snapshot-owned boolean-only definer in the same
+fenced RC transaction, after durable replay/project validation but before
+audit/outbox writes. It resolves the exact approved target, including automatic
+normal publication and staged rollback roots, and checks scoped captured GOOD
+revision/SHA pins. Web receives neither private payloads nor journal access.
+Unknown targets/provenance or budget overflow fail closed; PENDING/ACKNOWLEDGED
+intersections return retryable `RAW_RETENTION_IN_PROGRESS`. This admission
+mechanism does not enable the still-unimplemented DELETE executor.
 `RawArtifactDeletion` persists immutable project/SHA,
 key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
 deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and

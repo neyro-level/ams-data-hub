@@ -2,7 +2,7 @@ import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 
-const evidence = vi.hoisted(() => ({ snapshotCuts: 0, snapshotRoles: 0, systemRoles: 0 }));
+const evidence = vi.hoisted(() => ({ snapshotCuts: 0, snapshotRoles: 0, systemRoles: 0, webAdmissionCorrelations: new Set<string>() }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = (context, execute, options) =>
@@ -15,6 +15,13 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
           .toEqual([{ rolbypassrls: false, rolsuper: false }]);
         if (snapshot) evidence.snapshotRoles++;
         if (context.principalKind === "system-job") evidence.systemRoles++;
+      }
+      // Admission uses the real web identity; privileged fixture setup and
+      // private diagnostic reads remain separate from runtime proof.
+      if (context.principalKind === "platform-admin" && evidence.webAdmissionCorrelations.has(context.correlationId)) {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+        expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+          .toEqual([{ rolbypassrls: false, rolsuper: false }]);
       }
       if (snapshot) evidence.snapshotCuts++;
       try { return await execute(tx); } finally { if (snapshot) evidence.snapshotCuts--; }
@@ -101,6 +108,7 @@ describe("actual combined source-worker snapshot capability", () => {
     ["enabled", "disabled", "invalid", "recovery", "replay"].map((mode) => ({ action: action as "SNAPSHOT_PUBLISH" | "SNAPSHOT_ROLLBACK", mode }))))("$action registration with real pg-boss: $mode", async ({ action, mode }) => {
     const rollback = action === "SNAPSHOT_ROLLBACK";
     const setup = await fixture(); const { scope } = setup; const controller = new AbortController();
+    const webCorrelationId = randomUUID(); evidence.webAdmissionCorrelations.add(webCorrelationId);
     const keys = generateKeyPairSync("ed25519"); const bucket = `synthetic-publish-${setup.suffix}`;
     const binding = { ...scope, keyId: "synthetic", privateKeyRef: "SYNTHETIC_SNAPSHOT_PRIVATE", currentKeyId: "synthetic", nextKeyId: null,
       revokedKeyIds: [] as string[], publicKeyRefs: { synthetic: "SYNTHETIC_SNAPSHOT_PUBLIC" } };
@@ -143,7 +151,7 @@ describe("actual combined source-worker snapshot capability", () => {
           getTrust: () => ({ currentKeyId: "synthetic", nextKeyId: null, revokedKeyIds: [], publicKeys: { synthetic: process.env.SYNTHETIC_SNAPSHOT_PUBLIC! } }) })(principal, { buildInputId: stage.buildInputId });
         await runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "snapshot-publication" }), publication);
       }
-      const accepted = await requestOperationalAction(setup.admin, { ...scope, action, ...(rollback ? { sourcePublishSequence: stage.publishSequence } : { buildInputId: stage.buildInputId }),
+      const accepted = await requestOperationalAction({ ...setup.admin, correlationId: webCorrelationId }, { ...scope, action, ...(rollback ? { sourcePublishSequence: stage.publishSequence } : { buildInputId: stage.buildInputId }),
         sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: randomUUID() });
       const readRetention = () => runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "raw-artifact-retention" }), async (tx) => {
         const operations = await createRawRetentionOperationReader(tx).read(scope);
@@ -258,7 +266,7 @@ describe("actual combined source-worker snapshot capability", () => {
         if (rollback) expect(await runInPrincipalDatabaseTransaction(setup.admin,
           (tx) => tx.snapshotRollbackReservation.count({ where: scope }))).toBe(1);
       }
-    } finally { controller.abort(); clearTimeout(timer); completeSpy?.mockRestore(); fetchSpy?.mockRestore(); await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { evidence.webAdmissionCorrelations.delete(webCorrelationId); controller.abort(); clearTimeout(timer); completeSpy?.mockRestore(); fetchSpy?.mockRestore(); await stopPgBoss(); sdk.mockRestore(); vi.unstubAllEnvs(); }
   }, 90_000);
   it.each([
     { mode: "enabled", operational: false }, { mode: "disabled", operational: false }, { mode: "invalid", operational: false },

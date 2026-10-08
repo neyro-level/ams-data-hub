@@ -2,6 +2,7 @@ import { Prisma } from "../../../generated/prisma/client.ts";
 import type { DatabaseTransaction } from "../../../platform/database/transaction.ts";
 import { OperationsControlError, OPERATIONAL_ACTION_TOPICS, operationalActionIntentSchema } from "../contracts.ts";
 import { PrismaReliabilityRepository } from "../../platform-operations/server.ts";
+import { assertOperationalRawPinAdmission } from "../../snapshot-delivery/server.ts";
 import type {
   OperationsActionRepository,
   RecordOperationalActionRequest,
@@ -47,6 +48,12 @@ export class PrismaOperationsActionRepository implements OperationsActionReposit
       where: { id: input.projectId, organizationId: input.organizationId }, select: { id: true },
     });
     if (!project) throw new OperationsControlError("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    if (input.action === "SNAPSHOT_PUBLISH" || input.action === "SNAPSHOT_ROLLBACK") {
+      await assertOperationalRawPinAdmission(this.transaction, input, {
+        buildInputId: input.action === "SNAPSHOT_PUBLISH" ? input.buildInputId : null,
+        sourcePublishSequence: input.action === "SNAPSHOT_ROLLBACK" ? input.sourcePublishSequence : null,
+      });
+    }
     if (input.sourceId) {
       const revision = await this.transaction.sourceRevision.findFirst({ where: {
         id: input.sourceRevisionId ?? "", sourceId: input.sourceId,
