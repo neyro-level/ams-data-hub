@@ -35,8 +35,15 @@ MP-00–MP-09 доставлены. MP-09: PR #27 MERGED после exact-head R
 в шести integration suites, current standalone build, 63 migrations и final test
 DB reset — PASS. Дерево merge идентично gated candidate; canonical main и
 публичное GitHub main-зеркало синхронизированы после merge.
-Активен MP-10; MP-10.7 regression guards доказаны, MP-10.3 Data Safety RUNNING
-в PlanDB. Частичный checkpoint `e7c6ea9` добавляет
+Активен MP-10; Code, Security, Runtime, Portability, Operations и MP-10.7
+regression guards доказаны. MP-10.3 Data Safety RUNNING в PlanDB, потому что
+provider PostgreSQL backup на `ams-data-hub-deploy` не настроен: timer disabled/
+inactive, backup service и environment file отсутствуют, актуальное backup
+evidence не найдено. Локальный PG18 restore drill и исторический non-production
+S3 policy proof не заменяют этот обязательный provider proof. Draft PR #28
+остаётся без merge до closure MP-10.3; последний проверенный implementation
+candidate — `41f4db0aae423311a8794bb6c5c6e8884565383b`. Частичный checkpoint `e7c6ea9`
+добавляет
 AST source guards и обязательные self-tests; это не closure или readiness PASS.
 Actual-diff runtime selection и structural composition removal guards
 реализованы в checkpoint c91cfac: обязательные native suites вычисляются из Git,
@@ -57,8 +64,9 @@ timeout отдельно не доказан и не повторился; added
 `8ce049dcdd7cc8063b0aacc13e4ccab5e66e694a` (`11409`) — PASS: 143/143 unit,
 fresh standalone build, 115/115 native в 10 suites, 63 migrations и final reset.
 Независимый requirement-by-requirement review MP-10.7 — PASS без findings.
-Этот результат закрывает regression guards, но не Code/Security/Data Safety/
-Runtime/Portability/Operations gates, общий readiness verdict или provider gate.
+Этот checkpoint закрыл regression guards, но на тот момент не закрывал Code/
+Security/Data Safety/Runtime/Portability/Operations gates, общий readiness
+verdict или provider gate. Текущий статус указан в начале раздела.
 Production по-прежнему не разрешён.
 
 MP-10.3 scoped recovery checkpoint: reconcile и unfreeze используют общий
@@ -88,6 +96,13 @@ dump/restore DB и final source reset — PASS; evidence `DATA_SAFETY_DRILL_V2`.
 Это PostgreSQL-only proof с synthetic intake/S3 transports, не provider backup
 configuration, S3 object restoration или raw-retention runtime. Raw retention
 и остальные acceptance gates остаются в работе; production не затронут.
+
+Финальный локальный Data Safety drill расширен до 22 непустых таблиц и сохраняет
+raw journals, publicUrlId relink, rollback/current linkage, freeze/reconcile/
+unfreeze; fingerprints до и после PG18 dump/restore совпадают, cleanup PASS.
+Отдельный native raw-retention runtime proof также PASS. Эти результаты закрывают
+локальную часть MP-10.3, но не обязательное `PostgreSQL backup configured` на
+provider/server; поэтому MP-10.3 остаётся RUNNING.
 
 ### История scoped checkpoints MP-08/MP-09
 
@@ -659,11 +674,11 @@ asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-10 нового remediation plan;
-MP-00–MP-09 доставлены. Далее — итоговые Quality, Security, Data Safety,
-Runtime, Portability и Operations acceptance gates, обязательные regression
-guards и общий readiness verdict. Реализация runtime adapters и расписаний
-входит в утверждённую доработку; их включение на production — нет.
+Активная доработка: MP-10 нового remediation plan; MP-00–MP-09 доставлены.
+Из рабочих задач остаются MP-10.3 Data Safety и зависимая MP-10 delivery;
+составной MP-10 закроется автоматически после них. Остальные acceptance gates
+и regression guards завершены. Реализация runtime adapters и расписаний входит
+в утверждённую доработку; их включение на production — нет.
 
 Production feed credentials, миграция production и rollout — только отдельной
 release/операционной командой владельца после readiness gate.

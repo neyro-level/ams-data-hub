@@ -44,10 +44,15 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — 2026-10-07
+### Chronological remediation implementation record — started 2026-10-07
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
+
+This section preserves checkpoint-specific facts chronologically. Statements
+such as `pending` or `remaining` describe the named checkpoint, not the current
+execution status. Current status belongs to `04_BACKLOG.md`,
+`DELIVERY_STATE.yaml` and PlanDB.
 
 - MP-02: explicit buffered media and single-use feed stream modes exist. The
   private raw spool hashes incrementally, uploads through a separately verified

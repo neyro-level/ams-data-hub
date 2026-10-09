@@ -10,7 +10,12 @@ active_plan:
   inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
   execution_status: IN_PROGRESS
   current_epic: adh-mp-10
+  current_task: adh-mp-10-3
   next_delivery_task: adh-mp-10-delivery
+  candidate_pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
+  last_verified_candidate_head_sha: 41f4db0aae423311a8794bb6c5c6e8884565383b
+  last_verified_candidate_gate_status: PASS
+  delivery_status: BLOCKED_BY_DATA_SAFETY
   completed_deliveries:
     - epic: adh-mp-00
       pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/18
@@ -127,7 +132,8 @@ production:
   release_run: NOT_RUN
   touched: false
 data_safety:
-  status: PASS
+  status: PARTIAL_LOCAL_PROOF_PASS_PROVIDER_BACKUP_BLOCKED
+  gate_task_status: RUNNING
   verification_scope: nonproduction_dump_restore_only
   environment: isolated-local
   postgres_major: 18
@@ -144,6 +150,16 @@ data_safety:
   reconcile_conflicts: 0
   unfreeze_after_reconcile: true
   cleanup: PASS
+  provider_postgresql_backup:
+    status: NOT_CONFIGURED
+    environment: ams-data-hub-deploy
+    timer_enabled: false
+    timer_active: false
+    backup_service_installed: false
+    backup_environment_file_present: false
+    current_backup_evidence_present: false
+    server_mutation_authorized: false
+    consequence: MP10_3_AND_DELIVERY_BLOCKED
 external_gates:
   timeweb_s3_provider_denial:
     status: PASS
