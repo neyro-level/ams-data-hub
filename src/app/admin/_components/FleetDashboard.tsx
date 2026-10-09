@@ -117,7 +117,7 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
                 </section>
 
                 <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[900px] text-left text-sm">
+                  <table className="w-full min-w-[1280px] text-left text-sm">
                     <thead className="border-b border-[var(--border)] text-xs uppercase text-app-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-semibold">Источник</th>
@@ -125,12 +125,16 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
                         <th className="px-3 py-2 font-semibold">Последняя попытка</th>
                         <th className="px-3 py-2 font-semibold">Последний успех</th>
                         <th className="px-3 py-2 font-semibold">Last Good</th>
+                        <th className="px-3 py-2 font-semibold">Import</th>
+                        <th className="px-3 py-2 font-semibold">Записи</th>
+                        <th className="px-3 py-2 font-semibold">Невалидные</th>
+                        <th className="px-3 py-2 font-semibold">Код импорта</th>
                         <th className="px-3 py-2 font-semibold">Проблема</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--border)]">
                       {project.sources.length === 0 ? (
-                        <tr><td className="px-3 py-3 text-app-secondary" colSpan={6}>Источники не настроены.</td></tr>
+                        <tr><td className="px-3 py-3 text-app-secondary" colSpan={10}>Источники не настроены.</td></tr>
                       ) : project.sources.map((source) => (
                         <tr key={source.sourceId}>
                           <td className="px-3 py-3 font-medium text-app-foreground">{source.name}</td>
@@ -138,6 +142,10 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
                           <td className="px-3 py-3 text-app-secondary">{formatDate(source.lastAttemptAt)}</td>
                           <td className="px-3 py-3 text-app-secondary">{formatDate(source.lastSuccessAt)}</td>
                           <td className="px-3 py-3 text-app-secondary">{source.hasLastGoodRevision ? "Есть" : "Нет"}</td>
+                          <td className="px-3 py-3 text-app-secondary">{source.latestImport?.status ?? "—"}</td>
+                          <td className="px-3 py-3 tabular-nums text-app-secondary">{source.latestImport?.recordCount ?? "—"}</td>
+                          <td className="px-3 py-3 tabular-nums text-app-secondary">{source.latestImport?.invalidRecordCount ?? "—"}</td>
+                          <td className="px-3 py-3 text-app-secondary">{source.latestImport?.failureCode ?? "—"}</td>
                           <td className="px-3 py-3 text-app-secondary">{source.issueCode ? issueLabels[source.issueCode] : "—"}</td>
                         </tr>
                       ))}
@@ -148,6 +156,30 @@ export function FleetDashboard({ data, initialIdempotencyKey }: { data: FleetDas
             ))}
           </div>
         )}
+      </section>
+
+      <section className="space-y-3" aria-labelledby="fleet-alerts-title">
+        <div>
+          <h2 id="fleet-alerts-title" className="text-lg font-semibold text-app-foreground">Последние алерты</h2>
+          <p className="mt-1 text-sm text-app-secondary">До 25 operational alerts. Секретные ссылки, payload и внутренние идентификаторы не выводятся.</p>
+        </div>
+        <div className="overflow-x-auto rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--card)]">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-[var(--border)] bg-[var(--muted)] text-xs uppercase text-app-muted-foreground">
+              <tr><th className="px-4 py-3 font-semibold">Проект</th><th className="px-4 py-3 font-semibold">Уровень</th><th className="px-4 py-3 font-semibold">Алерт</th><th className="px-4 py-3 font-semibold">Время</th></tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {data.alerts.length === 0 ? <tr><td className="px-4 py-4 text-app-secondary" colSpan={4}>Активных алертов нет.</td></tr> : data.alerts.map((alert) => (
+                <tr key={alert.alertId}>
+                  <td className="px-4 py-3 text-app-secondary">{alert.organizationName ?? "Платформа"}{alert.projectName ? ` · ${alert.projectName}` : ""}</td>
+                  <td className="px-4 py-3 font-semibold text-app-foreground">{alert.severity}</td>
+                  <td className="px-4 py-3"><p className="font-medium text-app-foreground">{alert.title}</p><p className="mt-1 text-xs text-app-secondary">{alert.message}</p></td>
+                  <td className="px-4 py-3 text-app-secondary">{formatDate(alert.occurredAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="space-y-3" aria-labelledby="failed-jobs-title">

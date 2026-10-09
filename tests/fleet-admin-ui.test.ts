@@ -17,6 +17,9 @@ describe("fleet admin resource", () => {
     expect(forms).toContain("result.data.requestId");
     expect(forms).toContain("disabled={!ready || form.formState.isSubmitting}");
     expect(dashboard).toContain("История операций");
+    expect(dashboard).toContain("Последние алерты");
+    expect(dashboard).toContain("source.latestImport?.status");
+    expect(dashboard).toContain("source.latestImport?.invalidRecordCount");
     expect(dashboard).toContain("operationalRequestStateLabel(request)");
     expect(forms).toContain("reconcile");
     expect(forms).toContain('form.register("ackRotationPhase")');

@@ -47,7 +47,7 @@ describe("fleet dashboard persistence projection", () => {
         organizationId: organization.id, projectId: project.id, sourceId: source.id, sourceVersion: source.version,
         adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey, profileVersion: source.profileVersion,
         safetyPolicy: {}, rawStorageKey: `sources/${"a".repeat(64)}`, rawArtifactHash: "a".repeat(64), rawByteCount: 0,
-        normalizedContentHash: "b".repeat(64),
+        normalizedContentHash: "b".repeat(64), recordCount: 0, invalidRecordCount: 0,
       } });
       await transaction.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED" } });
       await transaction.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD", sequence: 1, completedAt: recent } });
@@ -58,7 +58,11 @@ describe("fleet dashboard persistence projection", () => {
       await transaction.projectSnapshotSequence.create({ data: { organizationId: organization.id, projectId: project.id, lastReservedSequence: 3 } });
       const event = await transaction.outboxEvent.create({ data: { organizationId: organization.id, topic: "fleet.synthetic", payload: { projectId: project.id }, status: "DEAD_LETTER", correlationId: randomUUID() } });
       await transaction.jobRun.create({ data: { organizationId: organization.id, outboxEventId: event.id, jobType: "fleet.synthetic", status: "FAILED", attempt: 2, workerId: "test-worker", startedAt: new Date("2026-10-05T08:07:00.000Z"), finishedAt: new Date("2026-10-05T08:08:00.000Z"), safeErrorCode: "SYNTHETIC_TIMEOUT", correlationId: randomUUID() } });
-      return { organizationId: organization.id, projectId: project.id, sourceId: source.id };
+      await transaction.notification.create({ data: { organizationId: organization.id, projectId: project.id,
+        category: "PROJECT", severity: "WARNING", visibility: "PLATFORM_ADMIN_ONLY", title: "Импорт требует решения",
+        message: "Импорт остановлен как SUSPICIOUS и ожидает ручного решения.", route: "/admin/fleet/",
+        sourceType: "SourceRevision", sourceId: revision.id, dedupKey: `fleet-alert-${suffix}`, occurredAt: recent } });
+      return { organizationId: organization.id, projectId: project.id, sourceId: source.id, revisionId: revision.id };
     });
 
     const buildInput = { action: "SNAPSHOT_BUILD" as const, organizationId: setup.organizationId, projectId: setup.projectId, sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: `fleet-build-${suffix}` };
@@ -73,16 +77,20 @@ describe("fleet dashboard persistence projection", () => {
     const dashboard = await getFleetDashboard(principal);
     const project = dashboard.projects.find((item) => item.projectId === setup.projectId);
     expect(project).toMatchObject({ organizationId: setup.organizationId, ackCredentialVersion: 1, currentSnapshot: { publishSequence: 3 }, latestDelivery: { publishSequence: 3, status: "APPLIED", acknowledgedAt: null } });
-    expect(project?.sources[0]).toMatchObject({ health: "GOOD", hasLastGoodRevision: true });
+    expect(project?.sources[0]).toMatchObject({ health: "GOOD", hasLastGoodRevision: true,
+      latestImport: { status: "GOOD", recordCount: 0, invalidRecordCount: 0, failureCode: null } });
     expect(project?.operationalRequests).toEqual([expect.objectContaining({ requestId: build.requestId, action: "SNAPSHOT_BUILD", status: "REQUESTED", startedAt: null, finishedAt: null })]);
     expect(dashboard.failedJobs.some((job) => job.safeErrorCode === "SYNTHETIC_TIMEOUT")).toBe(true);
+    expect(dashboard.alerts.some((alert) => alert.title === "Импорт требует решения"
+      && alert.projectName === `Fleet Project ${suffix}`)).toBe(true);
     expect(dashboard.dataSafety.jobsFrozen).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "operations-control.snapshot.build.request")).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "source.manual-run.request")).toBe(true);
     expect(dashboard.auditEvents.some((event) => event.action === "data-safety.freeze")).toBe(true);
     await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
       const request = await transaction.operationalActionRequest.findUniqueOrThrow({ where: { id: build.requestId } });
-      expect(request).toMatchObject({ ...setup, sourceId: null, action: "SNAPSHOT_BUILD", status: "REQUESTED" });
+      expect(request).toMatchObject({ organizationId: setup.organizationId, projectId: setup.projectId,
+        sourceId: null, action: "SNAPSHOT_BUILD", status: "REQUESTED" });
       if (!request.outboxEventId) throw new Error("SYNTHETIC_INTENT_MISSING");
       const intent = await transaction.outboxEvent.findUniqueOrThrow({ where: { id: request.outboxEventId } });
       expect(intent).toMatchObject({ organizationId: setup.organizationId,
@@ -97,6 +105,7 @@ describe("fleet dashboard persistence projection", () => {
     expect(serialized).not.toContain(secretMarker);
     expect(serialized).not.toContain(syntheticAckHash);
     expect(serialized).not.toContain(manifestKey);
+    expect(serialized).not.toContain(setup.revisionId);
     expect(serialized).not.toContain("manifestSha256");
     expect(serialized).not.toContain("currentTokenHash");
     expect(serialized).not.toContain("nextTokenHash");

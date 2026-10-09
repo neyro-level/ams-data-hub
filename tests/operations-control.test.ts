@@ -26,9 +26,9 @@ function repository(): FleetRepository {
         projectStatus: "ACTIVE",
         serviceState: "ACTIVE",
         sources: [
-          { id: "good", name: "Good", enabled: true, schedulePolicy: { mode: "SCHEDULED", cadenceMinutes: 60 }, lastAttemptAt: new Date("2026-10-05T08:30:00.000Z"), lastSuccessAt: new Date("2026-10-05T08:30:00.000Z"), lastGoodRevisionId: "rev-1" },
-          { id: "stale", name: "Stale", enabled: true, schedulePolicy: { mode: "SCHEDULED", cadenceMinutes: 60 }, lastAttemptAt: new Date("2026-10-05T06:00:00.000Z"), lastSuccessAt: new Date("2026-10-05T06:00:00.000Z"), lastGoodRevisionId: "rev-2" },
-          { id: "attention", name: "Attention", enabled: true, schedulePolicy: { mode: "MANUAL_ONLY" }, lastAttemptAt: new Date("2026-10-05T08:45:00.000Z"), lastSuccessAt: new Date("2026-10-05T08:00:00.000Z"), lastGoodRevisionId: "rev-3" },
+          { id: "good", name: "Good", enabled: true, schedulePolicy: { mode: "SCHEDULED", cadenceMinutes: 60 }, lastAttemptAt: new Date("2026-10-05T08:30:00.000Z"), lastSuccessAt: new Date("2026-10-05T08:30:00.000Z"), lastGoodRevisionId: "rev-1", latestImport: { status: "GOOD", recordCount: 12, invalidRecordCount: 0, failureCode: null, startedAt: new Date("2026-10-05T08:29:00.000Z"), completedAt: new Date("2026-10-05T08:30:00.000Z") } },
+          { id: "stale", name: "Stale", enabled: true, schedulePolicy: { mode: "SCHEDULED", cadenceMinutes: 60 }, lastAttemptAt: new Date("2026-10-05T06:00:00.000Z"), lastSuccessAt: new Date("2026-10-05T06:00:00.000Z"), lastGoodRevisionId: "rev-2", latestImport: null },
+          { id: "attention", name: "Attention", enabled: true, schedulePolicy: { mode: "MANUAL_ONLY" }, lastAttemptAt: new Date("2026-10-05T08:45:00.000Z"), lastSuccessAt: new Date("2026-10-05T08:00:00.000Z"), lastGoodRevisionId: "rev-3", latestImport: { status: "FAILED", recordCount: 0, invalidRecordCount: 2, failureCode: "SOURCE_RECORD_INVALID", startedAt: new Date("2026-10-05T08:44:00.000Z"), completedAt: new Date("2026-10-05T08:45:00.000Z") } },
         ],
         currentSnapshot: { publishSequence: 4, publishedAt: new Date("2026-10-05T08:35:00.000Z") },
         latestDelivery: { publishSequence: 4, status: "APPLIED", publishedAt: new Date("2026-10-05T08:35:00.000Z"), acknowledgedAt: null, safeErrorCode: null },
@@ -37,6 +37,11 @@ function repository(): FleetRepository {
     async listRecentFailedJobs(limit) {
       expect(limit).toBe(25);
       return [{ jobRunId: "job-1", organizationName: "AMS", jobType: "snapshot", attempt: 2, safeErrorCode: "TIMEOUT", startedAt: new Date("2026-10-05T08:40:00.000Z") }];
+    },
+    async listRecentAlerts(limit) {
+      expect(limit).toBe(25);
+      return [{ alertId: "alert-1", organizationName: "AMS", projectName: "Data Hub", severity: "WARNING",
+        title: "Импорт требует решения", message: "Импорт остановлен как SUSPICIOUS.", occurredAt: new Date("2026-10-05T08:48:00.000Z") }];
     },
     async listRecentAuditEvents(limit) {
       expect(limit).toBe(50);
@@ -56,6 +61,9 @@ describe("operations-control fleet dashboard", () => {
       ["attention", "ATTENTION", "LATEST_ATTEMPT_NOT_GOOD"],
     ]);
     expect(dashboard.projects[0]?.latestDelivery).toMatchObject({ status: "APPLIED", acknowledgedAt: null });
+    expect(dashboard.projects[0]?.sources[0]?.latestImport).toMatchObject({ status: "GOOD", recordCount: 12, invalidRecordCount: 0 });
+    expect(dashboard.projects[0]?.sources[2]?.latestImport).toMatchObject({ status: "FAILED", failureCode: "SOURCE_RECORD_INVALID" });
+    expect(dashboard.alerts[0]).toMatchObject({ title: "Импорт требует решения", occurredAt: "2026-10-05T08:48:00.000Z" });
     expect(dashboard.failedJobs[0]).toMatchObject({ safeErrorCode: "TIMEOUT", organizationName: "AMS" });
     expect(dashboard.auditEvents[0]).toMatchObject({ action: "snapshot.publish.request", createdAt: "2026-10-05T08:50:00.000Z" });
     expect(dashboard.dataSafety.jobsFrozen).toBe(false);
@@ -67,6 +75,7 @@ describe("operations-control fleet dashboard", () => {
       async getPlatformCounts() { read = true; return { organizations: 0, failedJobs: 0 }; },
       async listProjects() { read = true; return []; },
       async listRecentFailedJobs() { read = true; return []; },
+      async listRecentAlerts() { read = true; return []; },
       async listRecentAuditEvents() { read = true; return []; },
       async getDataSafetyState() { read = true; return { jobsFrozen: true, frozenAt: null, reconciledAt: null }; },
     };
