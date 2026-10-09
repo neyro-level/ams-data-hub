@@ -57,7 +57,7 @@ describe("fleet dashboard persistence projection", () => {
       await transaction.deliveryRun.create({ data: { organizationId: organization.id, projectId: project.id, publishSequence: 3, manifestKey, manifestSha256: "a".repeat(64), status: "APPLIED", publishedAt: new Date("2026-10-05T08:05:00.000Z"), appliedAt: new Date("2026-10-05T08:06:00.000Z") } });
       await transaction.projectSnapshotSequence.create({ data: { organizationId: organization.id, projectId: project.id, lastReservedSequence: 3 } });
       const event = await transaction.outboxEvent.create({ data: { organizationId: organization.id, topic: "fleet.synthetic", payload: { projectId: project.id }, status: "DEAD_LETTER", correlationId: randomUUID() } });
-      await transaction.jobRun.create({ data: { organizationId: organization.id, outboxEventId: event.id, jobType: "fleet.synthetic", status: "FAILED", attempt: 2, workerId: "test-worker", startedAt: new Date("2026-10-05T08:07:00.000Z"), finishedAt: new Date("2026-10-05T08:08:00.000Z"), safeErrorCode: "SYNTHETIC_TIMEOUT", correlationId: randomUUID() } });
+      await transaction.jobRun.create({ data: { organizationId: organization.id, outboxEventId: event.id, jobType: "fleet.synthetic", status: "FAILED", attempt: 2, workerId: "test-worker", startedAt: recent, finishedAt: recent, safeErrorCode: "SYNTHETIC_TIMEOUT", correlationId: randomUUID() } });
       await transaction.notification.create({ data: { organizationId: organization.id, projectId: project.id,
         category: "PROJECT", severity: "WARNING", visibility: "PLATFORM_ADMIN_ONLY", title: "Импорт требует решения",
         message: "Импорт остановлен как SUSPICIOUS и ожидает ручного решения.", route: "/admin/fleet/",

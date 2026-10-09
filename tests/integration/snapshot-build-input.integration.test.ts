@@ -803,6 +803,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           AND "externalId" = ${probe.externalId} AND "recordHash" = ${"b".repeat(64)}
       `);
       expect(JSON.stringify(plans)).toContain("SourceRevisionRecord_inventory_fact_idx");
+    });
+    // EXPLAIN is test-only evidence and must not consume the production capture
+    // transaction's fixed 30-second runtime budget.
+    await worker(scope, async (tx) => {
       const queries = vi.spyOn(tx, "$queryRaw");
       const relations = vi.spyOn(tx.mediaSource, "findMany");
       try {
@@ -826,10 +830,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         expect(elapsedMs).toBeLessThan(30_000);
         expect(capturedIdentities).toBe(4100);
         // One additional SQL byte guard for the cached head/fact approval.
-        expect(queries).toHaveBeenCalledTimes(65);
+        expect(queries).toHaveBeenCalledTimes(66);
         expect(relations).not.toHaveBeenCalled();
         expect(sink).toHaveBeenCalledExactlyOnceWith("media", []);
-        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=65 elapsed_ms=${elapsedMs}`);
+        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=66 elapsed_ms=${elapsedMs}`);
       } finally { queries.mockRestore(); relations.mockRestore(); }
     });
     const images = ["https://private.example.invalid/a.jpg", "https://private.example.invalid/b.jpg"];

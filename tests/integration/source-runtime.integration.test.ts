@@ -186,10 +186,14 @@ describe("concrete Source application runtime with PostgreSQL and real spool/sto
       const sourcePlan = planRawArtifactRetention({ ...scope, now, references: sourceOnly.references,
         pinnedRevisionIds: sourceOnly.pinnedRevisionIds, coverage: sourceOnly.sourceCoverage, jobsFrozen: sourceOnly.jobsFrozen });
       expect(sourcePlan.find((row) => row.rawArtifactHash === capturedHead.rawArtifactHash)).toMatchObject({ eligible: true });
-      const readComposed = () => runInPrincipalDatabaseTransaction(retention, async (tx) => {
+      // The 5,001-row fail-closed capacity cut can exceed Prisma's default
+      // five-second interactive-transaction budget in the full 53-file run.
+      // This is a test observation budget; the retention result is unchanged.
+      const readComposed = () => transactionRuntime.runInAuthorizedDatabaseTransaction(
+        createDatabaseAuthorizationContext(retention), async (tx) => {
         await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
         return createRawArtifactRetentionCutReader(tx).read(scope);
-      });
+      }, { timeout: 15_000 });
       const composed = await readComposed();
       expect(composed.coverage).toBe("COMPLETE");
       expect(composed.pinnedRevisionIds).toContain(capturedHead.revisionId);

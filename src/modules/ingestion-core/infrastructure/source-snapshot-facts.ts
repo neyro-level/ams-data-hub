@@ -5,6 +5,7 @@ import { adapterProfileRegistry } from "../domain/adapter-profile-registry.ts";
 import { createSnapshotRevisionApprovalReader } from "./snapshot-revision-approval.ts";
 
 const PAGE = 200;
+const INVENTORY_QUERY_PAGE = 5000;
 export type SourceSnapshotFactSink = (kind: "sources" | "inventory", records: CanonicalJsonValue[]) => void;
 export interface SourceSnapshotFactScope { organizationId: string; projectId: string }
 export interface SourceSnapshotInventoryFact {
@@ -14,6 +15,10 @@ export interface SourceSnapshotInventoryFact {
   createdAt: Date; updatedAt: Date; approvedHeadId: string | null; approvedHeadSequence: number | null;
   factRevisionId: string | null; factRevisionSequence: number | null;
   factProfileKey: string | null; factProfileVersion: string | null;
+}
+interface SourceSnapshotFactMatch {
+  index: number; revisionId: string | null; sequence: number | null;
+  profileKey: string | null; profileVersion: string | null;
 }
 
 /** Captures exact immutable GOOD references, never raw records/URLs/phones. */
@@ -67,39 +72,58 @@ export function createSourceSnapshotFactReader(transaction: DatabaseTransaction)
             i."normalizedHash", i."sourceHash", i."firstSeenAt", i."lastSeenAt", i."sourceCreatedAt",
             i."sourceUpdatedAt", i."missingSince", i."missingGoodRuns", i."createdAt", i."updatedAt",
             h."id" AS "approvedHeadId", h."sequence" AS "approvedHeadSequence",
-            fact."revisionId" AS "factRevisionId", fact."sequence" AS "factRevisionSequence",
-            fact."profileKey" AS "factProfileKey", fact."profileVersion" AS "factProfileVersion"
+            NULL::text AS "factRevisionId", NULL::int AS "factRevisionSequence",
+            NULL::text AS "factProfileKey", NULL::text AS "factProfileVersion"
           FROM "InventoryIdentity" i
           JOIN "Source" s ON s."id" = i."sourceId" AND s."organizationId" = i."organizationId" AND s."projectId" = i."projectId"
           LEFT JOIN "SourceRevision" h ON h."id" = s."lastGoodRevisionId" AND h."status" = 'GOOD'
             AND h."organizationId" = i."organizationId" AND h."projectId" = i."projectId" AND h."sourceId" = i."sourceId"
-          LEFT JOIN LATERAL (
-            SELECT r."revisionId", v."sequence", v."profileKey", v."profileVersion" FROM "SourceRevisionRecord" r JOIN "SourceRevision" v
-              ON v."id" = r."revisionId" AND v."organizationId" = r."organizationId"
-              AND v."projectId" = r."projectId" AND v."sourceId" = r."sourceId"
-            WHERE r."organizationId" = i."organizationId" AND r."projectId" = i."projectId"
-              AND r."sourceId" = i."sourceId" AND r."externalId" = i."externalOfferId"
-              AND r."inventoryUid" = i."uid" AND r."recordHash" = i."normalizedHash"
-              AND v."status" = 'GOOD' AND v."sequence" <= h."sequence"
-            ORDER BY v."sequence" DESC LIMIT 1
-          ) fact ON true
           WHERE i."organizationId" = ${scope.organizationId} AND i."projectId" = ${scope.projectId}
             AND i."uid" > ${after}
-          ORDER BY i."uid" ASC LIMIT ${PAGE}
+          ORDER BY i."uid" ASC LIMIT ${INVENTORY_QUERY_PAGE}
         `);
         if (!rows.length) break;
-        for (const row of rows) if (row.status === "ACTIVE" && !row.factRevisionId) {
-          throw new Error("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
+        for (let offset = 0; offset < rows.length; offset += PAGE) {
+          const identities = rows.slice(offset, offset + PAGE);
+          const values = identities.map((row, index) => Prisma.sql`(${index}::int, ${row.sourceId}::text,
+            ${row.uid}::text, ${row.externalOfferId}::text, ${row.normalizedHash}::text,
+            ${row.approvedHeadSequence}::int)`);
+          const matches = await transaction.$queryRaw<SourceSnapshotFactMatch[]>(Prisma.sql`
+            WITH requested("index", "sourceId", uid, "externalId", hash, "headSequence") AS (VALUES ${Prisma.join(values)})
+            SELECT q."index", fact."revisionId", fact."sequence", fact."profileKey", fact."profileVersion"
+            FROM requested q
+            LEFT JOIN LATERAL (
+              SELECT r."revisionId", v."sequence", v."profileKey", v."profileVersion"
+              FROM "SourceRevisionRecord" r
+              JOIN "SourceRevision" v ON v."id" = r."revisionId" AND v."organizationId" = r."organizationId"
+                AND v."projectId" = r."projectId" AND v."sourceId" = r."sourceId"
+              WHERE r."organizationId" = ${scope.organizationId} AND r."projectId" = ${scope.projectId}
+                AND r."sourceId" = q."sourceId" AND r."externalId" = q."externalId"
+                AND r."inventoryUid" = q.uid AND r."recordHash" = q.hash
+                AND v."status" = 'GOOD' AND v."sequence" <= q."headSequence"
+              ORDER BY v."sequence" DESC LIMIT 1
+            ) fact ON true
+            ORDER BY q."index"
+          `);
+          if (matches.length !== identities.length || matches.some((match, index) => match.index !== index)) {
+            throw new Error("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
+          }
+          const page = identities.map((row, index) => ({ ...row,
+            factRevisionId: matches[index]!.revisionId, factRevisionSequence: matches[index]!.sequence,
+            factProfileKey: matches[index]!.profileKey, factProfileVersion: matches[index]!.profileVersion }));
+          for (const row of page) if (row.status === "ACTIVE" && !row.factRevisionId) {
+            throw new Error("SNAPSHOT_INPUT_INVENTORY_FACT_MISSING");
+          }
+          const factApprovals = await approve(page.flatMap((row) => row.status === "ACTIVE" && row.factRevisionId && row.factRevisionSequence
+            ? [{ sourceId: row.sourceId, revisionId: row.factRevisionId, sequence: row.factRevisionSequence }] : []));
+          sink("inventory", page.map((row) => {
+            const factProfileIdentity = row.factProfileKey && row.factProfileVersion
+              ? pinProfile(row.factProfileKey, row.factProfileVersion) : null;
+            return JSON.parse(JSON.stringify({ ...row, factProfileIdentity,
+              factApproval: row.status === "ACTIVE" ? factApprovals.get(row.factRevisionId!) : null })) as CanonicalJsonValue;
+          }));
+          if (visitInventoryPage) await visitInventoryPage(page);
         }
-        const factApprovals = await approve(rows.flatMap((row) => row.status === "ACTIVE" && row.factRevisionId && row.factRevisionSequence
-          ? [{ sourceId: row.sourceId, revisionId: row.factRevisionId, sequence: row.factRevisionSequence }] : []));
-        sink("inventory", rows.map((row) => {
-          const factProfileIdentity = row.factProfileKey && row.factProfileVersion
-            ? pinProfile(row.factProfileKey, row.factProfileVersion) : null;
-          return JSON.parse(JSON.stringify({ ...row, factProfileIdentity,
-            factApproval: row.status === "ACTIVE" ? factApprovals.get(row.factRevisionId!) : null })) as CanonicalJsonValue;
-        }));
-        if (visitInventoryPage) await visitInventoryPage(rows);
         after = rows.at(-1)!.uid;
       }
       sink("inventory", []);
