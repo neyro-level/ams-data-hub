@@ -283,6 +283,10 @@ remediation program preserves these boundaries while connecting them:
   or producer identifiers and avoids per-page client/server round trips inside
   the five-second publication transaction. Capture and GOOD materialization keep
   their separate pages of at most 200.
+  Publication media admission applies the same bounded, set-oriented pattern to
+  distinct asset, mirror-relation and shared-observation anchors: parameterized
+  JSONB record sets drive primary-key `LATERAL` fact checks, return only aggregate
+  validity and never return source URLs, filenames, licences or attribution.
   Project checks
   enforce active service, unfrozen jobs, captured contact version and published
   Agent consent/version/photo slots and exact bindings without live enrichment
