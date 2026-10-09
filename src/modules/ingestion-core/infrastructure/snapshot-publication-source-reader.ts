@@ -39,22 +39,41 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
     // One count cut additionally detects any active identity omitted by the
     // signed anchors, without a redundant 200-row scan of the same identities.
     if (await transaction.inventoryIdentity.count({ where: { ...scope, status: "ACTIVE" } }) !== expected.inventory.length) stale();
+    const revisions = new Map<string, { sourceId: string; sequence: number; profileKey: string; profileVersion: string }>();
+    for (const pin of expected.inventory) {
+      const existing = revisions.get(pin.factRevisionId);
+      if (existing && (existing.sourceId !== pin.sourceId || existing.sequence !== pin.factRevisionSequence
+        || existing.profileKey !== pin.factProfileKey || existing.profileVersion !== pin.factProfileVersion)) stale();
+      revisions.set(pin.factRevisionId, { sourceId: pin.sourceId, sequence: pin.factRevisionSequence,
+        profileKey: pin.factProfileKey, profileVersion: pin.factProfileVersion });
+    }
+    const revisionPins = [...revisions].map(([id, pin]) => ({ id, ...pin }));
+    for (let offset = 0; offset < revisionPins.length; offset += PAGE) {
+      const pins = revisionPins.slice(offset, offset + PAGE);
+      const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.id}::text, ${pin.sourceId}::text,
+        ${pin.sequence}::int, ${pin.profileKey}::text, ${pin.profileVersion}::text)`);
+      const rows = await transaction.$queryRaw<{ index: number; found: boolean }[]>(Prisma.sql`
+        WITH requested("index", revision, source, sequence, profile, version) AS (VALUES ${Prisma.join(values)})
+        SELECT q."index", (v.id IS NOT NULL) AS found
+        FROM requested q LEFT JOIN "SourceRevision" v ON v.id=q.revision
+          AND v."organizationId"=${scope.organizationId} AND v."projectId"=${scope.projectId}
+          AND v."sourceId"=q.source AND v.status='GOOD' AND v.sequence=q.sequence
+          AND v."profileKey"=q.profile AND v."profileVersion"=q.version
+        ORDER BY q."index"`);
+      if (rows.length !== pins.length || rows.some((row, index) => row.index !== index || !row.found)) stale();
+    }
     for (let offset = 0; offset < expected.inventory.length; offset += PAGE) {
       const pins = expected.inventory.slice(offset, offset + PAGE);
       const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.uid}::text, ${pin.sourceId}::text,
-        ${pin.normalizedHash}::text, ${pin.factRevisionId}::text, ${pin.factRevisionSequence}::int,
-        ${pin.factProfileKey}::text, ${pin.factProfileVersion}::text)`);
+        ${pin.normalizedHash}::text, ${pin.factRevisionId}::text)`);
       const rows = await transaction.$queryRaw<{ index: number; found: boolean }[]>(Prisma.sql`
-        WITH requested("index", uid, source, hash, revision, sequence, profile, version) AS (VALUES ${Prisma.join(values)})
-        SELECT q."index", (i.uid IS NOT NULL AND v.id IS NOT NULL AND r."externalId" IS NOT NULL) AS found
+        WITH requested("index", uid, source, hash, revision) AS (VALUES ${Prisma.join(values)})
+        SELECT q."index", (i.uid IS NOT NULL AND r."externalId" IS NOT NULL) AS found
         FROM requested q LEFT JOIN "InventoryIdentity" i
           ON i."organizationId"=${scope.organizationId} AND i."projectId"=${scope.projectId}
           AND i.uid=q.uid AND i."sourceId"=q.source AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
-        LEFT JOIN "SourceRevision" v ON v.id=q.revision AND v."organizationId"=${scope.organizationId}
-          AND v."projectId"=${scope.projectId} AND v."sourceId"=q.source AND v.status='GOOD'
-          AND v.sequence=q.sequence AND v."profileKey"=q.profile AND v."profileVersion"=q.version
         LEFT JOIN "SourceRevisionRecord" r ON r."organizationId"=i."organizationId"
-          AND r."projectId"=i."projectId" AND r."sourceId"=i."sourceId" AND r."revisionId"=v.id
+          AND r."projectId"=i."projectId" AND r."sourceId"=i."sourceId" AND r."revisionId"=q.revision
           AND r."inventoryUid"=i.uid AND r."externalId"=i."externalOfferId" AND r."recordHash"=q.hash
         ORDER BY q."index"`);
       if (rows.length !== pins.length || rows.some((row, index) => row.index !== index || !row.found)) stale();
