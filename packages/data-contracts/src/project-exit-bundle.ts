@@ -23,8 +23,9 @@ export const agentPublicV1Schema = z.object({
 export type AgentPublicV1 = z.infer<typeof agentPublicV1Schema>;
 
 export const PROJECT_EXIT_DATASET_KINDS = [
-  "geo", "developers", "developments", "buildings", "listings", "agents",
-  "project-contacts", "editorial", "urls", "redirects", "lifecycle",
+  "geo", "developers", "developments", "buildings", "prices", "media",
+  "inventory", "agents", "project/contacts", "editorial", "urls", "redirects",
+  "lifecycle",
 ] as const;
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/u);
 const relativePath = z.string().min(1).max(512).refine((value) => !value.startsWith("/") && !value.includes("..") && !value.includes("\\"), "Bundle path must be safe and relative");

@@ -5,7 +5,11 @@ defines the shape. DH-08.4 adds deterministic canonical JSON artifacts,
 `AgentPublicV1`, fail-closed privacy scanning, digest validation and a media
 transfer port that rewrites the public manifest to client-controlled HTTPS URLs.
 
-The bundle uses `DATA_MODE=local`, contains every required public dataset,
+The current `schemaMajor=1`, `schemaMinor=1` bundle uses `DATA_MODE=local` and
+contains the same thirteen public dataset kinds as the final Snapshot V1
+contract: `geo`, `developers`, `developments`, `buildings`, `prices`, `media`,
+`inventory`, `agents`, `project/contacts`, `editorial`, `urls`, `redirects` and
+`lifecycle`. It also contains a
 client-controlled media manifest, pinned vendored contracts and the three
 handoff documents. It explicitly declares that AMS Hub and AMS storage are not
 runtime dependencies. Public data never contains source credentials, raw feeds,
@@ -23,3 +27,9 @@ Runtime contract:
 - `DATA_MODE=hub`: pull, verify, atomically apply and ACK signed snapshots.
 - `DATA_MODE=local`: read the handed-off local dataset; disable Hub polling,
   webhook and ACK; require no AMS credentials.
+
+The portability proof writes the actual composed bundle and transferred media
+to disk, then starts a separate Node.js consumer with `HUB_ENABLED=false`,
+`DATA_MODE=local` and an environment containing no AMS, database, object-storage
+or provider credentials. That consumer rechecks every digest and byte length,
+parses every dataset, verifies media and exits without importing Hub code.

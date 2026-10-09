@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { agentPublicV1Schema, PROJECT_EXIT_DATASET_KINDS, projectExitBundleV1Schema, type CanonicalJsonValue } from "@ams-data-hub/data-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createProjectExitBundle, createProtectedConsentEvidenceExport, validateProjectExitBundle } from "../src/modules/operations-control/index.ts";
@@ -33,24 +37,54 @@ describe("ProjectExitBundleV1 composer", () => {
   const audit = { record: vi.fn(async () => undefined) };
 
   it("builds and validates a public local-mode handoff with rewritten media URLs", async () => {
-    const copy = vi.fn(async () => undefined);
-    const composition = await createProjectExitBundle(admin, {
-      projectId: "project-1",
-      generatedAt,
-      datasets: datasets(),
-      media: [{ sourceStorageKey: `media/${mediaSha}`, targetPath: "media/anna.webp", targetUrl: "https://client.example/media/anna.webp", sha256: mediaSha, bytes: mediaBody.byteLength, contentType: "image/webp" }],
-      vendoredContracts: [{ path: "contracts/snapshot-v1.schema.json", body: contractBody }],
-      mediaTransfer: { copy },
-    }, { audit });
+    const root = await mkdtemp(join(tmpdir(), "ams-exit-local-"));
+    const copy = vi.fn(async ({ targetPath }: { targetPath: string }) => {
+      const target = join(root, ...targetPath.split("/"));
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, mediaBody);
+    });
+    try {
+      const composition = await createProjectExitBundle(admin, {
+        projectId: "project-1",
+        generatedAt,
+        datasets: datasets(),
+        media: [{ sourceStorageKey: `media/${mediaSha}`, targetPath: "media/anna.webp", targetUrl: "https://client.example/media/anna.webp", sha256: mediaSha, bytes: mediaBody.byteLength, contentType: "image/webp" }],
+        vendoredContracts: [{ path: "contracts/snapshot-v1.schema.json", body: contractBody }],
+        mediaTransfer: { copy },
+      }, { audit });
 
-    expect(projectExitBundleV1Schema.parse(composition.manifest)).toMatchObject({ dataMode: "local", publicOnly: true, protectedConsentEvidenceIncluded: false });
-    expect(validateProjectExitBundle(composition)).toEqual(composition.manifest);
-    expect(copy).toHaveBeenCalledWith(expect.objectContaining({ sourceStorageKey: `media/${mediaSha}`, targetPath: "media/anna.webp" }));
-    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-1", actorId: "admin-1" }));
-    const serialized = JSON.stringify(composition.manifest) + composition.files.map((file) => new TextDecoder().decode(file.body)).join("");
-    expect(serialized).toContain("https://client.example/media/anna.webp");
-    expect(serialized).not.toContain(`media/${mediaSha}`);
-    expect(serialized).not.toContain("consentConfirmedBy");
+      expect(projectExitBundleV1Schema.parse(composition.manifest)).toMatchObject({ schemaMinor: 1, dataMode: "local", publicOnly: true, protectedConsentEvidenceIncluded: false });
+      expect(validateProjectExitBundle(composition)).toEqual(composition.manifest);
+      expect(copy).toHaveBeenCalledWith(expect.objectContaining({ sourceStorageKey: `media/${mediaSha}`, targetPath: "media/anna.webp" }));
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project-1", actorId: "admin-1" }));
+      const serialized = JSON.stringify(composition.manifest) + composition.files.map((file) => new TextDecoder().decode(file.body)).join("");
+      expect(serialized).toContain("https://client.example/media/anna.webp");
+      expect(serialized).not.toContain(`media/${mediaSha}`);
+      expect(serialized).not.toContain("consentConfirmedBy");
+
+      for (const file of composition.files) {
+        const target = join(root, ...file.path.split("/"));
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, file.body);
+      }
+      const child = spawnSync(process.execPath, [resolve("tests/helpers/project-exit-local-consumer.mjs"), root], {
+        cwd: resolve("."), encoding: "utf8",
+        env: {
+          NODE_ENV: "test",
+          DATA_MODE: "local",
+          HUB_ENABLED: "false",
+          PATH: process.env.PATH ?? "",
+          SystemRoot: process.env.SystemRoot ?? "",
+        },
+      });
+      expect({ status: child.status, signal: child.signal, stderr: child.stderr }).toEqual({ status: 0, signal: null, stderr: "" });
+      expect(JSON.parse(child.stdout)).toEqual({
+        dataMode: "local", hubEnabled: false, projectId: "project-1", schemaMajor: 1,
+        schemaMinor: 1, datasets: 13, media: 1, amsCredentials: 0,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("rejects private consent fields before media transfer", async () => {
@@ -78,6 +112,17 @@ describe("ProjectExitBundleV1 composer", () => {
     const firstDataset = composition.files.find((file) => file.path.startsWith("data/"))!;
     const corrupted = { ...composition, files: composition.files.map((file) => file === firstDataset ? { ...file, body: new TextEncoder().encode("[] ") } : file) };
     expect(() => validateProjectExitBundle(corrupted)).toThrow("EXIT_BUNDLE_ARTIFACT_MISMATCH");
+  });
+
+  it("fails validation when manifest.json no longer matches the typed manifest", async () => {
+    const composition = await createProjectExitBundle(admin, {
+      projectId: "project-1", generatedAt, datasets: datasets(), media: [],
+      vendoredContracts: [{ path: "contracts/snapshot-v1.schema.json", body: contractBody }],
+      mediaTransfer: { copy: async () => undefined },
+    }, { audit });
+    const corrupted = { ...composition, files: composition.files.map((file) => file.path === "manifest.json"
+      ? { ...file, body: new TextEncoder().encode("{}") } : file) };
+    expect(() => validateProjectExitBundle(corrupted)).toThrow("EXIT_BUNDLE_MANIFEST_MISMATCH");
   });
 
   it("denies a tenant before reading or transferring export data", async () => {
