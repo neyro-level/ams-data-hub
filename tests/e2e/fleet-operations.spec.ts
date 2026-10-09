@@ -9,6 +9,7 @@ const projectId = `fleet-e2e-${randomUUID()}`;
 const projectName = `Synthetic Fleet action state ${projectId.slice(-8)}`;
 const sourceId = `source-${randomUUID()}`;
 const revisionId = `revision-${randomUUID()}`;
+const auditAction = `synthetic.fleet.proof.${projectId}`;
 
 test.beforeAll(async () => {
   const client = new pg.Client({ host: process.env.DATABASE_HOST, port: Number(process.env.DATABASE_PORT),
@@ -52,8 +53,8 @@ test.beforeAll(async () => {
       VALUES ($1,$2,$3,'PROJECT','WARNING','PLATFORM_ADMIN_ONLY','Импорт требует решения','Synthetic safe operational alert.','/admin/fleet/','SourceRevision',$4,$5,now(),now())`,
       [randomUUID(), organizationId, projectId, revisionId, `fleet-e2e-alert-${projectId}`]);
     await client.query(`INSERT INTO "AuditEvent" (id,"organizationId","actorType","actorId",action,"entityType","entityId",source,"correlationId","createdAt")
-      VALUES ($1,$2,'USER',$3,'synthetic.fleet.proof','Project',$4,'fleet-e2e',$5,now())`,
-      [randomUUID(), organizationId, userId, projectId, randomUUID()]);
+      VALUES ($1,$2,'USER',$3,$4,'Project',$5,'fleet-e2e',$6,now())`,
+      [randomUUID(), organizationId, userId, auditAction, projectId, randomUUID()]);
     await client.query("COMMIT");
   } catch (error) { await client.query("ROLLBACK"); throw error; }
   finally { await client.end(); }
@@ -71,16 +72,20 @@ test("Fleet proves the operator view and keeps accepted requests separate from c
   await expect(project.getByText("ACKNOWLEDGED", { exact: true })).toBeVisible();
   await expect(project.getByText("Подтверждён", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Последние алерты" })).toBeVisible();
-  await expect(page.getByText("Импорт требует решения", { exact: true })).toBeVisible();
-  await expect(page.getByText("synthetic.fleet.proof", { exact: true })).toBeVisible();
-  await expect(page.getByRole("combobox", { name: /^Источник/u })).toHaveValue(sourceId);
+  const alert = page.getByRole("row").filter({ hasText: projectName }).filter({ hasText: "Импорт требует решения" });
+  await expect(alert).toHaveCount(1); await expect(alert).toBeVisible();
+  await expect(page.getByText(auditAction, { exact: true })).toBeVisible();
+  const projectSelect = page.getByRole("combobox", { name: /^Проект/u });
+  await projectSelect.selectOption(projectId); await expect(projectSelect).toHaveValue(projectId);
+  const sourceSelect = page.getByRole("combobox", { name: /^Источник/u });
+  await sourceSelect.selectOption(sourceId); await expect(sourceSelect).toHaveValue(sourceId);
   await page.getByRole("button", { name: "Записать запрос", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Запрос принят");
   await expect(page.getByRole("status")).toContainText("проверяйте состояние источника и jobs");
   await page.getByRole("combobox", { name: /^Действие/u }).selectOption("SNAPSHOT_BUILD");
   await expect(page.getByRole("combobox", { name: /^Действие/u })).toHaveValue("SNAPSHOT_BUILD");
   await expect(page.getByRole("combobox", { name: /^Источник/u })).toHaveCount(0);
-  await page.getByRole("combobox", { name: /^Проект/u }).selectOption(projectId);
+  await projectSelect.selectOption(projectId);
   await page.getByRole("button", { name: "Записать запрос", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Запрос принят");
   await expect(page.getByRole("status")).toContainText("не подтверждение выполнения");
