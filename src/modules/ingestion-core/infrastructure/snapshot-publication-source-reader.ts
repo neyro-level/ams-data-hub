@@ -35,10 +35,6 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
       after = rows.at(-1)!.id;
     }
     if (count !== sources.size) stale();
-    // The exact pin queries below validate every expected uid/source/hash/fact.
-    // One count cut additionally detects any active identity omitted by the
-    // signed anchors, without a redundant 200-row scan of the same identities.
-    if (await transaction.inventoryIdentity.count({ where: { ...scope, status: "ACTIVE" } }) !== expected.inventory.length) stale();
     const revisions = new Map<string, { sourceId: string; sequence: number; profileKey: string; profileVersion: string }>();
     for (const pin of expected.inventory) {
       const existing = revisions.get(pin.factRevisionId);
@@ -47,28 +43,38 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
       revisions.set(pin.factRevisionId, { sourceId: pin.sourceId, sequence: pin.factRevisionSequence,
         profileKey: pin.factProfileKey, profileVersion: pin.factProfileVersion });
     }
-    const revisionPins = [...revisions].map(([id, pin]) => ({ id, ...pin }));
-    for (let offset = 0; offset < revisionPins.length; offset += PAGE) {
-      const pins = revisionPins.slice(offset, offset + PAGE);
-      const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.id}::text, ${pin.sourceId}::text,
-        ${pin.sequence}::int, ${pin.profileKey}::text, ${pin.profileVersion}::text)`);
-      const rows = await transaction.$queryRaw<{ index: number; found: boolean }[]>(Prisma.sql`
-        WITH requested("index", revision, source, sequence, profile, version) AS (VALUES ${Prisma.join(values)})
-        SELECT q."index", (v.id IS NOT NULL) AS found
-        FROM requested q LEFT JOIN "SourceRevision" v ON v.id=q.revision
-          AND v."organizationId"=${scope.organizationId} AND v."projectId"=${scope.projectId}
-          AND v."sourceId"=q.source AND v.status='GOOD' AND v.sequence=q.sequence
-          AND v."profileKey"=q.profile AND v."profileVersion"=q.version
-        ORDER BY q."index"`);
-      if (rows.length !== pins.length || rows.some((row, index) => row.index !== index || !row.found)) stale();
+    // The exact pin queries below validate every expected uid/source/hash/fact.
+    // Empty anchors still need an explicit cohort cut because there is no first
+    // fact page into which the active-count check can be folded.
+    if (expected.inventory.length === 0) {
+      if (await transaction.inventoryIdentity.count({ where: { ...scope, status: "ACTIVE" } }) !== 0) stale();
+      return;
     }
     for (let offset = 0; offset < expected.inventory.length; offset += PAGE) {
       const pins = expected.inventory.slice(offset, offset + PAGE);
       const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.uid}::text, ${pin.sourceId}::text,
         ${pin.normalizedHash}::text, ${pin.factRevisionId}::text)`);
+      const revisionIds = [...new Set(pins.map((pin) => pin.factRevisionId))];
+      const revisionValues = revisionIds.map((id) => {
+        const pin = revisions.get(id)!;
+        return Prisma.sql`(${id}::text, ${pin.sourceId}::text, ${pin.sequence}::int,
+          ${pin.profileKey}::text, ${pin.profileVersion}::text)`;
+      });
+      const activeCountIsExact = offset === 0 ? Prisma.sql`(
+        SELECT count(*) = ${expected.inventory.length}::bigint FROM "InventoryIdentity"
+        WHERE "organizationId"=${scope.organizationId} AND "projectId"=${scope.projectId} AND status='ACTIVE'
+      )` : Prisma.sql`TRUE`;
       const rows = await transaction.$queryRaw<{ index: number; found: boolean }[]>(Prisma.sql`
-        WITH requested("index", uid, source, hash, revision) AS (VALUES ${Prisma.join(values)})
-        SELECT q."index", (i.uid IS NOT NULL AND r."externalId" IS NOT NULL) AS found
+        WITH requested("index", uid, source, hash, revision) AS (VALUES ${Prisma.join(values)}),
+        requested_revisions(revision, source, sequence, profile, version) AS (VALUES ${Prisma.join(revisionValues)})
+        SELECT q."index", (i.uid IS NOT NULL AND r."externalId" IS NOT NULL AND ${activeCountIsExact}
+          AND NOT EXISTS (
+            SELECT 1 FROM requested_revisions rv LEFT JOIN "SourceRevision" v ON v.id=rv.revision
+              AND v."organizationId"=${scope.organizationId} AND v."projectId"=${scope.projectId}
+              AND v."sourceId"=rv.source AND v.status='GOOD' AND v.sequence=rv.sequence
+              AND v."profileKey"=rv.profile AND v."profileVersion"=rv.version
+            WHERE v.id IS NULL
+          )) AS found
         FROM requested q LEFT JOIN "InventoryIdentity" i
           ON i."organizationId"=${scope.organizationId} AND i."projectId"=${scope.projectId}
           AND i.uid=q.uid AND i."sourceId"=q.source AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
