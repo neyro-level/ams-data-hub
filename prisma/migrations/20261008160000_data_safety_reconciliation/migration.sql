@@ -108,4 +108,3 @@ DO $$ DECLARE table_name TEXT; BEGIN
   END LOOP;
 END $$;
 COMMIT;
-
