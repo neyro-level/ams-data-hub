@@ -23,3 +23,5 @@ export { createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServ
 export { createProjectSnapshotTrustResolver } from "./infrastructure/project-snapshot-trust.ts";
 export { createSnapshotRollbackServer, inspectSnapshotRollbackRunServer } from "./infrastructure/snapshot-rollback-server.ts";
 export { createSnapshotAckRotationServer } from "./infrastructure/snapshot-ack-rotation-server.ts";
+export { createRawRetentionSnapshotReader } from "./infrastructure/raw-retention-snapshot-reader.ts";
+export { assertOperationalRawPinAdmission } from "./infrastructure/operational-raw-pin-admission.ts";

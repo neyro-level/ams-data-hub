@@ -241,6 +241,11 @@ describe("real request-owned operational ACK rotation", () => {
       let sequence = 0;
       const ack = async (token: string) => runInPrincipalDatabaseTransaction(admin,async (tx) => {
         const repo = new PrismaSnapshotDeliveryRepository(tx); const publishSequence = ++sequence;
+        await tx.projectSnapshotSequence.upsert({
+          where: { organizationId_projectId: scope },
+          create: { ...scope, lastReservedSequence: publishSequence },
+          update: { lastReservedSequence: publishSequence },
+        });
         await repo.publishCurrentAndCreateRun({ ...scope, publishSequence, manifestSha256: "a".repeat(64), manifestKey: `snapshots/${scope.projectId}/${"a".repeat(64)}`, publishedAt: new Date() });
         await repo.transitionRun({ ...scope, publishSequence, expectedStatuses: ["PENDING"], nextStatus: "DOWNLOADED", occurredAt: new Date() });
         await repo.transitionRun({ ...scope, publishSequence, expectedStatuses: ["DOWNLOADED"], nextStatus: "APPLIED", occurredAt: new Date() });

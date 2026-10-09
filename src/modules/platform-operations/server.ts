@@ -4,6 +4,7 @@ export { PrismaDataSafetyRepository } from "./infrastructure/prisma-data-safety-
 export { createDataSafetyService, assertMutatingJobsAllowed, DataSafetyError } from "./application/data-safety-service.ts";
 export {
   freezeMutatingJobs,
+  reconcileAfterRestore,
   listOperations,
   requestMaintenance,
   unfreezeMutatingJobs,

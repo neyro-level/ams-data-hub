@@ -1,4 +1,5 @@
 import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { createUlid } from "@ams-data-hub/data-contracts";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,14 +25,16 @@ import { OPERATIONAL_ACTION_TOPICS, type OperationalAction } from "../../src/mod
 import { lockOperationalOutboxLease, PrismaReliabilityRepository } from "../../src/modules/platform-operations/server.ts";
 import { ReliabilityService } from "../../src/modules/platform-operations/index.ts";
 import { createOutboxDrainDependencies, drainOutboxWithDependencies, getPgBoss, publishClaimedEvent, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
+import { OUTBOX_DELIVERY_QUEUE, type OutboxDispatchJob } from "../../src/modules/platform-operations/domain/pg-boss.ts";
 import { runReliabilityRetention } from "../../src/modules/platform-operations/infrastructure/retention-runtime.ts";
 import { runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal } from "../../src/platform/authorization/principal.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
-import { captureSnapshotInput, createSnapshotStagedBuildServer } from "../../src/modules/snapshot-delivery/server.ts";
+import { captureSnapshotInput, createSnapshotStagedBuildServer, createSnapshotPublicationServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
 import { defineSecretRef } from "../../src/platform/security/secret-ref.ts";
 import { PrismaOperationsActionRepository } from "../../src/modules/operations-control/infrastructure/prisma-operations-action-repository.ts";
+import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY } from "../../src/modules/ingestion-core/index.ts";
 
 async function fixture() {
   const suffix = randomUUID().slice(0, 8);
@@ -47,7 +50,7 @@ function input(scope: { organizationId: string; projectId: string }, key: string
   return { ...scope, action: "SNAPSHOT_BUILD" as const, sourceId: "", sourceRevisionId: "", reason: "", idempotencyKey: key };
 }
 
-async function selectedStage(admin: PlatformAdminPrincipal, scope: { organizationId: string; projectId: string }) {
+async function selectedStage(admin: PlatformAdminPrincipal, scope: { organizationId: string; projectId: string }, publish = false) {
   await runInPrincipalDatabaseTransaction(admin, async (tx) => {
     const city = await tx.city.findFirstOrThrow({ select: { uid: true } });
     await tx.projectCatalogSubscription.upsert({ where: { organizationId_projectId: scope }, update: {},
@@ -64,15 +67,119 @@ async function selectedStage(admin: PlatformAdminPrincipal, scope: { organizatio
     expect(command).toBeInstanceOf(PutObjectCommand); return { ETag: "synthetic" } as never;
   });
   try {
-    return await createSnapshotStagedBuildServer({ ...scope, storage: new S3ObjectStorage({ bucket: "synthetic", client }),
+    const bound = { ...scope, storage: new S3ObjectStorage({ bucket: "synthetic", client }),
       keyId: "synthetic-selected", privateKeyRef: defineSecretRef("SYNTHETIC_SELECTED_PUBLISH_KEY"),
       trustSet: { currentKeyId: "synthetic-selected", nextKeyId: null, revokedKeyIds: [],
-        publicKeys: { "synthetic-selected": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } })(principal,
-      { idempotencyKeyHash: capture.idempotencyKeyHash, requestHash: capture.requestHash });
+        publicKeys: { "synthetic-selected": keys.publicKey.export({ format: "pem", type: "spki" }).toString() } } };
+    const lookup = { idempotencyKeyHash: capture.idempotencyKeyHash, requestHash: capture.requestHash };
+    const stage = await createSnapshotStagedBuildServer(bound)(principal, lookup);
+    if (publish) await createSnapshotPublicationServer(bound)(principal, lookup);
+    return stage;
   } finally { send.mockRestore(); client.destroy(); vi.unstubAllEnvs(); }
 }
 
 describe("actual admin durable operational requests under NOBYPASS", () => {
+  it("denies direct raw-pin capability use outside its exact admin ReadCommitted target", async () => {
+    const { admin, scope } = await fixture();
+    const stage = await selectedStage(admin, scope, true);
+    const context = { principalKind: "platform-admin" as const, actorId: admin.userId,
+      organizationId: null, projectIds: "*" as const, correlationId: randomUUID() };
+    const query = (tx: Parameters<Parameters<typeof runInAuthorizedDatabaseTransaction>[1]>[0],
+      organizationId: string, projectId: string, buildInputId: string | null, sequence: number | null) =>
+      tx.$queryRawUnsafe<{ allowed: boolean }[]>(
+        "SELECT public.snapshot_operational_raw_pin_admission($1::text,$2::text,$3::text,$4::integer) AS allowed",
+        organizationId, projectId, buildInputId, sequence);
+    const counts = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+      requests: await tx.operationalActionRequest.count({ where: scope }),
+      outbox: await tx.outboxEvent.count({ where: { organizationId: scope.organizationId } }),
+      audits: await tx.auditEvent.count({ where: { organizationId: scope.organizationId } }),
+      keys: await tx.idempotencyKey.count({ where: { organizationId: scope.organizationId } }),
+    }));
+    const baseline = await counts();
+    for (const target of [[stage.buildInputId, null], [null, stage.publishSequence]] as const)
+      expect(await runInAuthorizedDatabaseTransaction(context,
+        (tx) => query(tx, scope.organizationId, scope.projectId, target[0], target[1]))).toEqual([{ allowed: true }]);
+    await expect(runInAuthorizedDatabaseTransaction({ ...context, principalKind: "project-job",
+      actorId: "snapshot-input", organizationId: scope.organizationId, projectIds: [scope.projectId] },
+    (tx) => query(tx, scope.organizationId, scope.projectId, stage.buildInputId, null)))
+      .rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, scope.organizationId, scope.projectId, stage.buildInputId, null),
+      { isolationLevel: "RepeatableRead" })).rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, scope.organizationId, "invalid scope", stage.buildInputId, null)))
+      .rejects.toThrow("RAW_PIN_ADMISSION_ACCESS_DENIED");
+    for (const target of [[null, null], [stage.buildInputId, stage.publishSequence], ["missing-input", null], [null, 999999]] as const)
+      await expect(runInAuthorizedDatabaseTransaction(context,
+        (tx) => query(tx, scope.organizationId, scope.projectId, target[0], target[1])))
+        .rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    const foreign = await fixture();
+    await expect(runInAuthorizedDatabaseTransaction(context,
+      (tx) => query(tx, foreign.scope.organizationId, foreign.scope.projectId, stage.buildInputId, null)))
+      .rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
+    expect(await counts()).toEqual(baseline);
+  }, 60_000);
+  it.each(["SNAPSHOT_PUBLISH", "SNAPSHOT_ROLLBACK"] as const)("fences actual web %s pins without exposing private journals", async (action) => {
+    const { admin, scope, suffix } = await fixture();
+    const rawArtifactHash = "e".repeat(64);
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const source = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-pin-admission", name: "Synthetic pin",
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+      const target = { ...scope, sourceId: source.id };
+      const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+        adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey, profileVersion: source.profileVersion,
+        recordCount: 1, safetyPolicy: { ...BOOTSTRAP_SOURCE_SAFETY_POLICY },
+        safetyAnalysis: JSON.parse(JSON.stringify(analyzeImportSafety({ recordCount: 1, previousGoodRecordCount: null,
+          invalidRecordCount: 0, issues: [] }, BOOTSTRAP_SOURCE_SAFETY_POLICY))) } });
+      await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, externalId: "synthetic-pin",
+        inventoryUid: createUlid(), recordHash: "b".repeat(64), orderKey: "73796e746865746963", payload: { draft: {}, fields: {} } } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+        rawArtifactHash, rawStorageKey: `source-artifacts/${rawArtifactHash}`, rawByteCount: 1,
+        normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+      await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+      await tx.source.update({ where: { id: source.id }, data: { lastGoodRevisionId: revision.id } });
+    });
+    const stage = await selectedStage(admin, scope, true);
+    const request = { ...input(scope, `synthetic-pin-${suffix}`), action,
+      ...(action === "SNAPSHOT_PUBLISH" ? { buildInputId: stage.buildInputId } : { sourcePublishSequence: stage.publishSequence }) };
+    const first = await requestOperationalAction(admin, request);
+    const counts = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+      audit: await tx.auditEvent.count({ where: { organizationId: scope.organizationId } }),
+      outbox: await tx.outboxEvent.count({ where: { organizationId: scope.organizationId } }),
+      requests: await tx.operationalActionRequest.count({ where: scope }),
+      keys: await tx.idempotencyKey.count({ where: { organizationId: scope.organizationId } }),
+    }));
+    const baseline = await counts();
+    const journal = <T>(execute: Parameters<typeof runInAuthorizedDatabaseTransaction<T>>[1]) =>
+      runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "raw-artifact-retention",
+        organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() }, execute);
+    // Synthetic durable phases, never a claim of provider DELETE.
+    const deletion = await journal((tx) => tx.rawArtifactDeletion.create({ data: { ...scope, rawArtifactHash,
+      storageKey: `source-artifacts/${rawArtifactHash}`, policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null } } }));
+    for (const status of ["PENDING", "ACKNOWLEDGED"] as const) {
+      if (status === "ACKNOWLEDGED") await journal((tx) => tx.$executeRawUnsafe(
+        'UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+      await expect(requestOperationalAction(admin, { ...request, idempotencyKey: `deny-${suffix}-${status}` }))
+        .rejects.toMatchObject({ message: "RAW_RETENTION_IN_PROGRESS", retryable: true });
+      await expect(requestOperationalAction(admin, request)).resolves.toEqual({ ...first, duplicate: true });
+      expect(await counts()).toEqual(baseline);
+    }
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.$queryRawUnsafe(`SELECT has_table_privilege(current_user,'public."RawArtifactDeletion"','SELECT') AS journal,
+        has_table_privilege(current_user,'public."SnapshotBuildInputPart"','SELECT') AS parts`))
+        .toEqual([{ journal: false, parts: false }]);
+      expect(await tx.$queryRawUnsafe(`SELECT r.rolsuper,r.rolbypassrls,p.prosecdef,
+        p.proconfig @> ARRAY['row_security=on'] AS "rowSecurity"
+        FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner
+        WHERE p.oid='public.snapshot_operational_raw_pin_admission(text,text,text,integer)'::regprocedure`))
+        .toEqual([{ rolsuper: false, rolbypassrls: false, prosecdef: true, rowSecurity: true }]);
+    });
+    await journal((tx) => tx.$executeRawUnsafe(
+      'UPDATE "RawArtifactDeletion" SET status=\'DELETED\',"completedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+    await expect(requestOperationalAction(admin, { ...request, idempotencyKey: `after-deleted-${suffix}` }))
+      .resolves.toMatchObject({ duplicate: false });
+  }, 60_000);
   it("pins explicit scoped completed stage, replays without private capability and rolls back invalid targets", async () => {
     const own = await fixture(); const first = await selectedStage(own.admin, own.scope);
     const second = await selectedStage(own.admin, own.scope);
@@ -219,7 +326,18 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
     if (!lease) throw new Error("SYNTHETIC_LEASE_MISSING");
     try {
       const boss = await getPgBoss();
-      await publishClaimedEvent(boss, lease);
+      // Other suites legitimately leave queued jobs. Prioritize only this owned
+      // real insertion; keep the actual queue fetch, worker and settlement path.
+      const send = boss.send.bind(boss);
+      const prioritized = vi.spyOn(boss, "send").mockImplementationOnce((name, data, options) =>
+        send(name, data, { ...options, priority: 10_000 }));
+      let queuedId: string | null;
+      try { queuedId = await publishClaimedEvent(boss, lease); }
+      finally { prioritized.mockRestore(); }
+      expect(queuedId).not.toBeNull();
+      if (!queuedId) throw new Error("SYNTHETIC_QUEUE_INSERT_MISSING");
+      expect(await boss.getJobById<OutboxDispatchJob>(OUTBOX_DELIVERY_QUEUE, queuedId))
+        .toMatchObject({ priority: 10_000, data: { event: { outboxEventId: eventId } } });
       await expect(drainOutboxWithDependencies({ workerId: `reserved-worker-${suffix}`, maxEvents: 1 }, createOutboxDrainDependencies(boss)))
         .resolves.toEqual({ claimed: 1, completed: 0, failed: 0 });
       await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -321,8 +439,14 @@ describe("actual admin durable operational requests under NOBYPASS", () => {
 
   it("persists all six exact action discriminators without moving private review evidence into intents", async () => {
     const { admin, scope, suffix } = await fixture();
-    const stage = await selectedStage(admin, scope);
+    const stage = await selectedStage(admin, scope, true);
     const source = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      expect(await tx.$queryRawUnsafe(`SELECT r.rolbypassrls,r.rolsuper,p.prosecdef,
+        p.proconfig @> ARRAY['row_security=on'] AS "rowSecurity",
+        has_table_privilege(current_user,'public."RawArtifactPutAttempt"','SELECT') AS "webJournalRead"
+        FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner
+        WHERE p.oid='public.check_raw_artifact_put_receipt()'::regprocedure`))
+        .toEqual([{ rolbypassrls: false, rolsuper: false, prosecdef: true, rowSecurity: true, webJournalRead: false }]);
       const row = await tx.source.create({ data: { ...scope, sourceKey: "synthetic-review", name: "Synthetic review",
         adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "default-v1", profileVersion: "1.0.0",
         datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });

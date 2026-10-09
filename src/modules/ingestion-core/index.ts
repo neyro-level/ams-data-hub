@@ -1,4 +1,5 @@
 export * from "./contracts.ts";
+export { planRawArtifactRetention, DEFAULT_RAW_ARTIFACT_RETENTION_POLICY } from "./domain/raw-artifact-retention.ts";
 export { prepareSnapshotPublicationSourceAnchors, type SnapshotPublicationSourceAnchors } from "./application/snapshot-publication-source-anchors.ts";
 export { MAX_SOURCE_INTAKE_LIMITS, resolveSourceIntakeLimits, type SourceIntakeLimits } from "./domain/source-intake-policy.ts";
 export {

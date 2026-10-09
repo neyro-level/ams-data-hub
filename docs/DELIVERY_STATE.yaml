@@ -8,9 +8,18 @@ active_plan:
   source: AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md
   source_sha256: d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a
   inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
-  execution_status: IN_PROGRESS
-  current_epic: adh-mp-09
-  next_delivery_task: adh-mp-09-delivery
+  execution_status: COMPLETE
+  current_epic: null
+  current_task: null
+  next_delivery_task: null
+  final_pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
+  final_delivery_evidence: plandb://t-adh-mp-10-delivery
+  delivery_status: MERGED_AFTER_EXACT_HEAD_RISKY_GATE
+  owner_amendments:
+    - date: 2026-10-09
+      decision: SERVER_POSTGRESQL_BACKUP_NOT_REQUIRED_FOR_CURRENT_MAIN_DELIVERY
+      effect: MP10_3_MAY_CLOSE_WITH_LOCAL_RECOVERY_AND_RETENTION_PROOF
+      production_authorized: false
   completed_deliveries:
     - epic: adh-mp-00
       pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/18
@@ -57,7 +66,15 @@ active_plan:
       gate_run: "325"
       gate_head_sha: ad09ecab9ade1e4b0d1abcfb494a82fb92c9c27a
       merge_sha: a71c3a01b062b314df392c2e305ddd7c9ec07a1e
-  readiness: NOT_PRODUCTION_READY
+    - epic: adh-mp-09
+      pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/27
+      gate_run: "340"
+      gate_head_sha: 75796b20407ea204372d698820b61364d2fe436a
+      merge_sha: bc8e8c6d03183a591838fbd364e5cc5d43919589
+    - epic: adh-mp-10
+      pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
+      immutable_evidence: plandb://t-adh-mp-10-delivery
+  readiness: READY_FOR_SEPARATE_OWNER_AUTHORIZED_RELEASE_WITH_ACCEPTED_BACKUP_DEVIATION
   reconciliation: CLEAN
   last_verified_reconciliation: CLEAN
   execution_store_status: OWNER_APPROVED_PLANDB_MIGRATION_VERIFIED
@@ -122,18 +139,34 @@ production:
   release_run: NOT_RUN
   touched: false
 data_safety:
-  status: PASS
+  status: PASS_WITH_OWNER_ACCEPTED_SERVER_BACKUP_DEVIATION
+  gate_task_status: READY_TO_CLOSE
+  verification_scope: nonproduction_dump_restore_only
   environment: isolated-local
   postgres_major: 18
   source_database: ams_data_hub_test
   restore_database: ams_data_hub_restore_test
   evidence_command: pnpm test:data-safety-drill
   evidence_pointer: .local/evidence/data-safety-drill.json
-  ledger_pointer: adh-dh-02-7
+  ledger_pointer: plandb://t-adh-mp-10-3
+  nonempty_fingerprint_tables: 22
+  raw_journals_restored: true
+  public_url_relink_preserved: true
+  rollback_current_linkage_preserved: true
   jobs_frozen_after_restore: true
   reconcile_conflicts: 0
   unfreeze_after_reconcile: true
   cleanup: PASS
+  provider_postgresql_backup:
+    status: NOT_CONFIGURED_OWNER_ACCEPTED
+    environment: ams-data-hub-deploy
+    timer_enabled: false
+    timer_active: false
+    backup_service_installed: false
+    backup_environment_file_present: false
+    current_backup_evidence_present: false
+    server_mutation_authorized: false
+    consequence: ACCEPTED_RISK_NOT_BLOCKING_MAIN_DELIVERY
 external_gates:
   timeweb_s3_provider_denial:
     status: PASS

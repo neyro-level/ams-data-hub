@@ -44,10 +44,15 @@ here and cannot override it. Visual rules belong only to `06_DESIGN_SYSTEM.md`.
 The map records implemented module boundaries. Current work and remaining
 operator/release decisions are recorded in the backlog and Task Manager.
 
-### Remediation runtime state — 2026-10-07
+### Chronological remediation implementation record — started 2026-10-07
 
 The module map is foundation evidence, not production readiness. The approved
 remediation program preserves these boundaries while connecting them:
+
+This section preserves checkpoint-specific facts chronologically. Statements
+such as `pending` or `remaining` describe the named checkpoint, not the current
+execution status. Current status belongs to `04_BACKLOG.md`,
+`DELIVERY_STATE.yaml` and PlanDB.
 
 - MP-02: explicit buffered media and single-use feed stream modes exist. The
   private raw spool hashes incrementally, uploads through a separately verified
@@ -275,7 +280,19 @@ remediation program preserves these boundaries while connecting them:
   Signing alone does not upload artifacts, update current or register outbox work.
   MP-05.11 staging now binds immutable signed identity before PUT and checks
   receipt-owned Source/cohort anchors and project permission anchors in a short
-  ReadCommitted cut under global then project-publication locks. Project checks
+  ReadCommitted cut under global then project-publication locks.
+  Source inventory admission passes the schema-bounded copied metadata cohort
+  (50,000 aggregate Source/inventory anchors maximum) as one parameterized JSONB
+  record set; PostgreSQL aggregates exact ACTIVE count, distinct GOOD revision
+  pins and identity/record facts to one result under RLS. It does not read payloads
+  or producer identifiers and avoids per-page client/server round trips inside
+  the five-second publication transaction. Capture and GOOD materialization keep
+  their separate pages of at most 200.
+  Publication media admission applies the same bounded, set-oriented pattern to
+  distinct asset, mirror-relation and shared-observation anchors: parameterized
+  JSONB record sets drive primary-key `LATERAL` fact checks, return only aggregate
+  validity and never return source URLs, filenames, licences or attribution.
+  Project checks
   enforce active service, unfrozen jobs, captured contact version and published
   Agent consent/version/photo slots and exact bindings without live enrichment
   or personal-value reads. Fact writers take global before target row/domain

@@ -279,6 +279,115 @@ observed separately, not advertised as a fixed allocator budget. The complete
 MP-02 regression set covers overflow/timeout/redirect/truncation, deterministic
 raw hashes across chunk layouts and cancellation/cleanup races.
 
+MP-10.3 adds an internal project/SHA lifetime guardian before raw PUT and keeps
+it through receipt registration, staging/apply or failure settlement. Successful
+verified receipts are registered on the PENDING revision before parsing, so a
+malformed XML attempt retains its raw provenance without producing GOOD or a
+snapshot intent. Before external PUT, `RawArtifactPutAttempt` commits the exact
+project/Source/revision/hash/key/byte intent. Verified receipt registration
+atomically settles that intent to STORED and records the revision receipt;
+deferred SQL guards verify the final agreement at commit. A failed or unknown
+PUT remains PENDING, including after a later successful attempt for the same
+SHA. It is neither a fabricated successful receipt nor automatically collectible.
+
+Shared producer session locks allow deduplicated uploads; retention requires an
+exclusive lifetime lock. A separate admission key is held only during acquisition
+and transaction fences. Business fences order global safety → admission → rows;
+retention fences do not reacquire their own exclusive lifetime key on a different
+connection. PID and two session markers fence lost guardians. Transaction locks
+continue excluding conflicting admissions until commit/rollback after guardian
+loss. External storage IO remains outside database transactions.
+
+The pure retention planner preserves the union of the last three GOOD revisions
+per Source and references from the last 30 days, across all Sources sharing the
+project/SHA. Pins, unsettled references, frozen jobs and incomplete coverage
+retain the object; overrides require a documented purpose. Planner decisions are
+not DELETE authorization. The ingestion-owned source reader uses a fresh
+ReadCommitted transaction under the global safety fence and a SELECT-only
+`raw-artifact-retention` project-job purpose. It collects actual Last GOOD,
+ACTIVE inventory historical facts and raw provenance (including missing-grace),
+deduplicated project/SHA references and unfinished PUT intents. Its bounded cut
+allows at most 500 Sources, 5,000 revisions/PUT intents and 50,000 ACTIVE
+identities; overflow or missing/inconsistent provenance marks source coverage
+INCOMPLETE and keeps all candidate objects. Source coverage is not overall
+coverage: snapshot/current/pending/rollback pins must be composed separately.
+The snapshot-owned reader resolves current and unfinished DeliveryRuns, captures
+not yet published, rollback reservations and actual pending Operations targets.
+It verifies immutable input/part digests with the existing input repository,
+then ingestion validates captured GOOD/source/head/sequence and inventory
+UID/external ID/normalized hash/raw SHA provenance. Current mutable Source heads
+are not substituted for captured heads. Work is bounded across the entire cut:
+128 roots, 32 MiB of stored payload, 50,000 records and 2,048 parts; overflow,
+legacy/unreconstructable roots or contradictory provenance fail coverage closed.
+Only identifiers/SHA pins escape, not captured private payloads. This reader
+does not itself compose the final cleanup cut or authorize storage deletion.
+The worker-root cut composes Source, Operations and Snapshot readers in the same
+fresh transaction, verifies every captured revision/SHA pin exists in its bounded
+Source references, and fails overall coverage closed if any owner cut is incomplete.
+Operational request acceptance takes the global safety fence before idempotency
+or outbox locks, so new pending publish/rollback targets cannot commit unnoticed
+during this cut. Complete coverage still requires the deletion executor's own
+exclusive lifetime guardian and durable admission; it is not a storage capability.
+New capture admission additionally resolves the server-built revision/SHA pins
+on a bounded second authorized ReadCommitted connection while the outer
+RepeatableRead capture holds global. That second connection does not reacquire
+global (which would self-deadlock); it observes journal commits predating the
+lock acquisition even when the outer RR snapshot does not. Intersecting
+PENDING/ACKNOWLEDGED deletion returns retryable `RAW_RETENTION_IN_PROGRESS`
+and rolls back sequence/input writes. Existing receipt replay creates no new
+root; DELETED does not forbid rebuilding from persisted normalized facts.
+All deletion journal writers now take global before rows. New selected publish
+and rollback requests use a Snapshot-owned boolean-only definer in the same
+fenced RC transaction, after durable replay/project validation but before
+audit/outbox writes. It resolves the exact approved target, including automatic
+normal publication and staged rollback roots, and checks scoped captured GOOD
+revision/SHA pins. Web receives neither private payloads nor journal access.
+Unknown targets/provenance or budget overflow fail closed; PENDING/ACKNOWLEDGED
+intersections return retryable `RAW_RETENTION_IN_PROGRESS`. This admission
+mechanism supplies the pending-operation barrier used by the one-shot executor.
+`RawArtifactDeletion` persists immutable project/SHA,
+key and policy with PENDING → ACKNOWLEDGED → DELETED phases. Actual producers
+deny PUT while PENDING or ACKNOWLEDGED exists, even after guardian release and
+for another Source in the same project. The journal has no web grants and
+source-import cannot write deletion records. Unknown deletion outcomes must stay
+pending; an object existence probe alone does not settle still-possible external
+IO.
+
+The explicit worker command is `raw-artifact-retention <organization-id>
+<project-id> [batch-limit]` (default 10, maximum 50). It never selects an implicit
+project or runs in the permanent-worker loop. Discovery is not authorization:
+each candidate takes an exclusive project/SHA guardian, then a fresh globally
+fenced complete cut and the default last-three-GOOD union 30-day policy before
+committing PENDING. Static project binding/capability validation occurs before
+that commit without provider IO: missing references or invalid configuration do
+not leave an unknown deletion intent, and correction permits a later run.
+ACK recovery does not require storage configuration. One narrow project-registry S3 capability removes only
+`source-artifacts/<sha>` outside transactions; its separate client has
+`maxAttempts: 1`, including SDK middleware. Only a definitive success or explicit
+NoSuchKey response becomes ACKNOWLEDGED. Generic 404/timeout/connection loss
+remain PENDING; restart never reissues DELETE or clears the operation using HEAD.
+An existing ACK completes DELETED and a deterministic one-shot audit in the same
+transaction, without storage IO. Cancellation waits for the owned request and
+settlement before guardian/client release. Unknown outcomes make the worker
+command exit nonzero. The one-shot lifecycle allows 120 seconds for shutdown,
+including the 60-second provider IO budget and bounded database settlement.
+An ACK completion is metadata recovery, not a new deletion
+admission, and can proceed while new mutations are frozen.
+
+DELETED means confirmed removal of the **current key**, not all historical S3
+versions: a versioned bucket may retain earlier versions behind a delete marker.
+Provider versioning/retention policy requires separate evidence. Provenance
+receipts remain immutable. A later STORED PUT is considered resurrection only
+when its intent began strictly after terminal deletion; late settlement alone
+or equal/contradictory timestamps are UNKNOWN and fail closed. Bulk bounded
+discovery skips audited removed/ambiguous histories so they do not starve later
+eligible SHAs. Journal/PUT history is capped at 5,000 records; overflow rejects
+the run before external IO. No schedule or production cleanup is activated by
+this implementation. Actual runtime/crash proofs, provider policy and local
+restore evidence remain required for the Data Safety Gate. Server PostgreSQL
+backup is an owner-accepted omission from 2026-10-09 and must never be reported
+as configured.
+
 ## Production deployment
 
 Identity: `https://data-hab.ams24.ru`, SSH alias `ams-data-hub-deploy`, app
@@ -288,7 +397,8 @@ root `/opt/ams-data-hub`, configuration root `/etc/ams-data-hub`.
 2. Resolve project-only secrets from Secret Master; never print or copy values.
 3. Run one manual release workflow and retain web/worker/migrator digests plus
    `registry-manifest.json`.
-4. Validate PostgreSQL connection budget and provider backup evidence.
+4. Validate the PostgreSQL connection budget and record the owner-accepted
+   absence of a server backup/recovery point without claiming backup evidence.
 5. Record current and previous immutable references in the release environment.
 6. Deploy from a clean checkout of the same SHA; the host only pulls images.
 7. Run live/readiness/browser smoke and record proof.
@@ -379,13 +489,32 @@ production release.
 
 ### Isolated restore drill
 
-`pnpm test:data-safety-drill` is the only local restore command. It accepts
-only the guarded loopback `*_test` target, freezes mutating jobs before the
-logical dump, restores into a distinct `*_restore_test` database, verifies
-PostgreSQL 18 and identity invariants, keeps jobs frozen through reconcile and
-unfreezes only after a zero-conflict report. The command deletes the temporary
-dump and restore database in `finally`; its secret-free evidence remains in
-`.local/evidence/data-safety-drill.json`.
+`pnpm test:data-safety-drill`, with `APP_ENV=test`, is the local restore command.
+It accepts only literal loopback port 5435 and the dedicated `ams_data_hub_test`
+source, restoring into the distinct `ams_data_hub_restore_test` database.
+The prepare process creates an actual synthetic GOOD import and STORED raw PUT,
+UID, legally relinked published URL, signed minor-1 snapshot with thirteen file
+descriptors and stage receipt. It performs an actual leased operational rollback
+to a higher current sequence with the same file descriptors, and an audited
+DELETE of a separate policy-eligible legacy raw key (never the fresh GOOD raw).
+It then freezes through the actual web command.
+Logical dump/restore preserves runtime function ownership and grants; stripping
+these would invalidate NOBYPASS recovery proof. The restore process verifies
+PostgreSQL 18 and exact SHA-256 fingerprints of twenty-two nonempty persisted
+tables before any transitions, including raw journals, rollback reservation and
+binding, operational request, outbox and job outcome. Explicit readback also
+checks STORED/GOOD receipt agreement, DELETED/audit, the immutable original URL
+reservation subject versus the relinked UID, and current rollback/run linkage.
+Actual reconcile/unfreeze execute as NOBYPASS
+web, reading persisted counts through the worker-owned counts-only capability;
+caller zeroes alone cannot authorize recovery. Jobs remain frozen through
+reconcile, stale publication-time disagreement blocks unfreeze without success
+audit, and only a fresh zero-conflict report permits unfreeze.
+The command deletes the temporary dump and restore database in `finally` and
+resets the source test database. Prior PASS evidence is cleared at startup;
+`DATA_SAFETY_DRILL_V2` PASS is written only after successful cleanup to
+`.local/evidence/data-safety-drill.json`. Source intake/storage transports are
+synthetic; this proves PostgreSQL restoration, not S3 object/provider restoration.
 
 Production and managed-provider restore are never inferred from this command.
 They require the release procedure, provider backup/retention evidence, an

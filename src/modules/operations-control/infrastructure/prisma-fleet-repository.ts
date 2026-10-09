@@ -41,6 +41,11 @@ export class PrismaFleetRepository implements FleetRepository {
             lastAttemptAt: true,
             lastSuccessAt: true,
             lastGoodRevisionId: true,
+            revisions: {
+              orderBy: [{ startedAt: "desc" }, { id: "desc" }], take: 1,
+              select: { status: true, recordCount: true, invalidRecordCount: true, failureCode: true,
+                startedAt: true, completedAt: true },
+            },
           },
         },
         currentSnapshotManifest: {
@@ -79,7 +84,7 @@ export class PrismaFleetRepository implements FleetRepository {
       operationalRequests: row.operationalActionRequests.map(({ id, createdAt, ...request }) => ({ requestId: id, requestedAt: createdAt, ...request,
         resultSummary: projectOperationalResult(request.action, request.status, resultMap.get(id)),
       })),
-      sources: row.sources,
+      sources: row.sources.map(({ revisions, ...source }) => ({ ...source, latestImport: revisions[0] ?? null })),
       currentSnapshot: row.currentSnapshotManifest,
       latestDelivery: row.deliveryRuns[0] ?? null,
       });
@@ -109,6 +114,19 @@ export class PrismaFleetRepository implements FleetRepository {
       safeErrorCode: row.safeErrorCode,
       startedAt: row.startedAt,
     }));
+  }
+
+  async listRecentAlerts(limit: number) {
+    const rows = await this.transaction.notification.findMany({
+      where: { route: "/admin/fleet/" },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      take: limit,
+      select: { id: true, severity: true, title: true, message: true, occurredAt: true,
+        organization: { select: { name: true } }, project: { select: { name: true } } },
+    });
+    return rows.map((row) => ({ alertId: row.id, organizationName: row.organization?.name ?? null,
+      projectName: row.project?.name ?? null, severity: row.severity, title: row.title,
+      message: row.message, occurredAt: row.occurredAt }));
   }
 
   async listRecentAuditEvents(limit: number) {

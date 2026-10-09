@@ -28,6 +28,9 @@ describe("snapshot delivery persistence", () => {
       const suffix = randomUUID().slice(0, 8);
       const organization = await tx.organization.create({ data: { name: "Synthetic publication", slug: `publication-${suffix}` } });
       const project = await tx.project.create({ data: { organizationId: organization.id, name: "Synthetic publication", slug: `publication-${suffix}` } });
+      await tx.projectSnapshotSequence.create({ data: {
+        organizationId: organization.id, projectId: project.id, lastReservedSequence: 3,
+      } });
       return { organizationId: organization.id, projectId: project.id };
     });
     const worker = <T>(execute: (tx: DatabaseTransaction) => Promise<T>) => runInAuthorizedDatabaseTransaction({
@@ -69,6 +72,9 @@ describe("snapshot delivery persistence", () => {
       const organization = await transaction.organization.create({ data: { name: `Delivery Org ${suffix}`, slug: `delivery-org-${suffix}` } });
       const projectA = await transaction.project.create({ data: { organizationId: organization.id, name: `Delivery A ${suffix}`, slug: `delivery-a-${suffix}` } });
       const projectB = await transaction.project.create({ data: { organizationId: organization.id, name: `Delivery B ${suffix}`, slug: `delivery-b-${suffix}` } });
+      await transaction.projectSnapshotSequence.create({ data: {
+        organizationId: organization.id, projectId: projectA.id, lastReservedSequence: 1,
+      } });
       const repository = new PrismaSnapshotDeliveryRepository(transaction);
       const run = await repository.publishCurrentAndCreateRun({
         organizationId: organization.id,
@@ -131,6 +137,9 @@ describe("snapshot delivery persistence", () => {
     await runInPrincipalDatabaseTransaction(principal, async (transaction) => {
       const organization = await transaction.organization.create({ data: { name: `ACK Org ${suffix}`, slug: `ack-org-${suffix}` } });
       const project = await transaction.project.create({ data: { organizationId: organization.id, name: `ACK ${suffix}`, slug: `ack-${suffix}` } });
+      await transaction.projectSnapshotSequence.create({ data: {
+        organizationId: organization.id, projectId: project.id, lastReservedSequence: 7,
+      } });
       const repository = new PrismaSnapshotDeliveryRepository(transaction);
       await repository.publishCurrentAndCreateRun({
         organizationId: organization.id, projectId: project.id, publishSequence: 7,

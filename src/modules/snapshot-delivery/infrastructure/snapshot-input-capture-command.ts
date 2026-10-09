@@ -13,6 +13,7 @@ import {
 } from "../application/snapshot-build-input.ts";
 import { PrismaSnapshotInputRepository } from "./prisma-snapshot-input-repository.ts";
 import { runInSnapshotInputTransaction } from "./snapshot-input-transaction.ts";
+import { assertCapturedRawPinsAvailable } from "./snapshot-raw-pin-admission.ts";
 
 const defineCaptureCommand = createCommandFactory({ runInTransaction: runInSnapshotInputTransaction });
 
@@ -26,7 +27,7 @@ export const captureSnapshotInput = defineCaptureCommand({
       throw new Error("SNAPSHOT_INPUT_ACCESS_DENIED");
     }
   },
-  async execute({ transaction, input }) {
+  async execute({ principal, transaction, input }) {
     const scope = { organizationId: input.organizationId, projectId: input.projectId };
     const repository = new PrismaSnapshotInputRepository(transaction);
     const hashes = snapshotInputRequestHashes(input);
@@ -60,6 +61,7 @@ export const captureSnapshotInput = defineCaptureCommand({
     await media.captureShared(scope, candidates.developmentUids);
     media.finishCapture();
     const parts = builder.finish();
+    await assertCapturedRawPinsAvailable(principal, parts);
     // Capture digest of exact catalog values, not a global catalog sequence.
     const catalogRevision = snapshotInputHash(parts.filter((part) => part.kind === "catalog")
       .map(({ partIndex, payloadHash }) => ({ partIndex, payloadHash })));

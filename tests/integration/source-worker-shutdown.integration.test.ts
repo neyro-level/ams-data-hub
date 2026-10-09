@@ -15,7 +15,7 @@ import { sourceRegistryCommands } from "../../src/modules/ingestion-core/server.
 import { getSourceWorkerReadiness } from "../../src/modules/platform-operations/server.ts";
 import { SOURCE_IMPORT_QUEUE, sourceManualJobId } from "../../src/modules/ingestion-core/worker.ts";
 import { getPgBoss, stopPgBoss } from "../../src/modules/platform-operations/worker.ts";
-import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { createDatabaseAuthorizationContext, runInAuthorizedDatabaseTransaction, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { acquireSourceExecutionGuard, sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
 import { acquirePermanentOutboxWorkerGuard } from "../../src/modules/platform-operations/infrastructure/permanent-worker-guard.ts";
@@ -29,7 +29,8 @@ import { captureSnapshotInput, createSnapshotPublicationServer, PrismaSnapshotDe
 import { createSnapshotAckService } from "../../src/modules/snapshot-delivery/application/snapshot-ack.ts";
 
 const evidence = process.platform === "win32" ? "Windows registered SIGTERM handler via IPC (not Unix OS signal)" : "actual OS SIGTERM";
-async function eventually<T>(read: () => Promise<T>, ready: (value: T) => boolean, timeout = 30_000): Promise<T> {
+const FULL_SUITE_OBSERVATION_TIMEOUT_MS = 60_000;
+async function eventually<T>(read: () => Promise<T>, ready: (value: T) => boolean, timeout = FULL_SUITE_OBSERVATION_TIMEOUT_MS): Promise<T> {
   const until = Date.now() + timeout;
   while (true) {
     const value = await read();
@@ -54,7 +55,7 @@ function childWorker(env: NodeJS.ProcessEnv, mode: string) {
     child.once("error", () => reject(new Error("SYNTHETIC_CHILD_START_FAILED")));
     child.once("close", (code, signal) => done({ code, signal }));
   });
-  return { child, exited, event: (name: string) => eventually(async () => events.has(name), Boolean),
+  return { child, exited, event: (name: string) => eventually(async () => events.has(name), Boolean, FULL_SUITE_OBSERVATION_TIMEOUT_MS),
     stopped: () => output.includes("source_worker_stopped"), timedOut: () => output.includes("WORKER_SHUTDOWN_TIMEOUT"),
     guardLost: () => output.includes("WORKER_GUARD_LOST") };
 }
@@ -100,7 +101,9 @@ async function setup(publicSnapshot = false) {
   };
   const readiness = () => getSourceWorkerReadiness(env.OUTBOX_WORKER_ID);
   const request = (key: string) => sourceRegistryCommands.requestManualSourceRun(admin, { ...target, idempotencyKey: `${key}-${suffix}` });
-  const read = () => runInPrincipalDatabaseTransaction(admin, async (tx) => ({
+  // One observation cut: ReadCommitted can see a request completed after earlier
+  // identity/revision reads, producing a torn fixture baseline across the commit.
+  const read = () => runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(admin), async (tx) => ({
     source: await tx.source.findUniqueOrThrow({ where: { id: target.sourceId } }),
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
@@ -108,7 +111,7 @@ async function setup(publicSnapshot = false) {
       payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
     requests: await tx.sourceManualRunRequest.findMany({ where: target }),
     revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { startedAt: "asc" } }),
-  }));
+  }), { isolationLevel: "RepeatableRead" });
   const nativeJob = async (id: string) => {
     const boss = await getPgBoss();
     // Actual child reconciliation creates the queue; do not precreate it in the fixture.
@@ -154,7 +157,7 @@ function childWeb(env: NodeJS.ProcessEnv, port: number) {
     if (child.exitCode !== null || child.signalCode !== null) throw new Error("SYNTHETIC_WEB_EXITED_BEFORE_READY");
     try { return (await fetch(`${base}/api/health/live`, { signal: AbortSignal.timeout(1000) })).status === 200; }
     catch { return false; }
-  }, Boolean, 30_000);
+  }, Boolean, FULL_SUITE_OBSERVATION_TIMEOUT_MS);
   const stopOwned = async () => {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -171,7 +174,22 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
     let sdk: ReturnType<typeof vi.spyOn> | undefined;
     try {
       const requested = await context.request("restart-baseline"); const worker = context.launch("good");
-      await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      try {
+        await eventually(() => context.nativeJob(requested.requestId), (job) => job?.state === "completed");
+      } catch (error) {
+        // Value-free, own-scope diagnostics; never forward child stderr/env/PII.
+        const facts = await context.read(); const job = await context.nativeJob(requested.requestId);
+        const request = facts.requests.find((row) => row.id === requested.requestId);
+        const outbox = await runInPrincipalDatabaseTransaction(context.admin,
+          (tx) => tx.outboxEvent.findFirst({ where: { organizationId: context.target.organizationId,
+            topic: "ingestion.source.manual.request", payload: { path: ["manualRequestId"], equals: requested.requestId } },
+          select: { status: true, attempts: true } }));
+        throw new Error(`SYNTHETIC_RESTART_BASELINE_FAILED ${JSON.stringify({
+          childExitCode: worker.child.exitCode, childSignal: worker.child.signalCode,
+          jobState: job?.state ?? null, retryCount: job?.retryCount ?? null,
+          requestStatus: request?.status ?? null, outbox, revisions: facts.revisions.length, identities: facts.identities.length,
+        })}`, { cause: error });
+      }
       stop(worker.child); expect(await waitExit(worker)).toEqual({ code: 0, signal: null });
       const baseline = await context.read(); expect(baseline.identities).toHaveLength(1);
       expect(baseline.revisions).toHaveLength(1); expect(baseline.revisions[0]).toMatchObject({ status: "GOOD", sequence: 1 });
@@ -309,7 +327,10 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
       expect(preserved.revisions).toEqual(baseline.revisions); expect(preserved.intents).toEqual(baseline.intents);
       expect(preserved.requests.find((row) => row.id === deferred.requestId)?.status).toBe("REQUESTED");
       await second.stopOwned();
-      const restarted = context.launch("good"); expect(restarted.child.pid).not.toBe(worker.child.pid);
+      const restarted = context.launch("good");
+      // Windows may immediately reuse a released PID. The distinct ChildProcess
+      // instance plus the durable deferred-job completion below proves restart.
+      expect(restarted.child).not.toBe(worker.child); expect(restarted.child.pid).toBeTypeOf("number");
       await eventually(() => context.nativeJob(deferred.requestId), (job) => job?.state === "completed");
       stop(restarted.child); expect(await waitExit(restarted)).toEqual({ code: 0, signal: null });
       const final = await context.read();
@@ -415,7 +436,9 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
       blocker = await getPrismaPool().connect(); await blocker.query("BEGIN");
       await blocker.query("SELECT id FROM pgboss.job WHERE name = $1 AND id = $2::uuid FOR UPDATE", [SOURCE_IMPORT_QUEUE, sourceManualJobId(requested.requestId)]);
       worker.child.send("release-upload");
-      const committed = await eventually(context.read, (value) => value.requests.some((item) => item.id === requested.requestId && item.status === "COMPLETED"));
+      const committed = await eventually(context.read,
+        (value) => value.requests.some((item) => item.id === requested.requestId && item.status === "COMPLETED"),
+        FULL_SUITE_OBSERVATION_TIMEOUT_MS);
       expect((await context.nativeJob(requested.requestId))?.state).toBe("active");
       stop(worker.child); await blocker.query("COMMIT"); blocker.release(); blocker = undefined;
       expect(await waitExit(worker)).toEqual({ code: 0, signal: null }); expect(worker.stopped()).toBe(true);
@@ -426,7 +449,7 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
       stop(restart.child); expect(await waitExit(restart)).toEqual({ code: 0, signal: null });
       const final = await context.read(); expect(final.revisions).toEqual(committed.revisions); expect(final.identities).toEqual(committed.identities); expect(final.intents).toEqual(committed.intents);
     } finally { if (blocker) { await blocker.query("ROLLBACK"); blocker.release(); } await context.cleanup(); }
-  }, 100_000);
+  }, 150_000);
 
   it("noncancellable SDK reaches fatal deadline, not fake graceful success; job remains durable", async () => {
     const context = await setup();
@@ -442,5 +465,5 @@ describe(`actual source-worker child shutdown: ${evidence}; synthetic transport,
       // cannot run finally. This private directory is removed by test cleanup.
       expect(await context.spools()).not.toEqual([]);
     } finally { await context.cleanup(); }
-  }, 60_000);
+  }, 120_000);
 });

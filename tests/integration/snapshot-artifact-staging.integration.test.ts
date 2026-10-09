@@ -7,14 +7,21 @@ const cuts = vi.hoisted(() => ({ active: 0, roles: 0,
   afterInitialReplay: null as (() => Promise<void>) | null,
   afterInitialRollbackReplay: null as (() => Promise<void>) | null,
   afterInitialStageReplay: null as (() => Promise<void>) | null }));
+const operationalAdminActors = new Set([
+  "synthetic-ops-rollback",
+  "synthetic-rollback-identity",
+  "synthetic-ops-publish",
+]);
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const authorized: typeof actual.runInAuthorizedDatabaseTransaction = async (context, execute, options) => {
     const result = await actual.runInAuthorizedDatabaseTransaction(context, async (tx) => {
       const consumer = context.principalKind === "snapshot-consumer";
-      const snapshot = consumer || ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
+      const snapshot = consumer || operationalAdminActors.has(context.actorId)
+        || ["snapshot-input", "snapshot-publication", "operations-executor", "outbox-claim", "outbox-takeover", "outbox-complete"].includes(context.actorId);
       if (snapshot) {
-        await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
+        await tx.$executeRawUnsafe(`SET LOCAL ROLE ${consumer || context.principalKind === "platform-admin"
+          ? "ams_data_hub_web" : "ams_data_hub_worker"}`);
         expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
           .toEqual([{ rolbypassrls: false, rolsuper: false }]); cuts.roles++;
       }
@@ -41,7 +48,10 @@ vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   };
   const system: typeof actual.runInSystemJobDatabaseTransaction = (input, execute) =>
     authorized(actual.createSystemJobDatabaseAuthorizationContext(input), execute);
-  return { ...actual, runInAuthorizedDatabaseTransaction: authorized, runInSystemJobDatabaseTransaction: system };
+  const principal: typeof actual.runInPrincipalDatabaseTransaction = (input, execute) =>
+    authorized(actual.createDatabaseAuthorizationContext(input), execute);
+  return { ...actual, runInAuthorizedDatabaseTransaction: authorized,
+    runInPrincipalDatabaseTransaction: principal, runInSystemJobDatabaseTransaction: system };
 });
 import { captureSnapshotInput, createSnapshotArtifactStagingServer, createSnapshotPublicationServer, createSnapshotSignedBuildServer,
   createSnapshotStagedBuildServer, inspectStagedSnapshotServer, createSelectedSnapshotPublicationServer, inspectSelectedSnapshotRunServer,
@@ -288,6 +298,13 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         if (["unapproved", "run-mismatch", "foreign", "cancelled"].includes(mode)) expect(getTrust).not.toHaveBeenCalled();
         if (["unapproved", "run-mismatch", "foreign", "cancelled", "missing", "private", "invalid"].includes(mode)) expect(gets).toBe(0);
         if (mode === "wrong" || mode === "manifest-corrupt") expect(gets).toBe(1);
+        if (mode === "run-mismatch") {
+          await runInPrincipalDatabaseTransaction({ kind: "platform-admin", userId: "synthetic-archive-repair",
+            correlationId: randomUUID() }, (tx) => tx.deliveryRun.update({
+            where: { organizationId_projectId_publishSequence: { ...scope, publishSequence: stage.publishSequence } },
+            data: { manifestKey: createProjectSnapshotKey(scope.projectId, stage.manifestSha256) },
+          }));
+        }
       } else {
         const approved = await result;
         expect(approved.source).toMatchObject({ rootBuildInputId: setup.receipt.id, inputHash: setup.receipt.inputHash, manifestSha256: stage.manifestSha256 });
@@ -355,11 +372,14 @@ describe("actual capture/sign/bind and immutable S3 artifact staging", () => {
         privateKeyRef: defineSecretRef("SYNTHETIC_ROLLBACK_KEY") })(setup.principal, setup.lookup);
       const sourceManifest = await observer(scope, async (tx) => snapshotManifestV1Schema.parse(JSON.parse((await tx.snapshotPublicationBinding.findUniqueOrThrow({
         where: { organizationId_projectId_buildInputId: { ...scope, buildInputId: stage.buildInputId } } })).manifestCanonical)));
-      const lease = await accept(stage.publishSequence);
-      // Completed signed staging alone is NOT approval to roll back.
-      await expect(cut((repo) => repo.reserve(lease))).rejects.toThrow("SNAPSHOT_ROLLBACK_SOURCE_NOT_APPROVED");
+      // Completed signed staging alone is not an approved rollback source and
+      // must now be rejected before an operational request is persisted.
+      await expect(requestOperationalAction(admin, { ...scope, action: "SNAPSHOT_ROLLBACK",
+        sourcePublishSequence: stage.publishSequence, sourceId: "", sourceRevisionId: "", reason: "",
+        idempotencyKey: randomUUID() })).rejects.toThrow("OPERATIONS_CONTROL_REFERENCE_INVALID");
       const publishSource = await createSelectedSnapshotPublicationServer({ ...scope, storage, getTrust: () => trustSet })(setup.principal, { buildInputId: stage.buildInputId });
       const sourceRun = await observer(scope, publishSource);
+      const lease = await accept(sourceRun.publishSequence);
       expect(puts).toBe(14);
       if (mode === "scope") {
         for (const projects of ["*", [], [scope.projectId, setup.foreignId], [setup.foreignId]] as const) {

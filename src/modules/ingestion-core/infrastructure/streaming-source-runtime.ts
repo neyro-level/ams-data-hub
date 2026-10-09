@@ -16,6 +16,7 @@ import { createStreamingSourceIntake } from "./streaming-source-intake.ts";
 import { PrismaSourceExecutionRepository, type StagedSourceRecord } from "./prisma-source-execution-repository.ts";
 import type { StreamingRawArtifact } from "./streaming-raw-artifact.ts";
 import { acquireSourceExecutionGuard, type SourceExecutionLease } from "./source-execution-guard.ts";
+import { acquireRawArtifactLifetimeGuard, type RawArtifactLifetimeLease } from "./raw-artifact-lifetime-guard.ts";
 
 const BATCH_RECORDS = 100;
 const BATCH_BYTES = 4 * 1024 * 1024;
@@ -33,20 +34,27 @@ const knownFailures = new Set([
   "MARKETPLACE_XML_MALFORMED", "MARKETPLACE_XML_SIGNATURE_INVALID", "MARKETPLACE_XML_ARTIFACT_TOO_LARGE",
   "MARKETPLACE_XML_RECORD_LIMIT_EXCEEDED", "MARKETPLACE_XML_DEPTH_LIMIT_EXCEEDED", "MARKETPLACE_XML_DTD_FORBIDDEN",
   "MARKETPLACE_XML_FIELD_TOO_LONG", "MARKETPLACE_XML_RECORD_TOO_COMPLEX", "MARKETPLACE_XML_ROOT_INVALID", "MARKETPLACE_XML_UTF8_INVALID",
+  "RAW_ARTIFACT_BUSY", "RAW_ARTIFACT_GUARD_UNAVAILABLE", "RAW_ARTIFACT_LEASE_LOST",
+  "RAW_ARTIFACT_RECEIPT_INVALID",
+  "RAW_ARTIFACT_DELETE_PENDING",
 ]);
 
 async function execute(context: ResolvedSourceExecution, storage: StreamingObjectStorage, lease: SourceExecutionLease, manualRequestId?: string, shutdownSignal?: AbortSignal): Promise<SourceImportResult> {
+  let rawLease: RawArtifactLifetimeLease | undefined;
   const signal = shutdownSignal ? AbortSignal.any([lease.signal, shutdownSignal]) : lease.signal;
   const assertRunning = () => {
     lease.assertActive();
+    rawLease?.assertActive();
     if (shutdownSignal?.aborted) throw new Error("SOURCE_EXECUTION_ABORTED");
   };
   const transaction = <T>(run: (repository: PrismaSourceExecutionRepository) => Promise<T>) =>
     runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
       assertRunning();
       await lease.fence(tx);
+      await rawLease?.fence(tx);
       const result = await run(new PrismaSourceExecutionRepository(tx));
       await lease.fence(tx);
+      await rawLease?.fence(tx);
       assertRunning();
       return result;
     });
@@ -58,11 +66,28 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
   try {
     const safetyPolicy = sourceSafetyPolicySchema.parse(context.safetyPolicy);
     revisionId = (await transaction((repository) => repository.begin(context, manualRequestId))).id;
-    const intake = createStreamingSourceIntake({ endpointReference: context.endpointReference, storage, adapter: context.adapter, safetyPolicy, signal });
+    const guardedStorage: StreamingObjectStorage = {
+      async putStream(input) {
+        if (rawLease) throw new Error("RAW_ARTIFACT_STATE_INVALID");
+        // Digest is known before PUT. Keep the shared project/hash lease through
+        // staging/apply or failure settlement, not merely through external IO.
+        rawLease = await acquireRawArtifactLifetimeGuard(getPrismaPool(), { ...context.target,
+          rawArtifactHash: input.sha256 }, "producer");
+        assertRunning();
+        await transaction((repository) => repository.beginRawArtifactPut(context, revisionId!, {
+          rawArtifactHash: input.sha256, storageKey: input.key, byteCount: input.contentLength,
+        }));
+        assertRunning();
+        return storage.putStream({ ...input, signal: input.signal
+          ? AbortSignal.any([input.signal, rawLease.signal]) : rawLease.signal });
+      },
+    };
+    const intake = createStreamingSourceIntake({ endpointReference: context.endpointReference, storage: guardedStorage, adapter: context.adapter, safetyPolicy, signal });
     raw = await intake.safeIntake.acquire();
     assertRunning();
     stage = "RAW_ARTIFACT";
     const receipt = await raw.persist();
+    await transaction((repository) => repository.registerRawArtifact(context, revisionId!, receipt));
     let batch: StagedSourceRecord[] = [];
     let batchBytes = 0;
     let recordCount = 0;
@@ -161,6 +186,7 @@ async function execute(context: ResolvedSourceExecution, storage: StreamingObjec
         getLogger().warn({ sourceId: context.target.sourceId, code: "RAW_ARTIFACT_CLEANUP_FAILED" }, "Source raw lease cleanup failed");
       }
     }
+    await rawLease?.release();
   }
 }
 

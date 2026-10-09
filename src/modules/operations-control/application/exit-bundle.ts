@@ -59,10 +59,16 @@ export async function composeProjectExitBundle(input: {
   mediaTransfer: ExitBundleMediaTransferPort;
 }): Promise<ProjectExitBundleComposition> {
   const kinds = new Set(input.datasets.map((dataset) => dataset.kind));
-  if (kinds.size !== PROJECT_EXIT_DATASET_KINDS.length || PROJECT_EXIT_DATASET_KINDS.some((kind) => !kinds.has(kind))) throw new Error("EXIT_BUNDLE_DATASET_SET_INVALID");
+  if (input.datasets.length !== PROJECT_EXIT_DATASET_KINDS.length || kinds.size !== PROJECT_EXIT_DATASET_KINDS.length
+    || PROJECT_EXIT_DATASET_KINDS.some((kind) => !kinds.has(kind))) throw new Error("EXIT_BUNDLE_DATASET_SET_INVALID");
   if (input.vendoredContracts.length === 0) throw new Error("EXIT_BUNDLE_CONTRACT_REQUIRED");
+  if (new Set(input.vendoredContracts.map((item) => item.path)).size !== input.vendoredContracts.length
+    || input.vendoredContracts.some((item) => !item.path.startsWith("contracts/"))) throw new Error("EXIT_BUNDLE_CONTRACT_SET_INVALID");
+  if (new Set(input.media.map((item) => item.targetPath)).size !== input.media.length) throw new Error("EXIT_BUNDLE_MEDIA_SET_INVALID");
 
-  const datasetFiles = input.datasets.map((dataset) => {
+  const datasetsByKind = new Map(input.datasets.map((dataset) => [dataset.kind, dataset] as const));
+  const datasetFiles = PROJECT_EXIT_DATASET_KINDS.map((kind) => {
+    const dataset = datasetsByKind.get(kind)!;
     dataset.records.forEach((record, index) => assertSnapshotPrivacySafe(record, `$exit.${dataset.kind}[${index}]`));
     return { kind: dataset.kind, count: dataset.records.length, file: jsonArtifact(`data/${dataset.kind}.json`, [...dataset.records]) };
   });
@@ -78,7 +84,7 @@ export async function composeProjectExitBundle(input: {
   const documents = documentArtifacts(input.projectId, input.generatedAt);
   const manifest = projectExitBundleV1Schema.parse({
     schemaMajor: 1,
-    schemaMinor: input.schemaMinor ?? 0,
+    schemaMinor: input.schemaMinor ?? 1,
     projectId: input.projectId,
     generatedAt: input.generatedAt,
     dataMode: "local",
@@ -115,6 +121,11 @@ export async function createProjectExitBundle(
 export function validateProjectExitBundle(composition: ProjectExitBundleComposition) {
   const manifest = projectExitBundleV1Schema.parse(composition.manifest);
   const files = new Map(composition.files.map((file) => [file.path, file]));
+  const manifestFile = files.get("manifest.json");
+  const expectedManifestBody = canonicalJsonBytes(manifest as CanonicalJsonValue);
+  if (!manifestFile || !Buffer.from(manifestFile.body).equals(Buffer.from(expectedManifestBody))) {
+    throw new Error("EXIT_BUNDLE_MANIFEST_MISMATCH");
+  }
   const declared = [...manifest.datasets, manifest.mediaManifest, ...manifest.vendoredContracts, manifest.documents.handoff, manifest.documents.dataSchema, manifest.documents.operations];
   for (const expected of declared) {
     const file = files.get(expected.path);

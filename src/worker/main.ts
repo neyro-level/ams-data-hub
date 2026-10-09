@@ -11,6 +11,7 @@ import { getLogger } from "../platform/observability/logger.ts";
 import { runSourceWorker } from "../infrastructure/source-worker-runtime.ts";
 import { runWorkerProcessLifecycle } from "../infrastructure/worker-process-lifecycle.ts";
 import { closePrismaContext } from "../platform/database/prisma/client.ts";
+import { runRawArtifactRetentionCommand } from "../infrastructure/raw-artifact-retention-runtime.ts";
 
 const command = process.argv[2] ?? null;
 const argument = process.argv[3] ?? null;
@@ -77,9 +78,18 @@ async function main() {
     return;
   }
 
+  if (command === "raw-artifact-retention") {
+    const result = await runWorkerProcessLifecycle({ signals: process, shutdownTimeoutMs: 120_000, close: closePrismaContext,
+      onTimeout: () => { logger.error({ code: "RAW_RETENTION_SHUTDOWN_TIMEOUT" }, "retention shutdown deadline exceeded"); process.exit(1); },
+      run: (signal) => runRawArtifactRetentionCommand(process.argv.slice(3), signal) });
+    logger.info({ event: "raw_artifact_retention_finished", ...result }, "raw artifact retention finished");
+    if (result.unknown > 0) process.exitCode = 1;
+    return;
+  }
+
   if (command !== "maintenance-smoke") {
     throw new Error(
-      "Usage: worker module-smoke | healthcheck | source-healthcheck [worker-id] | maintenance-smoke | outbox-worker [worker-id] | source-worker [worker-id] | outbox-drain [worker-id] | outbox-retention",
+      "Usage: worker module-smoke | healthcheck | source-healthcheck [worker-id] | maintenance-smoke | outbox-worker [worker-id] | source-worker [worker-id] | outbox-drain [worker-id] | outbox-retention | raw-artifact-retention <organization-id> <project-id> [batch-limit]",
     );
   }
   logger.info({ event: "worker_maintenance_smoke_ok" }, "maintenance smoke passed");

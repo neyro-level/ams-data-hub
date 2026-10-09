@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi } from "vitest";
@@ -9,10 +9,11 @@ const matchingRuntime = vi.hoisted(() => ({ cuts: 0 }));
 vi.mock("../../src/platform/database/transaction.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/database/transaction.ts")>();
   const run: typeof actual.runInPrincipalDatabaseTransaction = (principal, execute) => actual.runInPrincipalDatabaseTransaction(principal, async (tx) => {
-    if (principal.kind === "project-job" && principal.jobName === "agent-matching") {
+    if (principal.kind === "project-job" && ["agent-matching", "source-import"].includes(principal.jobName)) {
       await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
       expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
-        .toEqual([{ rolbypassrls: false, rolsuper: false }]); matchingRuntime.cuts++;
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      if (principal.jobName === "agent-matching") matchingRuntime.cuts++;
     }
     return execute(tx);
   });
@@ -22,9 +23,11 @@ vi.mock("../../src/platform/http/safe-outbound.ts", async (original) => {
   const actual = await original<typeof import("../../src/platform/http/safe-outbound.ts")>();
   return { ...actual, safeOutboundStream: gateway };
 });
-import { createSourceExecutionServer, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { createSourceExecutionServer, createRawArtifactRetentionSourceReader, inventoryIdentityCommands, sourceRegistryCommands } from "../../src/modules/ingestion-core/server.ts";
+import { planRawArtifactRetention } from "../../src/modules/ingestion-core/domain/raw-artifact-retention.ts";
+import { createRawArtifactRetentionCutReader } from "../../src/infrastructure/raw-artifact-retention-cut.ts";
 import { S3ObjectStorage } from "../../src/platform/storage/timeweb-s3-object-storage.ts";
-import { runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
+import { createDatabaseAuthorizationContext, runInPrincipalDatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import * as transactionRuntime from "../../src/platform/database/transaction.ts";
 import type { DatabaseTransaction } from "../../src/platform/database/transaction.ts";
 import type { PlatformAdminPrincipal, PrincipalContext, ProjectJobPrincipal } from "../../src/platform/authorization/principal.ts";
@@ -35,6 +38,7 @@ import { PrismaReliabilityRepository } from "../../src/modules/platform-operatio
 import { drainOutbox } from "../../src/modules/platform-operations/worker.ts";
 import { getPrismaPool } from "../../src/platform/database/prisma/client.ts";
 import { sourceExecutionGuardKey } from "../../src/modules/ingestion-core/infrastructure/source-execution-guard.ts";
+import { acquireRawArtifactLifetimeGuard } from "../../src/modules/ingestion-core/infrastructure/raw-artifact-lifetime-guard.ts";
 import { captureSnapshotInput, createSnapshotCandidateAssemblyServer } from "../../src/modules/snapshot-delivery/server.ts";
 import { createProjectJobPrincipal } from "../../src/platform/authorization/principal-factories.ts";
 import { publicInventoryDtoSchema } from "@ams-data-hub/realty-contracts";
@@ -88,6 +92,7 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
     revisions: await tx.sourceRevision.findMany({ where: target, orderBy: { startedAt: "asc" } }),
     identities: await tx.inventoryIdentity.findMany({ where: target, orderBy: { externalOfferId: "asc" } }),
     records: await tx.sourceRevisionRecord.findMany({ where: target }),
+    putAttempts: await tx.rawArtifactPutAttempt.findMany({ where: target, orderBy: { createdAt: "asc" } }),
     events: await tx.inventoryLifecycleEvent.findMany({ where: { ...scope, inventory: { sourceId: target.sourceId } }, orderBy: { occurredAt: "asc" } }),
     intents: await tx.outboxEvent.findMany({ where: { organizationId: scope.organizationId, topic: "snapshot.build.request",
       payload: { path: ["projectId"], equals: scope.projectId } }, orderBy: { occurredAt: "asc" } }),
@@ -96,6 +101,302 @@ async function setup(profileKey = "default-v1", policyOverride?: SourceSafetyPol
 }
 
 describe("concrete Source application runtime with PostgreSQL and real spool/storage adapter", () => {
+  it("reads actual last GOOD, missing-grace provenance, shared SHA and unfinished PUT pins under a narrow retention purpose", async () => {
+    const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, maxDropPercent: 100, requireManualApprovalAboveDrop: false });
+    const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+    const retention = createProjectJobPrincipal({ ...scope, jobName: "raw-artifact-retention" });
+    const readCut = () => runInPrincipalDatabaseTransaction(retention, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+      expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+        .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+      return createRawArtifactRetentionSourceReader(tx).read(scope);
+    });
+    const originalSend = context.client.send;
+    let restoreSend: (() => void) | undefined;
+    try {
+      context.provide(feed(offer("one"), offer("grace")));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      for (let sequence = 2; sequence <= 5; sequence++) {
+        context.provide(feed(offer("one", sequence * 1000)));
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence });
+      }
+      const beforeShared = await readCut();
+      expect(beforeShared.sourceCoverage).toBe("COMPLETE"); expect(beforeShared.jobsFrozen).toBe(false);
+      const first = beforeShared.references.find((row) => row.sequence === 1)!;
+      const second = beforeShared.references.find((row) => row.sequence === 2)!;
+      expect(beforeShared.pinnedRevisionIds).toContain(first.revisionId); // Still-active missing-grace fact outside last three.
+      expect(beforeShared.pinnedRevisionIds).not.toContain(second.revisionId);
+      // This controlled project has no captured/current/rollback roots; this
+      // explicit check is not a substitute for the forthcoming snapshot reader.
+      expect(await runInPrincipalDatabaseTransaction(context.principal, async (tx) => ({
+        captures: await tx.snapshotBuildInput.count({ where: scope }),
+        runs: await tx.deliveryRun.count({ where: scope }),
+        rollbacks: await tx.snapshotRollbackReservation.count({ where: scope }),
+        operations: await tx.operationalActionRequest.count({ where: scope }),
+      }))).toEqual({ captures: 0, runs: 0, rollbacks: 0, operations: 0 });
+      const now = new Date(beforeShared.now.getTime() + 31 * 24 * 60 * 60 * 1000);
+      const planned = planRawArtifactRetention({ ...scope, now, references: beforeShared.references,
+        pinnedRevisionIds: beforeShared.pinnedRevisionIds, coverage: "COMPLETE", jobsFrozen: false });
+      expect(planned.find((row) => row.rawArtifactHash === first.rawArtifactHash)).toMatchObject({ eligible: false, reasons: ["PINNED_REVISION"] });
+      expect(planned.find((row) => row.rawArtifactHash === second.rawArtifactHash)).toMatchObject({ eligible: true });
+      const initial = await context.read();
+      const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+        tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+      const other = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+        sourceKey: "synthetic-retention-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+        adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+        datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+        safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+      });
+      await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: other.sourceId, version: other.version, enabled: true });
+      context.provide(feed(offer("one", 2000)));
+      expect(await context.runtime.run({ ...scope, sourceId: other.sourceId })).toMatchObject({ state: "GOOD", sequence: 1 });
+      const send = vi.spyOn(context.client, "send").mockImplementationOnce(async (...args) => {
+        await originalSend(...args); throw new Error("SYNTHETIC_PUT_REPLY_LOST");
+      });
+      restoreSend = () => { send.mockRestore(); };
+      context.provide(feed(offer("one", 6000)));
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT" });
+      send.mockRestore();
+      const cut = await readCut();
+      expect(cut.sourceCoverage).toBe("COMPLETE"); expect(cut.references).toHaveLength(7);
+      const unfinished = cut.references.find((row) => row.status === "PENDING")!;
+      expect(unfinished).toBeDefined();
+      const guarded = planRawArtifactRetention({ ...scope, now, references: cut.references,
+        pinnedRevisionIds: cut.pinnedRevisionIds, coverage: "COMPLETE", jobsFrozen: false });
+      expect(guarded.find((row) => row.rawArtifactHash === second.rawArtifactHash)).toMatchObject({ eligible: false, referenceCount: 2 });
+      expect(guarded.find((row) => row.rawArtifactHash === unfinished.rawArtifactHash)).toMatchObject({ eligible: false, reasons: ["UNSETTLED_REFERENCE"] });
+      await expect(runInPrincipalDatabaseTransaction(retention, (tx) => createRawArtifactRetentionSourceReader(tx).read({ ...scope, projectId: "foreign-project" })))
+        .rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+      await expect(runInPrincipalDatabaseTransaction(createProjectJobPrincipal({ ...scope, jobName: "source-import" }),
+        (tx) => createRawArtifactRetentionSourceReader(tx).read(scope))).rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+      await expect(transactionRuntime.runInAuthorizedDatabaseTransaction(createDatabaseAuthorizationContext(retention), (tx) => createRawArtifactRetentionSourceReader(tx).read(scope),
+        { isolationLevel: "RepeatableRead" })).rejects.toThrow("RAW_RETENTION_FRESH_CUT_REQUIRED");
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.projectCatalogSubscription.create({ data: {
+        ...scope, mode: "CURATED", cities: { create: { cityUid: "01M41T6Q04BADHXSERJHZFXKCH" } },
+      } }));
+      await captureSnapshotInput(createProjectJobPrincipal({ ...scope, jobName: "snapshot-input" }),
+        { ...scope, idempotencyKey: "synthetic-retention-pins", schemaMinor: 0 });
+      const capturedHead = cut.references.find((row) => row.sourceId === context.target.sourceId && row.sequence === 5)!;
+      for (let sequence = 6; sequence <= 9; sequence++) {
+        context.provide(feed(offer("one", sequence * 1000)));
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence });
+      }
+      const sourceOnly = await readCut();
+      const sourcePlan = planRawArtifactRetention({ ...scope, now, references: sourceOnly.references,
+        pinnedRevisionIds: sourceOnly.pinnedRevisionIds, coverage: sourceOnly.sourceCoverage, jobsFrozen: sourceOnly.jobsFrozen });
+      expect(sourcePlan.find((row) => row.rawArtifactHash === capturedHead.rawArtifactHash)).toMatchObject({ eligible: true });
+      // The 5,001-row fail-closed capacity cut can exceed Prisma's default
+      // five-second interactive-transaction budget in the full 53-file run.
+      // This is a test observation budget; the retention result is unchanged.
+      const readComposed = () => transactionRuntime.runInAuthorizedDatabaseTransaction(
+        createDatabaseAuthorizationContext(retention), async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        return createRawArtifactRetentionCutReader(tx).read(scope);
+      }, { timeout: 15_000 });
+      const composed = await readComposed();
+      expect(composed.coverage).toBe("COMPLETE");
+      expect(composed.pinnedRevisionIds).toContain(capturedHead.revisionId);
+      expect(planRawArtifactRetention({ ...scope, ...composed, now }).find((row) => row.rawArtifactHash === capturedHead.rawArtifactHash))
+        .toMatchObject({ eligible: false, reasons: ["PINNED_REVISION"] });
+      // Controlled database-size fixture, not invented successful imports.
+      // No raw receipts, GOOD rows or outbox intents are created by this probe.
+      await runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.$executeRawUnsafe(`
+        INSERT INTO public."SourceRevision" (id,"organizationId","projectId","sourceId","sourceVersion",status,
+          "adapterKey","adapterVersion","profileKey","profileVersion","safetyPolicy","startedAt","completedAt")
+        SELECT 'synthetic-overflow-'||n::text,s."organizationId",s."projectId",s.id,s.version,'FAILED',
+          s."adapterKey",s."adapterVersion",s."profileKey",s."profileVersion",'{}'::jsonb,
+          transaction_timestamp(),transaction_timestamp()
+        FROM public."Source" s CROSS JOIN generate_series(1,5001) n
+        WHERE s."organizationId"=$1 AND s."projectId"=$2 AND s.id=$3`, scope.organizationId, scope.projectId, context.target.sourceId));
+      const overflow = await readCut();
+      expect(overflow.sourceCoverage).toBe("INCOMPLETE");
+      expect((await readComposed()).coverage).toBe("INCOMPLETE");
+      expect(planRawArtifactRetention({ ...scope, now, references: overflow.references,
+        pinnedRevisionIds: overflow.pinnedRevisionIds, coverage: "INCOMPLETE", jobsFrozen: overflow.jobsFrozen })
+        .every((row) => !row.eligible && row.reasons.includes("INCOMPLETE_COVERAGE"))).toBe(true);
+    } finally { restoreSend?.(); context.cleanup(); }
+    // Eleven actual streaming imports, real capture and a 5,001-row overflow probe;
+    // this is a lifecycle test, not a single operation's latency budget.
+  }, 60_000);
+
+  it("excludes retention during actual PUT and receipt registration, preserving malformed XML provenance", async () => {
+    const context = await setup();
+    const xml = "<realty-feed>";
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const target = { ...context.target, rawArtifactHash };
+    const originalSend = context.client.send;
+    let uploadCut = 0; let registrationCut = 0;
+    const send = vi.spyOn(context.client, "send").mockImplementation(async (...args) => {
+      await expect(acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention")).rejects.toThrow("RAW_ARTIFACT_BUSY");
+      const beforePut = await context.read();
+      expect(beforePut.putAttempts).toHaveLength(1);
+      expect(beforePut.putAttempts[0]).toMatchObject({ revisionId: beforePut.revisions[0]!.id,
+        status: "PENDING", rawArtifactHash, storageKey: `source-artifacts/${rawArtifactHash}`,
+        byteCount: Buffer.byteLength(xml), storedAt: null });
+      expect(beforePut.revisions[0]).toMatchObject({ rawArtifactHash: null, rawStorageKey: null, rawByteCount: null });
+      uploadCut++;
+      return originalSend(...args);
+    });
+    const originalRegister = PrismaSourceExecutionRepository.prototype.registerRawArtifact;
+    const register = vi.spyOn(PrismaSourceExecutionRepository.prototype, "registerRawArtifact")
+      .mockImplementation(async function (this: PrismaSourceExecutionRepository, ...args) {
+        await expect(acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention")).rejects.toThrow("RAW_ARTIFACT_BUSY");
+        registrationCut++;
+        return originalRegister.apply(this, args);
+      });
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "PARSE" });
+      const state = await context.read();
+      expect(state.revisions).toHaveLength(1);
+      expect(state.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash,
+        rawStorageKey: `source-artifacts/${rawArtifactHash}`, rawByteCount: Buffer.byteLength(xml) });
+      expect(state.source.lastGoodRevisionId).toBeNull();
+      expect(state.putAttempts[0]).toMatchObject({ status: "STORED", revisionId: state.revisions[0]!.id });
+      expect(state.putAttempts[0]!.storedAt).toBeInstanceOf(Date);
+      await expect(runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "SourceRevision" SET "rawArtifactHash"=NULL,"rawStorageKey"=NULL,"rawByteCount"=NULL WHERE id=$1', state.revisions[0]!.id);
+        await tx.$executeRawUnsafe('SET CONSTRAINTS "SourceRevision_raw_journal_guard" IMMEDIATE');
+      })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_RECEIPT_MISMATCH" } } } });
+      expect(state.identities).toHaveLength(0); expect(state.intents).toHaveLength(0);
+      expect(uploadCut).toBe(1); expect(registrationCut).toBe(1);
+      const settled = await acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention");
+      await settled.release();
+    } finally { send.mockRestore(); register.mockRestore(); context.cleanup(); }
+  });
+
+  it("keeps an unknown PUT durable without manufacturing a receipt, including after a new successful attempt", async () => {
+    const context = await setup("vladis-vt24-v1");
+    const xml = feed(offer("unknown-put"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const originalSend = context.client.send;
+    const send = vi.spyOn(context.client, "send").mockImplementationOnce(async (...args) => {
+      await originalSend(...args);
+      throw new Error("SYNTHETIC_PUT_REPLY_LOST");
+    });
+    try {
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT" });
+      const failed = await context.read();
+      expect(failed.putAttempts).toHaveLength(1);
+      expect(failed.putAttempts[0]).toMatchObject({ status: "PENDING", rawArtifactHash, storedAt: null });
+      expect(failed.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash: null, rawStorageKey: null });
+      expect(failed.identities).toHaveLength(0); expect(failed.intents).toHaveLength(0);
+      const sourcePrincipal = createProjectJobPrincipal({ organizationId: context.target.organizationId,
+        projectId: context.target.projectId, jobName: "source-import" });
+      await expect(runInPrincipalDatabaseTransaction(sourcePrincipal, async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactPutAttempt" SET status=\'STORED\',"storedAt"=transaction_timestamp()::timestamptz(3) WHERE "revisionId"=$1', failed.revisions[0]!.id);
+        await tx.$executeRawUnsafe('SET CONSTRAINTS "RawArtifactPutAttempt_receipt_guard" IMMEDIATE');
+      })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_RECEIPT_MISMATCH" } } } });
+      send.mockRestore();
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const retried = await context.read();
+      expect(retried.putAttempts).toHaveLength(2);
+      expect(retried.putAttempts[0]).toEqual(failed.putAttempts[0]);
+      expect(retried.putAttempts[1]).toMatchObject({ status: "STORED", rawArtifactHash });
+      expect(retried.source.lastGoodRevisionId).toBe(retried.putAttempts[1]!.revisionId);
+    } finally { send.mockRestore(); context.cleanup(); }
+  });
+
+  it.each(["PENDING", "ACKNOWLEDGED"])("blocks actual PUT from durable %s deletion after guardian release", async (status) => {
+    const context = await setup("vladis-vt24-v1");
+    const xml = feed(offer("blocked-put"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const target = { ...context.target, rawArtifactHash };
+    const guardian = await acquireRawArtifactLifetimeGuard(getPrismaPool(), target, "retention");
+    try {
+      // Synthetic persisted operation, not a real DELETE or an authorization
+      // claim. Releasing its guardian models the process-restart boundary.
+      await runInPrincipalDatabaseTransaction(context.principal, async (tx) => {
+        await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+        await guardian.fence(tx);
+        const row = await tx.rawArtifactDeletion.create({ data: {
+          organizationId: context.target.organizationId, projectId: context.target.projectId, rawArtifactHash,
+          storageKey: `source-artifacts/${rawArtifactHash}`, policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null },
+        } });
+        if (status === "ACKNOWLEDGED") {
+          await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', row.id);
+        }
+      });
+      await guardian.release();
+      const send = vi.spyOn(context.client, "send");
+      try {
+        context.provide(xml);
+        expect(await context.runtime.run(context.target)).toMatchObject({ state: "FAILED", failedStage: "RAW_ARTIFACT", code: "RAW_ARTIFACT_DELETE_PENDING" });
+        const initial = await context.read();
+        const credential = await runInPrincipalDatabaseTransaction(context.principal, (tx) =>
+          tx.sourceCredentialRef.findUniqueOrThrow({ where: { sourceId: context.target.sourceId }, select: { endpointCredentialRefName: true } }));
+        const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };
+        const second = await sourceRegistryCommands.createSource(context.principal, { ...scope,
+          sourceKey: "synthetic-deletion-second", name: "Synthetic second", endpointCredentialRef: credential.endpointCredentialRefName,
+          adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0", profileKey: "vladis-vt24-v1", profileVersion: "1.0.0",
+          datasetType: "MIXED_REALTY", transportType: "HTTPS_XML", sharingPolicy: "PROJECT_ONLY", schedulePolicy: { mode: "MANUAL_ONLY" },
+          safetyPolicyId: initial.source.safetyPolicyId!, expectedNamespace: "", expectedProducer: "",
+        });
+        await sourceRegistryCommands.setSourceEnabled(context.principal, { ...scope, sourceId: second.sourceId, version: second.version, enabled: true });
+        context.provide(xml);
+        expect(await context.runtime.run({ ...scope, sourceId: second.sourceId })).toMatchObject({ state: "FAILED", code: "RAW_ARTIFACT_DELETE_PENDING" });
+        expect(send).not.toHaveBeenCalled(); expect(context.uploaded()).toBe(0);
+        const state = await context.read();
+        expect(state.putAttempts).toHaveLength(0); expect(state.identities).toHaveLength(0); expect(state.intents).toHaveLength(0);
+        expect(state.revisions[0]).toMatchObject({ status: "FAILED", rawArtifactHash: null, rawStorageKey: null });
+      } finally { send.mockRestore(); }
+    } finally { await guardian.release(); context.cleanup(); }
+  });
+
+  it("isolates pending deletion by project and protects journal identities, lifecycle and private grants", async () => {
+    const context = await setup("vladis-vt24-v1");
+    const foreign = await setup("vladis-vt24-v1");
+    const xml = feed(offer("journal-isolation"));
+    const rawArtifactHash = createHash("sha256").update(xml).digest("hex");
+    const scope = { organizationId: foreign.target.organizationId, projectId: foreign.target.projectId };
+    const worker = <T>(run: (tx: DatabaseTransaction) => Promise<T>) => runInPrincipalDatabaseTransaction(foreign.principal, async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker"); return run(tx);
+    });
+    const data = { ...scope, rawArtifactHash, storageKey: `source-artifacts/${rawArtifactHash}`,
+      policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null } };
+    try {
+      const deletion = await worker((tx) => tx.rawArtifactDeletion.create({ data }));
+      await expect(worker((tx) => tx.rawArtifactDeletion.create({ data }))).rejects.toMatchObject({ code: "P2002" });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET "storageKey"=$1 WHERE id=$2', `source-artifacts/${"a".repeat(64)}`, deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_TRANSITION_INVALID" } } } });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_TRANSITION_INVALID" } } } });
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "23514" } } } });
+      for (const table of ["RawArtifactPutAttempt", "RawArtifactDeletion"]) {
+        await expect(runInPrincipalDatabaseTransaction(foreign.principal, async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_web");
+          return tx.$queryRawUnsafe(`SELECT 1 FROM "${table}" LIMIT 1`);
+        })).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "42501" } } } });
+      }
+      context.provide(xml);
+      expect(await context.runtime.run(context.target)).toMatchObject({ state: "GOOD", sequence: 1 });
+      const state = await context.read();
+      expect(state.putAttempts[0]).toMatchObject({ status: "STORED", rawArtifactHash });
+      await expect(runInPrincipalDatabaseTransaction(context.principal, (tx) => tx.$executeRawUnsafe(
+        'UPDATE "RawArtifactPutAttempt" SET "byteCount"="byteCount"+1 WHERE "revisionId"=$1', state.putAttempts[0]!.revisionId)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_PUT_JOURNAL_IMMUTABLE" } } } });
+      const sourcePrincipal = createProjectJobPrincipal({ organizationId: context.target.organizationId,
+        projectId: context.target.projectId, jobName: "source-import" });
+      const hidden = await runInPrincipalDatabaseTransaction(sourcePrincipal, (tx) => tx.rawArtifactDeletion.findMany({ where: { id: deletion.id } }));
+      expect(hidden).toEqual([]);
+      await expect(runInPrincipalDatabaseTransaction(sourcePrincipal, (tx) => tx.$executeRawUnsafe(
+        'INSERT INTO "RawArtifactDeletion" (id,"organizationId","projectId","rawArtifactHash","storageKey",policy) VALUES ($1,$2,$3,$4,$5,$6::jsonb)',
+        randomUUID(), context.target.organizationId, context.target.projectId, rawArtifactHash,
+        `source-artifacts/${rawArtifactHash}`, JSON.stringify(data.policy),
+      ))).rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "42501" } } } });
+      // Synthetic ACK and completion only exercise SQL transitions. This is
+      // not provider deletion, a cleanup audit or proof of retention readiness.
+      await worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+      await worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\',"completedAt"=transaction_timestamp()::timestamptz(3) WHERE id=$1', deletion.id));
+      await expect(worker((tx) => tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET "lastFailureCode"=\'RAW_DELETE_IO_UNKNOWN\' WHERE id=$1', deletion.id)))
+        .rejects.toMatchObject({ meta: { driverAdapterError: { cause: { code: "P0001", message: "RAW_DELETE_JOURNAL_IMMUTABLE" } } } });
+    } finally { context.cleanup(); foreign.cleanup(); }
+  });
+
   it("assembles two policy-approved Sources while broken attempts preserve their own and other GOOD contributions", async () => {
     const context = await setup("vladis-vt24-v1", { ...BOOTSTRAP_SOURCE_SAFETY_POLICY, deactivationEnabled: true });
     const scope = { organizationId: context.target.organizationId, projectId: context.target.projectId };

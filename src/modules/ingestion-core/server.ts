@@ -1,4 +1,5 @@
 import "server-only";
+export { createRawRetentionSnapshotProvenanceValidator, type RawRetentionCapturedSourceHead, type RawRetentionCapturedInventoryPin } from "./infrastructure/raw-retention-snapshot-provenance.ts";
 export { createSnapshotPublicationSourceReader } from "./infrastructure/snapshot-publication-source-reader.ts";
 export { createSnapshotRollbackSourceReader } from "./infrastructure/snapshot-rollback-source-reader.ts";
 export { assertSnapshotSourceGoodTrigger, createSnapshotSourceGoodTriggerReader } from "./infrastructure/snapshot-source-trigger.ts";
@@ -47,3 +48,7 @@ export {
   type SourceImportTarget,
   type StagingReceipt,
 } from "./application/import-pipeline.ts";
+export { createRawArtifactRetentionSourceReader, type RawArtifactRetentionSourceCut } from "./infrastructure/raw-artifact-retention-source-reader.ts";
+export { createRawPinAdmissionReader } from "./infrastructure/raw-pin-admission-reader.ts";
+export { createRawArtifactDeletionRepository } from "./infrastructure/raw-artifact-deletion-repository.ts";
+export { acquireRawArtifactLifetimeGuard, type RawArtifactLifetimeLease } from "./infrastructure/raw-artifact-lifetime-guard.ts";

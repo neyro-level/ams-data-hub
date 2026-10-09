@@ -9,7 +9,15 @@ export interface DataSafetySnapshot {
   reconciledAt: Date | null;
 }
 
+export interface DataSafetyConsistencyReport {
+  publicUrlIdConflicts: number;
+  uidConflicts: number;
+  publishSequenceConflicts: number;
+}
+
 export interface DataSafetyRepository {
+  lockControl(): Promise<void>;
+  inspectConsistency(): Promise<DataSafetyConsistencyReport>;
   freeze(reason: string, now: Date): Promise<DataSafetySnapshot>;
   markReconciled(now: Date): Promise<DataSafetySnapshot>;
   unfreeze(now: Date): Promise<DataSafetySnapshot>;
@@ -72,6 +80,11 @@ export function createDataSafetyService(dependencies: DataSafetyServiceDependenc
         throw new DataSafetyError("DATA_SAFETY_RECONCILE_FAILED");
       }
       const repository = dependencies.createRepository(transaction);
+      await repository.lockControl();
+      const state = await repository.read();
+      if (!state.jobsFrozen || !state.frozenAt) throw new DataSafetyError("DATA_SAFETY_RECONCILE_REQUIRED");
+      const observed = reconcileInputSchema.parse(await repository.inspectConsistency());
+      if (Object.values(observed).some((count) => count !== 0)) throw new DataSafetyError("DATA_SAFETY_RECONCILE_FAILED");
       const result = await repository.markReconciled(now());
       const actor = requireAdmin(principal);
       await repository.appendAudit({ actorId: actor.userId, correlationId: actor.correlationId, action: "data-safety.reconcile", afterMarker: { jobsFrozen: result.jobsFrozen, conflicts: 0 } });
@@ -84,10 +97,13 @@ export function createDataSafetyService(dependencies: DataSafetyServiceDependenc
     authorize: (principal) => { requireAdmin(principal); },
     execute: async ({ principal, transaction }) => {
       const repository = dependencies.createRepository(transaction);
+      await repository.lockControl();
       const state = await repository.read();
       if (!state.jobsFrozen || !state.frozenAt || !state.reconciledAt || state.reconciledAt < state.frozenAt) {
         throw new DataSafetyError("DATA_SAFETY_RECONCILE_REQUIRED");
       }
+      const observed = reconcileInputSchema.parse(await repository.inspectConsistency());
+      if (Object.values(observed).some((count) => count !== 0)) throw new DataSafetyError("DATA_SAFETY_RECONCILE_FAILED");
       const result = await repository.unfreeze(now());
       const actor = requireAdmin(principal);
       await repository.appendAudit({ actorId: actor.userId, correlationId: actor.correlationId, action: "data-safety.unfreeze", afterMarker: { jobsFrozen: false } });

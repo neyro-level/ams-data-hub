@@ -13,6 +13,8 @@ export {
   unfreezeJobsInputSchema,
 } from "./contracts.ts";
 export type {
+  FleetAlertRecord,
+  FleetAlertView,
   FleetAuditEventRecord,
   FleetAuditEventView,
   FleetDataSafetyRecord,

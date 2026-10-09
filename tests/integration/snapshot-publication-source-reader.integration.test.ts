@@ -128,9 +128,11 @@ describe("actual NOBYPASS publication source freshness", () => {
       try {
         await createSnapshotPublicationSourceReader(tx)(setup.scope, setup.anchors);
         expect(sourceTrace.mock.calls.every(([args]) => !JSON.stringify(args?.select).match(/enabled|version|payload|safety|lastAttempt/u))).toBe(true);
-        expect(inventoryTrace.mock.calls.every(([args]) => Object.keys(args!.select!).sort().join(",") === "normalizedHash,sourceId,uid")).toBe(true);
+        expect(inventoryTrace).not.toHaveBeenCalled();
         const queries = sqlTrace.mock.calls.map(([sql]) => (sql as Prisma.Sql).text).join("\n");
         expect(queries).not.toMatch(/payload|draft|fields|FOR UPDATE|FOR SHARE/u);
+        expect(queries).toContain("jsonb_to_recordset");
+        expect(queries).toContain("LATERAL");
         expect(queries).toContain('"SourceRevisionRecord"');
       } finally { sourceTrace.mockRestore(); inventoryTrace.mockRestore(); sqlTrace.mockRestore(); }
     });

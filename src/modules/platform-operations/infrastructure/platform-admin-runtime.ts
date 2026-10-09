@@ -99,6 +99,7 @@ const dataSafetyService = createDataSafetyService({
 });
 
 export const freezeMutatingJobs = dataSafetyService.freezeMutatingJobs;
+export const reconcileAfterRestore = dataSafetyService.reconcileAfterRestore;
 export const unfreezeMutatingJobs = dataSafetyService.unfreezeMutatingJobs;
 
 const enqueueMaintenance = defineCommand({

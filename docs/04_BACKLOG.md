@@ -29,7 +29,88 @@
 
 ## Текущая граница
 
-MP-00–MP-08 доставлены. MP-08.1–MP-08.10 закрыты implementation ledger:
+MP-00–MP-09 доставлены. MP-09: PR #27 MERGED после exact-head RISKY Gate #340
+на `75796b20407ea204372d698820b61364d2fe436a`, merge
+`bc8e8c6d03183a591838fbd364e5cc5d43919589`. Gate: 91 unit и 39 native tests
+в шести integration suites, current standalone build, 63 migrations и final test
+DB reset — PASS. Дерево merge идентично gated candidate; canonical main и
+публичное GitHub main-зеркало синхронизированы после merge.
+Активен MP-10; Code, Security, Runtime, Portability, Operations и MP-10.7
+regression guards доказаны. Локальный PG18 restore drill, raw retention,
+freeze/reconcile/unfreeze, identity/publicUrlId и исторический non-production
+S3 policy proof для MP-10.3 — PASS. Provider PostgreSQL backup на
+`ams-data-hub-deploy` фактически отсутствует. Решением владельца от 2026-10-09
+его настройка исключена, отсутствие принято как явное отклонение и больше не
+блокирует main-delivery. Это не является backup evidence или production proof.
+MP-10 доставлен PR #28 после одного exact-head SourceCraft RISKY Gate;
+immutable candidate/Gate/merge evidence хранится в PlanDB и SourceCraft.
+Частичный checkpoint `e7c6ea9` добавляет
+AST source guards и обязательные self-tests; это не closure или readiness PASS.
+Actual-diff runtime selection и structural composition removal guards
+реализованы в checkpoint c91cfac: обязательные native suites вычисляются из Git,
+не из caller hint; отсутствие bindings и попытка пропустить proof отклоняются.
+Strict public-policy unit guards используют непустые 13 datasets, действительный
+project-owned verifier и подписанные adversarial mutations: private/raw-Prisma
+fields, media provenance, references, signature/revocation/replay, bytes/hash/count
+и fixed gzip limit. Targeted 143/143 unit, architecture/lint/docs/secrets — PASS;
+independent review без findings. Structural/unit checks не заменяют runtime proof.
+Первый full native matrix на `181f902` — FAIL: 112/115 в 10 suites, final
+test DB reset выполнен. Исправлены два подтверждённых fixture defects: own
+retry job очищается только после LastGood/FAILED assertions, а multi-table
+shutdown observation использует authorized RepeatableRead вместо torn RC cut.
+Целевой прогон cron/source-worker → ACK rotation → shutdown/restart — 28/28
+PASS (`29705`, 63 migrations, final reset); lint/types — PASS. Первый restart
+timeout отдельно не доказан и не повторился; added own-scope status diagnostics
+не меняют timeout или assertions. Повторный full mandatory runner на exact
+`8ce049dcdd7cc8063b0aacc13e4ccab5e66e694a` (`11409`) — PASS: 143/143 unit,
+fresh standalone build, 115/115 native в 10 suites, 63 migrations и final reset.
+Независимый requirement-by-requirement review MP-10.7 — PASS без findings.
+Этот checkpoint закрыл regression guards, но на тот момент не закрывал Code/
+Security/Data Safety/Runtime/Portability/Operations gates, общий readiness
+verdict или provider gate. Текущий статус указан в начале раздела.
+Production по-прежнему не разрешён.
+
+MP-10.3 scoped recovery checkpoint: reconcile и unfreeze используют общий
+control lock и actual persisted UID/URL/sequence report, а не caller zeroes.
+Узкая counts-only SQL capability принадлежит existing NOBYPASS worker с
+FORCE RLS/row_security; web не получает SELECT на private capture/parts.
+Current/run publishedAt и normal/rollback binding identity входят в проверки.
+Units — 7/7; native consumer/recovery suite (`3901`) — 23/23, все 64 migrations
+и final reset — PASS. Actual published snapshot + stage receipt проверены через
+реальные recovery commands под NOBYPASS web; stale clean marker с допустимым
+DeliveryRun timestamp mismatch запрещает reconcile/unfreeze без success audit.
+Owner/grants/security-definer readback — PASS. Первый scoped run (`24219`) —
+22/23 FAIL из-за запрещённой same-sequence current mutation в новой фикстуре;
+guard сохранён и теперь явно проверяется. Types/scoped lint/RLS coverage/secrets/
+diff — PASS; focused independent review без findings. Populated rollback,
+непустой restore drill и raw-retention runtime ещё не доказаны; старый drill
+с literal UID/sequence zeroes не принимается как текущий Data Safety Gate.
+MP-10.3 остаётся RUNNING, без общего readiness или delivery PASS.
+
+Следующий scoped restore checkpoint: старый drill с literal zeroes заменён
+двухпроцессной проверкой с actual synthetic GOOD import/UID/published URL/
+capture/sign/stage/publication и NOBYPASS web freeze. Реальный PG18 dump/restore
+сохраняет ownership/grants; SHA-256 fingerprints 15 непустых таблиц совпадают.
+Actual восстановленные reconcile/unfreeze и stale-marker denial без ложного
+audit — PASS. `19161`: prepare 1/1, restore 1/1, все 64 migrations, удаление
+dump/restore DB и final source reset — PASS; evidence `DATA_SAFETY_DRILL_V2`.
+Это PostgreSQL-only proof с synthetic intake/S3 transports, не provider backup
+configuration, S3 object restoration или raw-retention runtime. Raw retention
+и остальные acceptance gates остаются в работе; production не затронут.
+
+Финальный локальный Data Safety drill расширен до 22 непустых таблиц и сохраняет
+raw journals, publicUrlId relink, rollback/current linkage, freeze/reconcile/
+unfreeze; fingerprints до и после PG18 dump/restore совпадают, cleanup PASS.
+Отдельный native raw-retention runtime proof также PASS. Эти результаты закрывают
+локальную часть MP-10.3. Исходное `PostgreSQL backup configured` на provider/
+server не выполнено и закрывается только owner amendment от 2026-10-09; риск
+зафиксирован без ложного заявления о backup.
+
+### История scoped checkpoints MP-08/MP-09
+
+Ограничения и pending ниже относятся к моменту каждого checkpoint. Текущий
+delivery status указан выше; доказательства failed run не удаляются.
+MP-08.1–MP-08.10 закрыты implementation ledger:
 все шесть concrete executors реализованы, зарегистрированы и проверены.
 SourceCraft checkpoint `56284685c1be52b53539203f20d2635fef8057cf` доставлен
 в рабочую ветку; весь MP-08 впоследствии доставлен PR #26 после Gate #325.
@@ -141,7 +222,8 @@ exit и ограниченно (5 s) наблюдает исчезновение
 реальная reacquisition обоих guards обязательна. Graceful checks не изменены,
 дополнительных terminate/reset/BUSY retries нет. Native `6277/91ebbe`, test types
 `93184/8451dd`, scoped lint `98743/de02d6` — PASS; independent review без findings.
-Failed run сохранён; новый reviewed exact-head gate требуется до merge.
+Failed run сохранён. Следующий reviewed candidate прошёл Gate #340 и merged
+через PR #27; точные SHA и итоговые проверки приведены в текущей границе выше.
 MP-08.6: action state
 Fleet получает bounded per-project историю REQUESTED/RUNNING/SUCCEEDED/FAILED,
 а принятие запроса не выдаётся за завершение. Completed metadata проходит
@@ -594,10 +676,10 @@ asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-08–MP-10 нового remediation plan;
-MP-00–MP-07 закрыты. Далее — оставшееся operations HTTP/UI и синтетическое
-end-to-end proof. Реализация runtime adapters и расписаний
-входит в утверждённую доработку; их включение на production — нет.
+Approved remediation plan завершён: MP-00–MP-10 доставлены, составной graph
+закрыт. Все acceptance gates и regression guards завершены с owner amendment
+по отсутствующему server backup. Реализация runtime adapters и расписаний входит
+в доставленный main; их включение на production — нет.
 
 Production feed credentials, миграция production и rollout — только отдельной
 release/операционной командой владельца после readiness gate.

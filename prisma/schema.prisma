@@ -449,6 +449,8 @@ model Project {
   operationalActionRequests OperationalActionRequest[]
   sourceRevisions          SourceRevision[]
   sourceRevisionRecords    SourceRevisionRecord[]
+  rawArtifactPutAttempts   RawArtifactPutAttempt[]
+  rawArtifactDeletions     RawArtifactDeletion[]
   sourceSafetyPolicies     SourceSafetyPolicy[]
   agents                   Agent[]
   agentExternalIdentities  AgentExternalIdentity[]
@@ -1071,10 +1073,46 @@ model SourceRevision {
   agentBindings          ListingAgentBinding[]
   operationalActionRequests OperationalActionRequest[]
   manualApprovalReceipt SourceManualApprovalReceipt?
+  rawArtifactPutAttempt RawArtifactPutAttempt?
 
   @@unique([organizationId, projectId, sourceId, id])
   @@unique([sourceId, sequence])
   @@index([projectId, sourceId, status])
+}
+
+model RawArtifactPutAttempt {
+  revisionId      String @id
+  organizationId  String
+  projectId       String
+  sourceId        String
+  rawArtifactHash String @db.Char(64)
+  storageKey      String @db.VarChar(512)
+  byteCount       Int
+  status          String @default("PENDING") @db.VarChar(16)
+  createdAt       DateTime @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamptz(3)
+  storedAt        DateTime? @db.Timestamptz(3)
+  revision        SourceRevision @relation(fields: [organizationId, projectId, sourceId, revisionId], references: [organizationId, projectId, sourceId, id], onDelete: Restrict, onUpdate: NoAction)
+  project         Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([organizationId, projectId, sourceId, revisionId], map: "RawArtifactPutAttempt_scope_revision_key")
+  @@index([organizationId, projectId, rawArtifactHash, status], map: "RawArtifactPutAttempt_project_hash_status_idx")
+}
+
+model RawArtifactDeletion {
+  id              String @id @default(cuid())
+  organizationId  String
+  projectId       String
+  rawArtifactHash String @db.Char(64)
+  storageKey      String @db.VarChar(512)
+  policy          Json
+  status          String @default("PENDING") @db.VarChar(16)
+  requestedAt     DateTime @default(dbgenerated("CURRENT_TIMESTAMP")) @db.Timestamptz(3)
+  acknowledgedAt  DateTime? @db.Timestamptz(3)
+  completedAt     DateTime? @db.Timestamptz(3)
+  lastFailureCode String? @db.VarChar(64)
+  project         Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([organizationId, projectId, rawArtifactHash, status], map: "RawArtifactDeletion_project_hash_status_idx")
 }
 
 model SourceRevisionRecord {

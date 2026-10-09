@@ -172,6 +172,77 @@ durable staging, not applied inventory. SUSPICIOUS/REJECTED evidence remains
 persisted without moving Last Good. GOOD records and revision metadata are
 immutable, protected by database triggers as well as application checks.
 
+MP-10.3 adds private `RawArtifactPutAttempt` and `RawArtifactDeletion` journals
+through forward migration `20261008180000_raw_artifact_operation_journals`.
+A PUT intent pins one exact organization/project/Source/revision and the
+content-addressed key/hash/byte count before external IO. PENDING is incomplete
+operation evidence; STORED must agree with the revision's verified raw receipt
+at commit through deferred consistency guards. Settled intent identity is
+immutable. Failed/unknown IO retains its pending record; historical revisions
+are not backfilled with invented operations.
+
+Forward migration `20261008210000_raw_receipt_guard_nobypass` runs the existing
+non-returning deferred receipt guard as the NOBYPASS, non-superuser worker,
+with `row_security=on` and a fixed schema-qualified search path. Legitimate
+web mutations of legacy revisions can therefore be checked without granting
+web SELECT on private PUT journals. Exact-context FORCE RLS and receipt
+consistency remain enforced; no historical operations are invented.
+
+The deletion journal pins project/hash/key/policy independently of Source,
+with one unsettled operation per project/SHA and strictly ordered
+PENDING → ACKNOWLEDGED → DELETED phases. Identity and policy cannot be retargeted;
+terminal rows are immutable and cannot be deleted. Unsettled deletion blocks
+the actual Source PUT admission even without a live guardian. FORCE RLS admits
+exact project-job purposes; source-import may read deletion state but not write
+it, and web has no journal grants. These models do not activate object deletion
+or prove a completed retention/restore/provider policy gate.
+
+Forward migration `20261008190000_raw_retention_source_reads` adds SELECT-only
+policies for the exact scoped `raw-artifact-retention` worker purpose on Project,
+Source, SourceRevision, SourceRevisionRecord, InventoryIdentity and global
+DataSafetyState. It adds no mutation, web journal or snapshot permissions.
+The ingestion-owned reader includes Last GOOD, ACTIVE historical fact/provenance
+pins and unresolved PUT intents. Bounded overflow fails coverage closed; its
+COMPLETE result covers only Source metadata, never snapshot/rollback coverage
+or object deletion admission.
+
+Forward migration `20261008200000_raw_retention_snapshot_reads` extends the same
+SELECT-only worker purpose to immutable snapshot inputs/parts, normal and
+rollback bindings/reservations, staged receipts, current manifests, DeliveryRuns
+and pending OperationalActionRequest targets. Module-owned readers return only
+pins and coverage; captured payloads remain internal. Input digests alone are
+not provenance proof: ingestion additionally checks exact scoped GOOD references
+and captured inventory/raw SHA relationships. No deletion writes or public/web
+capability are added by these read policies.
+
+Forward migration `20261008220000_raw_capture_admission` adds worker-only,
+snapshot-input scoped SELECT on deletion metadata and a global-first statement
+fence on deletion journal writes. It adds no web access, journal mutations or
+storage capability. New captures check exact captured GOOD revision/raw SHA
+pins against PENDING/ACKNOWLEDGED operations using a separate fresh RC read
+while their outer RR transaction holds global. DELETED is not a prohibition
+on normalized-fact rebuild; existing immutable receipt replay creates no pin.
+
+Forward migration `20261008230000_operational_raw_pin_admission` adds a
+boolean-only worker NOBYPASS definer for new admin-selected publish/rollback
+admission. Worker-only read policies allow immutable target resolution without
+web SELECT on private parts or journals. Exact completed stage or approved
+committed normal/rollback root is required; automatic normal publication does
+not require a separate stage. Whole-root budgets apply before payload traversal;
+duplicate revision/SHA pins are collapsed before metadata/journal joins. New
+requests deny PENDING/ACKNOWLEDGED intersections before audit/outbox writes.
+Existing durable replay and DELETED-backed normalized/artifact use remain valid.
+
+The ingestion-owned deletion repository uses existing journal/audit grants,
+not a new migration or web capability. A definitive DELETE settles PENDING to
+ACKNOWLEDGED under the guardian/global fence. ACK-to-DELETED and the unique
+`raw-delete:<operation-id>` audit commit together; restart recovery does not
+repeat storage IO. The audit contains only project, terminal state and current-key
+removal marker, never storage key/endpoint/credential. Unknown IO stays PENDING.
+Audited DELETED is not permanent absence after a new ordered STORED PUT; a PUT
+intent strictly newer than terminal deletion establishes resurrection, whereas
+late settlement or ambiguous clocks hold deletion. No raw receipt is cleared.
+
 The forward-only `20261007090000_snapshot_good_fact_lookup` migration adds
 `SourceRevisionRecord_inventory_fact_idx` on inventory UID, external ID and
 record hash. Exact historical GOOD resolution can locate the pinned record

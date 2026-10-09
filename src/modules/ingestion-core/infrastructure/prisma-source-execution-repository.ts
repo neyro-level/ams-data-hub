@@ -42,6 +42,13 @@ export type SourceApplyContext = Pick<ResolvedSourceExecution, "target" | "princ
 };
 export interface SourceManualApproval { requestId: string; reviewedAt: Date }
 
+function assertRawReceiptIdentity(receipt: RawArtifactReceipt) {
+  if (!/^[a-f0-9]{64}$/u.test(receipt.rawArtifactHash)
+    || receipt.storageKey !== `source-artifacts/${receipt.rawArtifactHash}`
+    || !Number.isSafeInteger(receipt.byteCount) || receipt.byteCount < 0 || receipt.byteCount > 268_435_456)
+    throw new Error("RAW_ARTIFACT_RECEIPT_INVALID");
+}
+
 export class PrismaSourceExecutionRepository {
   constructor(private readonly transaction: DatabaseTransaction) {}
 
@@ -83,6 +90,38 @@ export class PrismaSourceExecutionRepository {
     }, select: { id: true, startedAt: true } });
     await this.transaction.source.update({ where: { id: context.target.sourceId }, data: { lastAttemptAt: revision.startedAt } });
     return revision;
+  }
+
+  async beginRawArtifactPut(context: ResolvedSourceExecution, revisionId: string, intent: RawArtifactReceipt) {
+    assertRawReceiptIdentity(intent);
+    await this.lockSource(context);
+    // The caller's producer lease fences this read and INSERT. A retention cut
+    // must hold exclusive admission while persisting PENDING; after guardian
+    // loss that transaction lock prevents a producer reading uncommitted state.
+    const deletion = await this.transaction.rawArtifactDeletion.findFirst({ where: {
+      organizationId: context.target.organizationId, projectId: context.target.projectId,
+      rawArtifactHash: intent.rawArtifactHash, status: { in: ["PENDING", "ACKNOWLEDGED"] },
+    }, select: { id: true } });
+    if (deletion) throw new Error("RAW_ARTIFACT_DELETE_PENDING");
+    await this.transaction.rawArtifactPutAttempt.create({ data: { ...context.target, revisionId,
+      rawArtifactHash: intent.rawArtifactHash, storageKey: intent.storageKey, byteCount: intent.byteCount } });
+  }
+
+  async registerRawArtifact(context: ResolvedSourceExecution, revisionId: string, receipt: RawArtifactReceipt) {
+    assertRawReceiptIdentity(receipt);
+    await this.lockSource(context);
+    const settled = await this.transaction.$executeRaw(Prisma.sql`UPDATE "RawArtifactPutAttempt"
+      SET status='STORED', "storedAt"=transaction_timestamp()::timestamptz(3)
+      WHERE "organizationId"=${context.target.organizationId} AND "projectId"=${context.target.projectId}
+        AND "sourceId"=${context.target.sourceId} AND "revisionId"=${revisionId} AND status='PENDING'
+        AND "rawArtifactHash"=${receipt.rawArtifactHash} AND "storageKey"=${receipt.storageKey} AND "byteCount"=${receipt.byteCount}`);
+    if (settled !== 1) throw new Error("RAW_ARTIFACT_RECEIPT_INVALID");
+    // An actual verified PUT receipt is recorded before parsing, including for
+    // malformed XML. Do not invent a receipt for an unfinished external PUT.
+    const updated = await this.transaction.sourceRevision.updateMany({ where: { ...context.target,
+      id: revisionId, status: "PENDING", rawStorageKey: null, rawArtifactHash: null, rawByteCount: null },
+    data: { rawStorageKey: receipt.storageKey, rawArtifactHash: receipt.rawArtifactHash, rawByteCount: receipt.byteCount } });
+    if (updated.count !== 1) throw new Error("SOURCE_REVISION_STAGING_CLOSED");
   }
 
   async append(context: ResolvedSourceExecution, revisionId: string, records: readonly StagedSourceRecord[]) {

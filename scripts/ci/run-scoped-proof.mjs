@@ -3,6 +3,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createTestDatabaseUrl, readTestDatabaseTarget } from "../verify-test-database-env.mjs";
+import { assertRequiredRegressionProofs, readCandidateChangedPaths } from "./required-regression-proofs.mjs";
+import { verifyExactHead } from "./verify-exact-head.mjs";
 
 const rootDir = path.resolve(import.meta.dirname, "../..");
 const testPathPattern = /^tests\/[A-Za-z0-9._/-]+\.test\.ts$/;
@@ -63,8 +65,19 @@ export function createRiskBuildEnvironment(environment) {
   };
 }
 
+export function mandatoryUnitProofFiles(selectedFiles) {
+  return [...new Set([
+    ...selectedFiles,
+    "tests/architecture-source-guards.test.ts",
+    "tests/architecture-runtime-guards.test.ts",
+    "tests/sourcecraft-policy.test.ts",
+    "tests/required-regression-proofs.test.ts",
+    "tests/snapshot-public-policy.test.ts",
+  ])];
+}
+
 function runUnitProof() {
-  const files = parseTestFiles(process.env.UNIT_TEST_FILES, "UNIT_TEST_FILES");
+  const files = mandatoryUnitProofFiles(parseTestFiles(process.env.UNIT_TEST_FILES, "UNIT_TEST_FILES"));
   run(process.execPath, ["node_modules/vitest/vitest.mjs", "run", ...files]);
 }
 
@@ -98,11 +111,23 @@ function runOptionalRiskProof() {
   }
 }
 
+function assertCandidateRegressionScope() {
+  const candidate = readCandidateChangedPaths(rootDir);
+  verifyExactHead(process.env.EXPECTED_COMMIT_SHA, candidate.headSha);
+  const files = parseTestFiles(process.env.INTEGRATION_TEST_FILES ?? "none", "INTEGRATION_TEST_FILES", { allowNone: true });
+  const required = assertRequiredRegressionProofs(candidate.paths, files);
+  if (required.includes("tests/integration/source-worker-shutdown.integration.test.ts") && process.env.RUN_BUILD !== "true") {
+    throw new Error("MANDATORY_RUNTIME_CURRENT_BUILD_REQUIRED: RUN_BUILD=true for native web restart");
+  }
+  console.log(`Mandatory runtime scope: head=${candidate.headSha} base=${candidate.baseSha} merge_base=${candidate.mergeBaseSha} suites=${required.length}`);
+}
+
 const isMain = process.argv[1]
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) {
   const mode = process.argv[2];
+  if (["unit", "integration", "optional-risk"].includes(mode)) assertCandidateRegressionScope();
   if (mode === "unit") runUnitProof();
   else if (mode === "integration") runIntegrationProof();
   else if (mode === "optional-risk") runOptionalRiskProof();

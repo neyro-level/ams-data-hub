@@ -14,6 +14,14 @@ export interface FleetSourceView {
   lastSuccessAt: string | null;
   hasLastGoodRevision: boolean;
   issueCode: "LATEST_ATTEMPT_NOT_GOOD" | "NO_SUCCESS_YET" | "STALE_SUCCESS" | null;
+  latestImport: {
+    status: string;
+    recordCount: number;
+    invalidRecordCount: number;
+    failureCode: string | null;
+    startedAt: string;
+    completedAt: string | null;
+  } | null;
 }
 
 export interface FleetProjectView {
@@ -67,7 +75,18 @@ export interface FleetDashboard {
   };
   projects: FleetProjectView[];
   failedJobs: FleetFailedJobView[];
+  alerts: FleetAlertView[];
   auditEvents: FleetAuditEventView[];
+}
+
+export interface FleetAlertView {
+  alertId: string;
+  organizationName: string | null;
+  projectName: string | null;
+  severity: string;
+  title: string;
+  message: string;
+  occurredAt: string;
 }
 
 export interface FleetAuditEventView {
@@ -96,6 +115,14 @@ export interface FleetSourceRecord {
   lastAttemptAt: Date | null;
   lastSuccessAt: Date | null;
   lastGoodRevisionId: string | null;
+  latestImport: {
+    status: string;
+    recordCount: number;
+    invalidRecordCount: number;
+    failureCode: string | null;
+    startedAt: Date;
+    completedAt: Date | null;
+  } | null;
 }
 
 export interface FleetProjectRecord {
@@ -155,6 +182,16 @@ export interface FleetAuditEventRecord {
   action: string;
   entityType: string;
   createdAt: Date;
+}
+
+export interface FleetAlertRecord {
+  alertId: string;
+  organizationName: string | null;
+  projectName: string | null;
+  severity: string;
+  title: string;
+  message: string;
+  occurredAt: Date;
 }
 
 export interface FleetDataSafetyRecord {

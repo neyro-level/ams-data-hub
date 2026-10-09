@@ -15,22 +15,27 @@ function sourceIssue(source: FleetSourceRecord, now: Date): FleetSourceView {
   const lastAttemptAt = source.lastAttemptAt?.toISOString() ?? null;
   const lastSuccessAt = source.lastSuccessAt?.toISOString() ?? null;
 
+  const latestImport = source.latestImport ? {
+    ...source.latestImport,
+    startedAt: source.latestImport.startedAt.toISOString(),
+    completedAt: source.latestImport.completedAt?.toISOString() ?? null,
+  } : null;
   if (!source.enabled) {
-    return { sourceId: source.id, name: source.name, enabled: false, health: "DISABLED", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: null };
+    return { sourceId: source.id, name: source.name, enabled: false, health: "DISABLED", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: null, latestImport };
   }
   if (!source.lastAttemptAt) {
-    return { sourceId: source.id, name: source.name, enabled: true, health: "NEVER_RUN", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: false, issueCode: "NO_SUCCESS_YET" };
+    return { sourceId: source.id, name: source.name, enabled: true, health: "NEVER_RUN", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: false, issueCode: "NO_SUCCESS_YET", latestImport };
   }
   if (!source.lastSuccessAt || source.lastAttemptAt > source.lastSuccessAt) {
-    return { sourceId: source.id, name: source.name, enabled: true, health: "ATTENTION", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: source.lastSuccessAt ? "LATEST_ATTEMPT_NOT_GOOD" : "NO_SUCCESS_YET" };
+    return { sourceId: source.id, name: source.name, enabled: true, health: "ATTENTION", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: source.lastSuccessAt ? "LATEST_ATTEMPT_NOT_GOOD" : "NO_SUCCESS_YET", latestImport };
   }
   if (
     schedule.mode === "SCHEDULED"
     && now.getTime() - source.lastSuccessAt.getTime() > schedule.cadenceMinutes * 60_000 * STALE_GRACE_MULTIPLIER
   ) {
-    return { sourceId: source.id, name: source.name, enabled: true, health: "STALE", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: "STALE_SUCCESS" };
+    return { sourceId: source.id, name: source.name, enabled: true, health: "STALE", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: "STALE_SUCCESS", latestImport };
   }
-  return { sourceId: source.id, name: source.name, enabled: true, health: "GOOD", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: null };
+  return { sourceId: source.id, name: source.name, enabled: true, health: "GOOD", lastAttemptAt, lastSuccessAt, hasLastGoodRevision: source.lastGoodRevisionId !== null, issueCode: null, latestImport };
 }
 
 function toProject(project: FleetProjectRecord, now: Date): FleetProjectView {
@@ -71,6 +76,7 @@ function toProject(project: FleetProjectRecord, now: Date): FleetProjectView {
 export function buildFleetDashboard(input: {
   projects: FleetProjectRecord[];
   failedJobs: FleetFailedJobRecord[];
+  alerts: import("../contracts.ts").FleetAlertRecord[];
   auditEvents: import("../contracts.ts").FleetAuditEventRecord[];
   dataSafety: import("../contracts.ts").FleetDataSafetyRecord;
   organizationCount: number;
@@ -95,6 +101,7 @@ export function buildFleetDashboard(input: {
     },
     projects,
     failedJobs: input.failedJobs.map((job) => ({ ...job, startedAt: job.startedAt.toISOString() })),
+    alerts: input.alerts.map((alert) => ({ ...alert, occurredAt: alert.occurredAt.toISOString() })),
     auditEvents: input.auditEvents.map((event) => ({ ...event, createdAt: event.createdAt.toISOString() })),
   };
 }

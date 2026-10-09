@@ -140,6 +140,9 @@ describe("actual NOBYPASS publication media rights and association admission", (
         expect(JSON.stringify(results)).not.toMatch(/https:|synthetic-private|originalFileName|sourceUrl|canonicalSourceUrl|license":|attribution":/u);
         const queries = trace.mock.calls.map(([sql]) => (sql as Prisma.Sql).text).join("\n");
         expect(queries).not.toMatch(/FOR UPDATE|FOR SHARE|payload|SourceRevisionRecord/u);
+        expect(queries).toContain("jsonb_to_recordset");
+        expect(queries).toContain("LATERAL");
+        expect(queries).toContain('FROM "MediaSource"');
       } finally { trace.mockRestore(); }
     });
   });

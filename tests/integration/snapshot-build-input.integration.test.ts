@@ -37,6 +37,21 @@ import * as sourceFacade from "../../src/modules/ingestion-core/server.ts";
 import * as projectStateFacade from "../../src/modules/project-state/server.ts";
 import { analyzeImportSafety, BOOTSTRAP_SOURCE_SAFETY_POLICY, prepareSnapshotPublicationSourceAnchors } from "../../src/modules/ingestion-core/index.ts";
 import { lockSnapshotPublication } from "../../src/modules/snapshot-delivery/infrastructure/snapshot-publication-lock.ts";
+import { createRawRetentionSnapshotReader } from "../../src/modules/snapshot-delivery/server.ts";
+import { createRawRetentionOperationReader } from "../../src/modules/operations-control/server.ts";
+
+async function readRetentionPins(scope: { organizationId: string; projectId: string }) {
+  return runInAuthorizedDatabaseTransaction({ principalKind: "project-job", actorId: "raw-artifact-retention",
+    organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() }, async (tx) => {
+    await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+    expect(await tx.$queryRawUnsafe("SELECT rolbypassrls,rolsuper FROM pg_roles WHERE rolname=current_user"))
+      .toEqual([{ rolbypassrls: false, rolsuper: false }]);
+    const operations = await createRawRetentionOperationReader(tx).read(scope);
+    const reader = createRawRetentionSnapshotReader(tx);
+    await expect(reader.read({ ...scope, projectId: "foreign-project" }, operations)).rejects.toThrow("RAW_RETENTION_ACCESS_DENIED");
+    return reader.read(scope, operations);
+  }, { isolationLevel: "ReadCommitted", timeout: 30_000 });
+}
 
 // Explicit fixture policy permits the deliberate large historical/head count
 // changes used below; production policy/approval predicates are unchanged.
@@ -127,6 +142,51 @@ function parts() {
 }
 
 describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker", () => {
+  it.each(["foreign-source", "wrong-good-sequence", "missing-raw-provenance", "valid-240-char-id"] as const)(
+    "checks retention provenance for a digest-valid capture with %s", async (mode) => {
+      const scope = await setup(); const uid = createUlid();
+      const externalOfferId = mode === "valid-240-char-id" ? "x".repeat(240) : "synthetic-retention";
+      const fixture = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+        const source = await tx.source.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          sourceKey: "synthetic-retention-corrupt", name: "Synthetic provenance", adapterKey: "yrl-realty-2010", adapterVersion: "1.0.0",
+          profileKey: "vladis-vt24-v1", profileVersion: "1.0.0", datasetType: "RESALE", schedulePolicy: { mode: "MANUAL_ONLY" } } });
+        const target = { organizationId: scope.organizationId, projectId: scope.projectId, sourceId: source.id };
+        const revision = await tx.sourceRevision.create({ data: { ...target, sourceVersion: source.version,
+          adapterKey: source.adapterKey, adapterVersion: source.adapterVersion, profileKey: source.profileKey,
+          profileVersion: source.profileVersion, ...syntheticSafety(1), recordCount: 1 } });
+        await tx.sourceRevisionRecord.create({ data: { ...target, revisionId: revision.id, externalId: externalOfferId, inventoryUid: uid,
+          recordHash: "b".repeat(64), orderKey: "73796e746865746963", payload: { schemaVersion: 1, draft: {}, fields: {} } } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "STAGED", sequence: 1,
+          rawStorageKey: `source-artifacts/${"c".repeat(64)}`, rawArtifactHash: "c".repeat(64), rawByteCount: 1,
+          normalizedContentHash: "b".repeat(64), completedAt: new Date() } });
+        await tx.sourceRevision.update({ where: { id: revision.id }, data: { status: "GOOD" } });
+        return { sourceId: source.id, revisionId: revision.id };
+      });
+      const sequence = mode === "wrong-good-sequence" ? 2 : 1;
+      const builder = new SnapshotInputPartsBuilder();
+      for (const kind of SNAPSHOT_INPUT_PART_KINDS) builder.add(kind,
+        kind === "sources" ? [{ entityType: "source", sourceId: fixture.sourceId,
+          approvedHead: { id: fixture.revisionId, status: "GOOD", sequence } }] :
+        kind === "inventory" ? [{ uid, sourceId: mode === "foreign-source" ? "foreign-source" : fixture.sourceId,
+          externalOfferId, status: "ACTIVE", normalizedHash: "b".repeat(64),
+          sourceHash: (mode === "missing-raw-provenance" ? "d" : "c").repeat(64),
+          factRevisionId: fixture.revisionId, factRevisionSequence: 1, approvedHeadId: fixture.revisionId, approvedHeadSequence: sequence }] : []);
+      const request = snapshotInputRequestSchema.parse({ organizationId: scope.organizationId, projectId: scope.projectId,
+        idempotencyKey: "synthetic-retention-corrupt" }); const hashes = snapshotInputRequestHashes(request);
+      const receipt = await worker(scope, async (tx) => {
+        const repository = new PrismaSnapshotInputRepository(tx);
+        await repository.lockProject(scope.organizationId, scope.projectId);
+        const publishSequence = await repository.reserveSequence(scope.organizationId, scope.projectId);
+        return repository.save({ organizationId: scope.organizationId, projectId: scope.projectId, ...hashes,
+          inputSchemaVersion: 1, projectorVersion: "db-v1", schemaMinor: 0, publishSequence,
+          projectStateRevision: 1, catalogRevision: "a".repeat(64), capturedAt: new Date(), parts: builder.finish() });
+      });
+      // Immutable bytes/digest are legal; only the boundary case has valid provenance.
+      expect(await worker(scope, (tx) => new PrismaSnapshotInputRepository(tx).find(scope.organizationId, scope.projectId,
+        hashes.idempotencyKeyHash, hashes.requestHash))).toEqual(receipt);
+      expect((await readRetentionPins({ organizationId: scope.organizationId, projectId: scope.projectId })).snapshotCoverage)
+        .toBe(mode === "valid-240-char-id" ? "COMPLETE" : "INCOMPLETE");
+    }, 30_000);
   it.each(["forged", "oversized"])("rejects a GOOD label with %s immutable safety analysis before saving a receipt", async (mode) => {
     const scope = await setup();
     await runInPrincipalDatabaseTransaction(admin, async (tx) => {
@@ -237,6 +297,7 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const original = transactionRuntime.runInAuthorizedDatabaseTransaction;
     let workerTransactions = 0;
     let transactionOpen = false;
+    let markCapturePid: ((pid: number) => void) | undefined;
     const role = vi.spyOn(transactionRuntime, "runInAuthorizedDatabaseTransaction").mockImplementation(
       async (context, execute, options) => original(context, async (tx) => {
         if (context.actorId === "snapshot-input") {
@@ -244,6 +305,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           expect(await tx.$queryRawUnsafe("SELECT rolbypassrls, rolsuper FROM pg_roles WHERE rolname = current_user"))
             .toEqual([{ rolbypassrls: false, rolsuper: false }]);
           workerTransactions++;
+          if (markCapturePid && options?.isolationLevel === "RepeatableRead") {
+            const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+            markCapturePid(backend!.pid); markCapturePid = undefined;
+          }
         }
         transactionOpen = true;
         try { return await execute(tx); } finally { transactionOpen = false; }
@@ -252,6 +317,71 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
     const request = { organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-complete", schemaMinor: 0 };
     try {
       const first = await captureSnapshotInput(principal, request);
+      const retention = await readRetentionPins({ organizationId: scope.organizationId, projectId: scope.projectId });
+      expect(retention.snapshotCoverage).toBe("COMPLETE");
+      expect(retention.pinnedRevisionIds).toContain(fixture.revisionId);
+      expect(retention.rawArtifactPins).toContainEqual({ sourceId: fixture.sourceId, rawArtifactHash: "c".repeat(64) });
+      // Deliberately establish capture's RR snapshot while a different backend
+      // holds global and commits a new PENDING deletion. The new admission must
+      // see that commit through fresh RC, not the outer stale RR view.
+      let releaseDeletion!: () => void; let markDeletionHeld!: (pid: number) => void;
+      const release = new Promise<void>((resolve) => { releaseDeletion = resolve; });
+      const held = new Promise<number>((resolve) => { markDeletionHeld = resolve; });
+      const retentionContext = { principalKind: "project-job" as const, actorId: "raw-artifact-retention",
+        organizationId: scope.organizationId, projectIds: [scope.projectId], correlationId: randomUUID() };
+      const deletionTransaction = (execute: (tx: DatabaseTransaction) => Promise<void>) =>
+        runInAuthorizedDatabaseTransaction(retentionContext, async (tx) => {
+          await tx.$executeRawUnsafe("SET LOCAL ROLE ams_data_hub_worker");
+          return execute(tx);
+        }, { isolationLevel: "ReadCommitted", timeout: 30_000 });
+      let deletionId = "";
+      const holding = deletionTransaction(async (tx) => {
+        const deletion = await tx.rawArtifactDeletion.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
+          rawArtifactHash: "c".repeat(64), storageKey: `source-artifacts/${"c".repeat(64)}`,
+          policy: { lastGoodRevisions: 3, recentDays: 30, documentedPurpose: null } } });
+        deletionId = deletion.id;
+        const [backend] = await tx.$queryRawUnsafe<{ pid: number }[]>("SELECT pg_backend_pid() AS pid");
+        markDeletionHeld(backend!.pid); await release;
+      });
+      let capturing: Promise<{ error?: unknown }> | undefined;
+      try {
+        const blocker = await Promise.race([held, holding.then(() => { throw new Error("SYNTHETIC_DELETION_NOT_HELD"); })]);
+        const started = new Promise<number>((resolve) => { markCapturePid = resolve; });
+        capturing = captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-delete-race" })
+          .then(() => ({}), (error: unknown) => ({ error }));
+        const waiting = await Promise.race([started, capturing.then(() => { throw new Error("SYNTHETIC_CAPTURE_NOT_WAITING"); })]);
+        let blocked = false;
+        const deadline = Date.now() + 1500;
+        while (!blocked && Date.now() < deadline) {
+          blocked = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+            const [row] = await tx.$queryRawUnsafe<{ blocked: boolean }[]>(
+              "SELECT $1::integer=ANY(pg_blocking_pids($2::integer)) AS blocked", blocker, waiting);
+            return row!.blocked;
+          });
+          if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(blocked).toBe(true);
+      } finally {
+        releaseDeletion(); markCapturePid = undefined;
+        const [writer] = await Promise.allSettled([holding, capturing]);
+        if (writer!.status === "rejected") throw writer!.reason;
+      }
+      expect((await capturing!)!.error).toMatchObject({ message: "RAW_RETENTION_IN_PROGRESS", retryable: true });
+      await expect(captureSnapshotInput(principal, request)).resolves.toEqual(first);
+      await deletionTransaction(async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'ACKNOWLEDGED\',"acknowledgedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletionId);
+      });
+      await expect(captureSnapshotInput(principal, { ...request, idempotencyKey: "synthetic-delete-acknowledged" }))
+        .rejects.toThrow("RAW_RETENTION_IN_PROGRESS");
+      await worker(scope, async (tx) => {
+        expect(await tx.snapshotBuildInput.count()).toBe(1);
+        expect((await tx.projectSnapshotSequence.findFirstOrThrow()).lastReservedSequence).toBe(1);
+      });
+      await deletionTransaction(async (tx) => {
+        await tx.$executeRawUnsafe('UPDATE "RawArtifactDeletion" SET status=\'DELETED\',"completedAt"=clock_timestamp()::timestamptz(3) WHERE id=$1', deletionId);
+      });
+      // Subsequent actual captures below still rebuild normalized facts after
+      // DELETED; this synthetic journal does not claim provider IO occurred.
       const pinned = structuredClone(first);
       const publicCatalog = projectSnapshotCatalog(first);
       const publicProjectState = projectSnapshotProjectState(first);
@@ -673,6 +803,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
           AND "externalId" = ${probe.externalId} AND "recordHash" = ${"b".repeat(64)}
       `);
       expect(JSON.stringify(plans)).toContain("SourceRevisionRecord_inventory_fact_idx");
+    });
+    // EXPLAIN is test-only evidence and must not consume the production capture
+    // transaction's fixed 30-second runtime budget.
+    await worker(scope, async (tx) => {
       const queries = vi.spyOn(tx, "$queryRaw");
       const relations = vi.spyOn(tx.mediaSource, "findMany");
       try {
@@ -696,10 +830,10 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
         expect(elapsedMs).toBeLessThan(30_000);
         expect(capturedIdentities).toBe(4100);
         // One additional SQL byte guard for the cached head/fact approval.
-        expect(queries).toHaveBeenCalledTimes(65);
+        expect(queries).toHaveBeenCalledTimes(66);
         expect(relations).not.toHaveBeenCalled();
         expect(sink).toHaveBeenCalledExactlyOnceWith("media", []);
-        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=65 elapsed_ms=${elapsedMs}`);
+        console.info(`snapshot_source_media_page_capacity=PASS inventories=4100 raw_queries=66 elapsed_ms=${elapsedMs}`);
       } finally { queries.mockRestore(); relations.mockRestore(); }
     });
     const images = ["https://private.example.invalid/a.jpg", "https://private.example.invalid/b.jpg"];
@@ -1045,10 +1179,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
 
   it("reserves above existing publication, saves immutable complete input, and replays identical receipt", async () => {
     const scope = await setup();
-    await runInPrincipalDatabaseTransaction(admin, (tx) => tx.projectCurrentSnapshotManifest.create({ data: {
-      organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 7,
-      manifestKey: "synthetic-manifest", manifestSha256: "a".repeat(64), publishedAt: new Date(),
-    } }));
+    await runInPrincipalDatabaseTransaction(admin, async (tx) => {
+      const publishedAt = new Date();
+      const publication = { organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 7,
+        manifestKey: "synthetic-manifest", manifestSha256: "a".repeat(64), publishedAt };
+      await tx.projectCurrentSnapshotManifest.create({ data: publication });
+      await tx.deliveryRun.create({ data: publication });
+    });
     const request = snapshotInputRequestSchema.parse({
       organizationId: scope.organizationId, projectId: scope.projectId, idempotencyKey: "synthetic-capture" });
     const hashes = snapshotInputRequestHashes(request);
@@ -1291,8 +1428,13 @@ describe("snapshot input persistence foundation with NOBYPASS PostgreSQL worker"
   it("enforces read-only fact purpose independently of scope shape and legacy job representation", async () => {
     const scope = await setup();
     const asset = await runInPrincipalDatabaseTransaction(admin, async (tx) => {
-      await tx.projectCurrentSnapshotManifest.create({ data: { organizationId: scope.organizationId,
-        projectId: scope.projectId, publishSequence: 1, manifestKey: "synthetic-current", manifestSha256: "a".repeat(64), publishedAt: new Date() } });
+      const publishedAt = new Date();
+      const publication = { organizationId: scope.organizationId, projectId: scope.projectId, publishSequence: 1,
+        manifestKey: "synthetic-current", manifestSha256: "a".repeat(64), publishedAt };
+      await tx.projectSnapshotSequence.create({ data: { organizationId: scope.organizationId,
+        projectId: scope.projectId, lastReservedSequence: 1 } });
+      await tx.projectCurrentSnapshotManifest.create({ data: publication });
+      await tx.deliveryRun.create({ data: publication });
       return tx.mediaAsset.create({ data: { organizationId: scope.organizationId, projectId: scope.projectId,
         sha256: "b".repeat(64), storageKey: "synthetic-private-media", contentType: "image/jpeg", byteSize: 100,
         originalFileName: "synthetic.jpg", rightsBasis: "OWNED", source: "synthetic", uploadedBy: "synthetic-admin" } });

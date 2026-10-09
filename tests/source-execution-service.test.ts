@@ -74,4 +74,13 @@ describe("SourceExecutionService application orchestration", () => {
     returned.revisionId = "https://synthetic.example.test";
     expect(await service.run(target)).toMatchObject({ state: "FAILED", code: "SOURCE_EXECUTION_FAILED" });
   });
+
+  it.each(["RAW_ARTIFACT_BUSY", "RAW_ARTIFACT_GUARD_UNAVAILABLE", "RAW_ARTIFACT_LEASE_LOST",
+    "RAW_ARTIFACT_RECEIPT_INVALID", "RAW_ARTIFACT_DELETE_PENDING"])("preserves finite raw safety code %s without storage capability fields", async (code) => {
+    const service = new SourceExecutionService({ load: async () => state(), run: async () => ({
+      state: "FAILED", sourceId: target.sourceId, failedStage: "RAW_ARTIFACT", code,
+      storageKey: `source-artifacts/${"a".repeat(64)}`, privateEndpoint: "https://synthetic.example.test/private.xml",
+    }) });
+    expect(await service.run(target)).toEqual({ state: "FAILED", sourceId: target.sourceId, failedStage: "RAW_ARTIFACT", code });
+  });
 });

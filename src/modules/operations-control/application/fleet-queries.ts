@@ -12,16 +12,18 @@ export async function getFleetDashboardWithRepository(input: {
   if (input.principal.kind !== "platform-admin") {
     throw new OperationsControlError("OPERATIONS_CONTROL_ADMIN_ACCESS_DENIED");
   }
-  const [counts, projects, failedJobs, auditEvents, dataSafety] = await Promise.all([
+  const [counts, projects, failedJobs, alerts, auditEvents, dataSafety] = await Promise.all([
     input.repository.getPlatformCounts(),
     input.repository.listProjects(),
     input.repository.listRecentFailedJobs(25),
+    input.repository.listRecentAlerts(25),
     input.repository.listRecentAuditEvents(50),
     input.repository.getDataSafetyState(),
   ]);
   return buildFleetDashboard({
     projects,
     failedJobs,
+    alerts,
     auditEvents,
     dataSafety,
     organizationCount: counts.organizations,

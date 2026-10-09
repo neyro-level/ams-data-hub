@@ -35,39 +35,58 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
       after = rows.at(-1)!.id;
     }
     if (count !== sources.size) stale();
-    const inventory = new Map(expected.inventory.map((row) => [row.uid, row]));
-    after = ""; count = 0;
-    while (true) {
-      const rows = await transaction.inventoryIdentity.findMany({ where: { ...scope, status: "ACTIVE", uid: { gt: after } },
-        orderBy: { uid: "asc" }, take: PAGE, select: { uid: true, sourceId: true, normalizedHash: true } });
-      if (!rows.length) break;
-      count += rows.length; if (count > inventory.size) stale();
-      for (const row of rows) {
-        const pin = inventory.get(row.uid);
-        if (!pin || row.sourceId !== pin.sourceId || row.normalizedHash !== pin.normalizedHash) stale();
-      }
-      after = rows.at(-1)!.uid;
+    const revisions = new Map<string, { sourceId: string; sequence: number; profileKey: string; profileVersion: string }>();
+    for (const pin of expected.inventory) {
+      const existing = revisions.get(pin.factRevisionId);
+      if (existing && (existing.sourceId !== pin.sourceId || existing.sequence !== pin.factRevisionSequence
+        || existing.profileKey !== pin.factProfileKey || existing.profileVersion !== pin.factProfileVersion)) stale();
+      revisions.set(pin.factRevisionId, { sourceId: pin.sourceId, sequence: pin.factRevisionSequence,
+        profileKey: pin.factProfileKey, profileVersion: pin.factProfileVersion });
     }
-    if (count !== inventory.size) stale();
-    for (let offset = 0; offset < expected.inventory.length; offset += PAGE) {
-      const pins = expected.inventory.slice(offset, offset + PAGE);
-      const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.uid}::text, ${pin.sourceId}::text,
-        ${pin.normalizedHash}::text, ${pin.factRevisionId}::text, ${pin.factRevisionSequence}::int,
-        ${pin.factProfileKey}::text, ${pin.factProfileVersion}::text)`);
-      const rows = await transaction.$queryRaw<{ index: number; found: boolean }[]>(Prisma.sql`
-        WITH requested("index", uid, source, hash, revision, sequence, profile, version) AS (VALUES ${Prisma.join(values)})
-        SELECT q."index", (i.uid IS NOT NULL AND v.id IS NOT NULL AND r."externalId" IS NOT NULL) AS found
-        FROM requested q LEFT JOIN "InventoryIdentity" i
-          ON i."organizationId"=${scope.organizationId} AND i."projectId"=${scope.projectId}
-          AND i.uid=q.uid AND i."sourceId"=q.source AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
-        LEFT JOIN "SourceRevision" v ON v.id=q.revision AND v."organizationId"=${scope.organizationId}
-          AND v."projectId"=${scope.projectId} AND v."sourceId"=q.source AND v.status='GOOD'
-          AND v.sequence=q.sequence AND v."profileKey"=q.profile AND v."profileVersion"=q.version
-        LEFT JOIN "SourceRevisionRecord" r ON r."organizationId"=i."organizationId"
-          AND r."projectId"=i."projectId" AND r."sourceId"=i."sourceId" AND r."revisionId"=v.id
-          AND r."inventoryUid"=i.uid AND r."externalId"=i."externalOfferId" AND r."recordHash"=q.hash
-        ORDER BY q."index"`);
-      if (rows.length !== pins.length || rows.some((row, index) => row.index !== index || !row.found)) stale();
-    }
+    // The schema bounds the complete cohort to 50k rows. Pass only copied
+    // metadata as one JSON parameter and aggregate server-side so publication
+    // admission is exact without one client/server round trip per 200-row page.
+    const requested = JSON.stringify(expected.inventory.map((pin) => ({
+      uid: pin.uid, sourceId: pin.sourceId, hash: pin.normalizedHash, revision: pin.factRevisionId,
+      sequence: pin.factRevisionSequence, profile: pin.factProfileKey, version: pin.factProfileVersion,
+    })));
+    const rows = await transaction.$queryRaw<{
+      requestedCount: number; activeCount: number; factsValid: boolean; revisionsValid: boolean;
+    }[]>(Prisma.sql`
+      WITH requested AS (
+        SELECT * FROM jsonb_to_recordset(${requested}::jsonb) AS q(
+          uid text, "sourceId" text, hash text, revision text, sequence int, profile text, version text)
+      ), requested_revisions AS (
+        SELECT DISTINCT revision, "sourceId", sequence, profile, version FROM requested
+      ), revision_validity AS (
+        SELECT NOT EXISTS (
+          SELECT 1 FROM requested_revisions rv LEFT JOIN "SourceRevision" v ON v.id=rv.revision
+            AND v."organizationId"=${scope.organizationId} AND v."projectId"=${scope.projectId}
+            AND v."sourceId"=rv."sourceId" AND v.status='GOOD' AND v.sequence=rv.sequence
+            AND v."profileKey"=rv.profile AND v."profileVersion"=rv.version
+          WHERE v.id IS NULL
+        ) AS valid
+      ), fact_validity AS (
+        SELECT count(*)::int AS "requestedCount",
+          coalesce(bool_and(fact.valid IS TRUE), TRUE) AS valid
+        FROM requested q LEFT JOIN LATERAL (
+          SELECT TRUE AS valid FROM "InventoryIdentity" i JOIN "SourceRevisionRecord" r
+            ON r."revisionId"=q.revision AND r."externalId"=i."externalOfferId"
+            AND r."organizationId"=i."organizationId" AND r."projectId"=i."projectId"
+            AND r."sourceId"=i."sourceId" AND r."inventoryUid"=i.uid AND r."recordHash"=q.hash
+          WHERE i.uid=q.uid AND i."organizationId"=${scope.organizationId}
+            AND i."projectId"=${scope.projectId} AND i."sourceId"=q."sourceId"
+            AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
+          LIMIT 1
+        ) fact ON TRUE
+      ), active_cohort AS (
+        SELECT count(*)::int AS count FROM "InventoryIdentity"
+        WHERE "organizationId"=${scope.organizationId} AND "projectId"=${scope.projectId} AND status='ACTIVE'
+      )
+      SELECT f."requestedCount", a.count AS "activeCount", f.valid AS "factsValid", rv.valid AS "revisionsValid"
+      FROM fact_validity f CROSS JOIN active_cohort a CROSS JOIN revision_validity rv`);
+    const result = rows[0];
+    if (rows.length !== 1 || !result || result.requestedCount !== expected.inventory.length
+      || result.activeCount !== expected.inventory.length || !result.factsValid || !result.revisionsValid) stale();
   };
 }

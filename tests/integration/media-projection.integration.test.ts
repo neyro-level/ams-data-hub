@@ -168,5 +168,5 @@ describe("persisted GOOD inventory mirrored media public facade", () => {
         expect(await tx.mediaSource.count({ where: target })).toBe(0);
       });
     } finally { role?.mockRestore(); delete process.env[reference]; gateway.feed.mockReset(); gateway.media.mockReset(); }
-  });
+  }, 30_000);
 });

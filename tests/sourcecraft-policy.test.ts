@@ -2,12 +2,29 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { classifyRisk } from "../scripts/ci/classify-risk.mjs";
-import { assertIntegrationPrerequisites, createRiskBuildEnvironment, parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
+import { assertIntegrationPrerequisites, createRiskBuildEnvironment, mandatoryUnitProofFiles, parseBoolean, parseTestFiles } from "../scripts/ci/run-scoped-proof.mjs";
 import { scanText } from "../scripts/ci/scan-secrets.mjs";
 import { verifyExactHead } from "../scripts/ci/verify-exact-head.mjs";
 import { validateSourcecraftPolicy } from "../scripts/ci/verify-sourcecraft-policy.mjs";
 
 describe("SourceCraft gate policy", () => {
+  it("makes local Semgrep findings fail the security command rather than returning a false PASS", () => {
+    const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts as Record<string, string>;
+    const argumentsList = scripts["security:semgrep"]!.split(/\s+/u);
+    expect(argumentsList.slice(0, 2)).toEqual(["semgrep", "scan"]);
+    expect(argumentsList).toContain("--error");
+    expect(argumentsList).not.toContain("--no-error");
+    expect(argumentsList).not.toContain("--suppress-errors");
+    expect(scripts["verify:daily"]).toContain("&& pnpm security:semgrep &&");
+  });
+  it("cannot omit guard self-tests through caller-selected unit scope", () => {
+    expect(mandatoryUnitProofFiles(["tests/principal.test.ts"])).toEqual([
+      "tests/principal.test.ts", "tests/architecture-source-guards.test.ts", "tests/architecture-runtime-guards.test.ts", "tests/sourcecraft-policy.test.ts", "tests/required-regression-proofs.test.ts", "tests/snapshot-public-policy.test.ts",
+    ]);
+    expect(mandatoryUnitProofFiles(["tests/sourcecraft-policy.test.ts"])).toEqual([
+      "tests/sourcecraft-policy.test.ts", "tests/architecture-source-guards.test.ts", "tests/architecture-runtime-guards.test.ts", "tests/required-regression-proofs.test.ts", "tests/snapshot-public-policy.test.ts",
+    ]);
+  });
   it("keeps gates manual-only and protects the default branch", () => {
     const ci = readFileSync(".sourcecraft/ci.yaml", "utf8");
     const branches = readFileSync(".sourcecraft/branches.yaml", "utf8");
