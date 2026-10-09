@@ -35,20 +35,10 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
       after = rows.at(-1)!.id;
     }
     if (count !== sources.size) stale();
-    const inventory = new Map(expected.inventory.map((row) => [row.uid, row]));
-    after = ""; count = 0;
-    while (true) {
-      const rows = await transaction.inventoryIdentity.findMany({ where: { ...scope, status: "ACTIVE", uid: { gt: after } },
-        orderBy: { uid: "asc" }, take: PAGE, select: { uid: true, sourceId: true, normalizedHash: true } });
-      if (!rows.length) break;
-      count += rows.length; if (count > inventory.size) stale();
-      for (const row of rows) {
-        const pin = inventory.get(row.uid);
-        if (!pin || row.sourceId !== pin.sourceId || row.normalizedHash !== pin.normalizedHash) stale();
-      }
-      after = rows.at(-1)!.uid;
-    }
-    if (count !== inventory.size) stale();
+    // The exact pin queries below validate every expected uid/source/hash/fact.
+    // One count cut additionally detects any active identity omitted by the
+    // signed anchors, without a redundant 200-row scan of the same identities.
+    if (await transaction.inventoryIdentity.count({ where: { ...scope, status: "ACTIVE" } }) !== expected.inventory.length) stale();
     for (let offset = 0; offset < expected.inventory.length; offset += PAGE) {
       const pins = expected.inventory.slice(offset, offset + PAGE);
       const values = pins.map((pin, index) => Prisma.sql`(${index}::int, ${pin.uid}::text, ${pin.sourceId}::text,
