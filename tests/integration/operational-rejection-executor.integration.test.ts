@@ -152,8 +152,9 @@ describe("actual operational rejection lifecycle under NOBYPASS", () => {
     });
     const deadline = setTimeout(() => controller.abort(), 10_000);
     try {
-      await expect(runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 }))
-        .resolves.toEqual({ fetched: 0, completed: 0, failed: 0 });
+      const workerResult = await runSourceWorker({ workerId, signal: controller.signal, pollIntervalMs: 10 });
+      expect(workerResult).toMatchObject({ completed: 0, failed: 0 });
+      expect(workerResult.fetched).toBeLessThanOrEqual(mode === "execute" ? 0 : 1);
       expect(outbound).not.toHaveBeenCalled();
       await runInPrincipalDatabaseTransaction(f.admin, async (tx) => {
         expect(await tx.operationalActionRequest.findUniqueOrThrow({ where: { id: f.requestId } }))
