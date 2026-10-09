@@ -68,13 +68,17 @@ export function createSnapshotPublicationSourceReader(transaction: DatabaseTrans
         ) AS valid
       ), fact_validity AS (
         SELECT count(*)::int AS "requestedCount",
-          coalesce(bool_and(i.uid IS NOT NULL AND r."externalId" IS NOT NULL), TRUE) AS valid
-        FROM requested q LEFT JOIN "InventoryIdentity" i
-          ON i."organizationId"=${scope.organizationId} AND i."projectId"=${scope.projectId}
-          AND i.uid=q.uid AND i."sourceId"=q."sourceId" AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
-        LEFT JOIN "SourceRevisionRecord" r ON r."organizationId"=i."organizationId"
-          AND r."projectId"=i."projectId" AND r."sourceId"=i."sourceId" AND r."revisionId"=q.revision
-          AND r."inventoryUid"=i.uid AND r."externalId"=i."externalOfferId" AND r."recordHash"=q.hash
+          coalesce(bool_and(fact.valid IS TRUE), TRUE) AS valid
+        FROM requested q LEFT JOIN LATERAL (
+          SELECT TRUE AS valid FROM "InventoryIdentity" i JOIN "SourceRevisionRecord" r
+            ON r."revisionId"=q.revision AND r."externalId"=i."externalOfferId"
+            AND r."organizationId"=i."organizationId" AND r."projectId"=i."projectId"
+            AND r."sourceId"=i."sourceId" AND r."inventoryUid"=i.uid AND r."recordHash"=q.hash
+          WHERE i.uid=q.uid AND i."organizationId"=${scope.organizationId}
+            AND i."projectId"=${scope.projectId} AND i."sourceId"=q."sourceId"
+            AND i.status='ACTIVE' AND i."normalizedHash"=q.hash
+          LIMIT 1
+        ) fact ON TRUE
       ), active_cohort AS (
         SELECT count(*)::int AS count FROM "InventoryIdentity"
         WHERE "organizationId"=${scope.organizationId} AND "projectId"=${scope.projectId} AND status='ACTIVE'

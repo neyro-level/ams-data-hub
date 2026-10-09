@@ -132,6 +132,7 @@ describe("actual NOBYPASS publication source freshness", () => {
         const queries = sqlTrace.mock.calls.map(([sql]) => (sql as Prisma.Sql).text).join("\n");
         expect(queries).not.toMatch(/payload|draft|fields|FOR UPDATE|FOR SHARE/u);
         expect(queries).toContain("jsonb_to_recordset");
+        expect(queries).toContain("LATERAL");
         expect(queries).toContain('"SourceRevisionRecord"');
       } finally { sourceTrace.mockRestore(); inventoryTrace.mockRestore(); sqlTrace.mockRestore(); }
     });
