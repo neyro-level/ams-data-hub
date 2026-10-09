@@ -46,7 +46,10 @@
   digest, rollout or live rollback exists until a separately authorized exact-
   `main` release.
 - Local checks are not CI attestation or live proof.
-- Managed PostgreSQL backup evidence remains provider-owned until captured.
+- Server PostgreSQL backup is not configured. The owner explicitly accepted
+  this omission on 2026-10-09 for main delivery and a later separately
+  authorized production release. Release evidence must preserve the deviation
+  and must not claim that a backup or server recovery point exists.
 
 ## Handover and rollback
 

@@ -383,8 +383,10 @@ or equal/contradictory timestamps are UNKNOWN and fail closed. Bulk bounded
 discovery skips audited removed/ambiguous histories so they do not starve later
 eligible SHAs. Journal/PUT history is capped at 5,000 records; overflow rejects
 the run before external IO. No schedule or production cleanup is activated by
-this implementation; actual runtime and crash proofs plus provider policy and
-backup/restore evidence remain required for the Data Safety Gate.
+this implementation. Actual runtime/crash proofs, provider policy and local
+restore evidence remain required for the Data Safety Gate. Server PostgreSQL
+backup is an owner-accepted omission from 2026-10-09 and must never be reported
+as configured.
 
 ## Production deployment
 
@@ -395,7 +397,8 @@ root `/opt/ams-data-hub`, configuration root `/etc/ams-data-hub`.
 2. Resolve project-only secrets from Secret Master; never print or copy values.
 3. Run one manual release workflow and retain web/worker/migrator digests plus
    `registry-manifest.json`.
-4. Validate PostgreSQL connection budget and provider backup evidence.
+4. Validate the PostgreSQL connection budget and record the owner-accepted
+   absence of a server backup/recovery point without claiming backup evidence.
 5. Record current and previous immutable references in the release environment.
 6. Deploy from a clean checkout of the same SHA; the host only pulls images.
 7. Run live/readiness/browser smoke and record proof.

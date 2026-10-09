@@ -8,14 +8,18 @@ active_plan:
   source: AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.md
   source_sha256: d3d0bc7df74ac36e3f91260b806ec6dc94beca50c9ece88d074d8a80169fcd1a
   inventory: docs/AMS_DATA_HUB_REMEDIATION_PRODUCTION_READINESS_MASTER_PLAN_V1.inventory.json
-  execution_status: IN_PROGRESS
-  current_epic: adh-mp-10
-  current_task: adh-mp-10-3
-  next_delivery_task: adh-mp-10-delivery
-  candidate_pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
-  last_verified_candidate_head_sha: 41f4db0aae423311a8794bb6c5c6e8884565383b
-  last_verified_candidate_gate_status: PASS
-  delivery_status: BLOCKED_BY_DATA_SAFETY
+  execution_status: COMPLETE
+  current_epic: null
+  current_task: null
+  next_delivery_task: null
+  final_pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
+  final_delivery_evidence: plandb://t-adh-mp-10-delivery
+  delivery_status: MERGED_AFTER_EXACT_HEAD_RISKY_GATE
+  owner_amendments:
+    - date: 2026-10-09
+      decision: SERVER_POSTGRESQL_BACKUP_NOT_REQUIRED_FOR_CURRENT_MAIN_DELIVERY
+      effect: MP10_3_MAY_CLOSE_WITH_LOCAL_RECOVERY_AND_RETENTION_PROOF
+      production_authorized: false
   completed_deliveries:
     - epic: adh-mp-00
       pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/18
@@ -67,7 +71,10 @@ active_plan:
       gate_run: "340"
       gate_head_sha: 75796b20407ea204372d698820b61364d2fe436a
       merge_sha: bc8e8c6d03183a591838fbd364e5cc5d43919589
-  readiness: NOT_PRODUCTION_READY
+    - epic: adh-mp-10
+      pull_request: https://sourcecraft.dev/integrator-p/ams-data-hub/pr/28
+      immutable_evidence: plandb://t-adh-mp-10-delivery
+  readiness: READY_FOR_SEPARATE_OWNER_AUTHORIZED_RELEASE_WITH_ACCEPTED_BACKUP_DEVIATION
   reconciliation: CLEAN
   last_verified_reconciliation: CLEAN
   execution_store_status: OWNER_APPROVED_PLANDB_MIGRATION_VERIFIED
@@ -132,8 +139,8 @@ production:
   release_run: NOT_RUN
   touched: false
 data_safety:
-  status: PARTIAL_LOCAL_PROOF_PASS_PROVIDER_BACKUP_BLOCKED
-  gate_task_status: RUNNING
+  status: PASS_WITH_OWNER_ACCEPTED_SERVER_BACKUP_DEVIATION
+  gate_task_status: READY_TO_CLOSE
   verification_scope: nonproduction_dump_restore_only
   environment: isolated-local
   postgres_major: 18
@@ -151,7 +158,7 @@ data_safety:
   unfreeze_after_reconcile: true
   cleanup: PASS
   provider_postgresql_backup:
-    status: NOT_CONFIGURED
+    status: NOT_CONFIGURED_OWNER_ACCEPTED
     environment: ams-data-hub-deploy
     timer_enabled: false
     timer_active: false
@@ -159,7 +166,7 @@ data_safety:
     backup_environment_file_present: false
     current_backup_evidence_present: false
     server_mutation_authorized: false
-    consequence: MP10_3_AND_DELIVERY_BLOCKED
+    consequence: ACCEPTED_RISK_NOT_BLOCKING_MAIN_DELIVERY
 external_gates:
   timeweb_s3_provider_denial:
     status: PASS

@@ -36,14 +36,15 @@ MP-00–MP-09 доставлены. MP-09: PR #27 MERGED после exact-head R
 DB reset — PASS. Дерево merge идентично gated candidate; canonical main и
 публичное GitHub main-зеркало синхронизированы после merge.
 Активен MP-10; Code, Security, Runtime, Portability, Operations и MP-10.7
-regression guards доказаны. MP-10.3 Data Safety RUNNING в PlanDB, потому что
-provider PostgreSQL backup на `ams-data-hub-deploy` не настроен: timer disabled/
-inactive, backup service и environment file отсутствуют, актуальное backup
-evidence не найдено. Локальный PG18 restore drill и исторический non-production
-S3 policy proof не заменяют этот обязательный provider proof. Draft PR #28
-остаётся без merge до closure MP-10.3; последний проверенный implementation
-candidate — `41f4db0aae423311a8794bb6c5c6e8884565383b`. Частичный checkpoint `e7c6ea9`
-добавляет
+regression guards доказаны. Локальный PG18 restore drill, raw retention,
+freeze/reconcile/unfreeze, identity/publicUrlId и исторический non-production
+S3 policy proof для MP-10.3 — PASS. Provider PostgreSQL backup на
+`ams-data-hub-deploy` фактически отсутствует. Решением владельца от 2026-10-09
+его настройка исключена, отсутствие принято как явное отклонение и больше не
+блокирует main-delivery. Это не является backup evidence или production proof.
+MP-10 доставлен PR #28 после одного exact-head SourceCraft RISKY Gate;
+immutable candidate/Gate/merge evidence хранится в PlanDB и SourceCraft.
+Частичный checkpoint `e7c6ea9` добавляет
 AST source guards и обязательные self-tests; это не closure или readiness PASS.
 Actual-diff runtime selection и structural composition removal guards
 реализованы в checkpoint c91cfac: обязательные native suites вычисляются из Git,
@@ -101,8 +102,9 @@ configuration, S3 object restoration или raw-retention runtime. Raw retention
 raw journals, publicUrlId relink, rollback/current linkage, freeze/reconcile/
 unfreeze; fingerprints до и после PG18 dump/restore совпадают, cleanup PASS.
 Отдельный native raw-retention runtime proof также PASS. Эти результаты закрывают
-локальную часть MP-10.3, но не обязательное `PostgreSQL backup configured` на
-provider/server; поэтому MP-10.3 остаётся RUNNING.
+локальную часть MP-10.3. Исходное `PostgreSQL backup configured` на provider/
+server не выполнено и закрывается только owner amendment от 2026-10-09; риск
+зафиксирован без ложного заявления о backup.
 
 ### История scoped checkpoints MP-08/MP-09
 
@@ -674,11 +676,10 @@ asset-key/consent edits. Existing real S3 adapter с synthetic SDK transport
 Runtime Source/snapshot/operations composition не объявляется
 завершённой по существованию модулей или закрытию исторического графа.
 
-Активная доработка: MP-10 нового remediation plan; MP-00–MP-09 доставлены.
-Из рабочих задач остаются MP-10.3 Data Safety и зависимая MP-10 delivery;
-составной MP-10 закроется автоматически после них. Остальные acceptance gates
-и regression guards завершены. Реализация runtime adapters и расписаний входит
-в утверждённую доработку; их включение на production — нет.
+Approved remediation plan завершён: MP-00–MP-10 доставлены, составной graph
+закрыт. Все acceptance gates и regression guards завершены с owner amendment
+по отсутствующему server backup. Реализация runtime adapters и расписаний входит
+в доставленный main; их включение на production — нет.
 
 Production feed credentials, миграция production и rollout — только отдельной
 release/операционной командой владельца после readiness gate.

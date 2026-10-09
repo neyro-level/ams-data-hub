@@ -24,10 +24,12 @@ Exact v4 — неизменяемый approval artifact с исходным SHA-
 MP-01 удалил текущий TOTP contour с password/session regressions и новой
 forward migration. MP-02–MP-09 доставлены; delivery evidence хранится
 в PlanDB и `DELIVERY_STATE.yaml`. В MP-10 завершены Code, Security, Runtime,
-Portability, Operations и regression gates. MP-10.3 Data Safety остаётся
-RUNNING: локальный PostgreSQL restore drill и reconciliation PASS, но provider
-PostgreSQL backup на `ams-data-hub-deploy` не настроен. Draft PR #28 не подлежит
-merge до закрытия этого gate;
+Portability, Operations и regression gates. Локальный PostgreSQL restore drill,
+raw retention и reconciliation для MP-10.3 — PASS. Решением владельца от
+2026-10-09 server PostgreSQL backup не создаётся и принят как явное исключение
+для текущего main-delivery; это не является утверждением о наличии backup.
+MP-10 доставлен PR #28 после одного exact-head SourceCraft RISKY Gate;
+immutable Gate/head/merge evidence хранится в PlanDB и SourceCraft;
 закрытый v4 не является доказательством этих результатов.
 До отдельной release-команды владельца разрешены только доработки и
 non-production проверки, не production rollout.
